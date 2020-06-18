@@ -5,11 +5,15 @@ from sys import argv
 
 n = 0 # iteration of line search
 if len(argv)>1:
-    n = argv[1]
+    try:
+        n = int(argv[1])
+    except:
+        n = 0
+    #end try
 #end if
 
 try:
-    from calc_relax import eq_pos,P_opts,S_opts,shp_S_opts,S_opts_mesh,num_params
+    from calc_relax import eq_pos,P_opts,S_opts,shp_S_opts,S_opts_mesh,num_params,pdim,pval
 except:
     print('No relax geometry available: run relaxation first!')
     exit()
@@ -31,11 +35,11 @@ settings(**main_settings)
 P_jobs = []
 ls = 0 # for now
 for p in range(num_params):
-    pos  = deepcopy(ls_start)
     param = P_opts[p,:]
     for s,shift in enumerate(S_opts[p]):
-        pos  += param*shift
-        pstr = 'p'+str(p)+'_s'+str(s)
+        pos     = deepcopy(ls_start)
+        pos    += param*shift
+        pstr    = 'p'+str(p)+'_s'+str(s)
         P_jobs += get_main_job(pos,ls,pstr)
     #end for
 #end for

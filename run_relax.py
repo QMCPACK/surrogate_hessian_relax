@@ -3,11 +3,12 @@
 from parameters import *
 
 # here for the time being
-settings(**srg_settings)
-relax = get_srg_job()[0]
+settings(**relax_settings)
+relax = get_relax_job()[0]
 
 if __name__=='__main__':
     run_project(relax)
+    # next, run phonon calculation
 #end if
 
 try:
