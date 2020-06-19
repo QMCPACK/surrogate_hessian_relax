@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 from parameters import *
-from numpy import argmin
+from numpy import argmin,polyfit,polyval
 
 try:
     from run_phonon import R_relax,FC_real,FC_param,FC_e,FC_v,P_orig,P_val,P_opt,num_params
@@ -20,7 +20,7 @@ except:
     print('Starting from relaxed geometry:')
 #end try
 print(R_ls[0].reshape(shp2))
-P,Pv = pos_to_params()
+P,Pv = pos_to_params(R_ls[0])
 P_ls = [Pv]
 
 settings(**main_settings)
@@ -39,7 +39,7 @@ for p in range(num_params):
     for s,shift in enumerate(S_opt[p]):
         pos     = deepcopy(R_ls[n]) + shift*P_opt[p,:]
         pstr    = 'p'+str(p)+'_s'+str(s)
-        P_jobs += get_main_job(pos,ls_n,pstr)
+        P_jobs += get_main_job(pos,n,pstr)
     #end for
 #end for
 
@@ -48,7 +48,7 @@ if __name__=='__main__':
 #end if
 
 # try to load an analyze
-try:
+if True: #try:
     E_load   = []
     Err_load = []
     for j,job in enumerate(P_jobs):
@@ -57,12 +57,13 @@ try:
            E_mean  = AI.qmc[1].scalars.LocalEnergy.mean
            E_error = AI.qmc[1].scalars.LocalEnergy.error
            E_load.append(E_mean)
-           Err_load.append(Err_jobs)
+           Err_load.append(E_error)
         #end if
     #end for
-    PES_ls = [array(E_jobs).reshape((num_params,E_dim))]
-except:
-    print('Could not load energies. Make sure to finish LS calculation first')
+    PES_ls = [array(E_load).reshape((num_params,E_dim))]
+#except:
+#    print('Could not load energies. Make sure to finish LS calculation first')
+#    exit()
 #end if
 
 def get_min_params(shifts,PES,n=2):
