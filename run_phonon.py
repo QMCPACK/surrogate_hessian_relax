@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 from parameters import *
+from numpy import linalg,reshape
+from surrogate import load_gamma_k,load_phonon_modes,K_from_W
 
+fc_file     = '../phonon/FC.fc'
+ph_file     = '../phonon/PH.dynG1'
 
 try:
     from run_relax import R_relax

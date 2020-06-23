@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid
-from numpy.linalg import lstsq
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval
 from copy import deepcopy
 
 def load_gamma_k(fname, num_prt, dim=3):
@@ -162,7 +161,7 @@ def bipolynomials(X,Y,nx,ny):
 
 def bipolyfit(X,Y,Z,nx,ny):
     XYp = bipolynomials(X,Y,nx,ny)
-    p,r,rank,s = lstsq(array(XYp).T,Z.flatten())
+    p,r,rank,s = linalg.lstsq(array(XYp).T,Z.flatten())
     return p
 #end def bipolyfit
 
@@ -227,3 +226,18 @@ def get_2d_sli(p0,p1,slicing):
     #end if
     return tuple(sli)
 #end def
+
+def get_min_params(shifts,PES,n=2,generate=1000):
+    pf = polyfit(shifts,PES,n)
+    c = poly1d(pf)
+    crit = c.deriv().r
+    r_crit = crit[crit.imag==0].real
+    test = c.deriv(2)(r_crit)
+
+    # compute local minima
+    # excluding range boundaries
+    Pmin = min(r_crit[test>0])
+    Emin = c(Pmin)
+    return Emin,Pmin,pf
+#end def
+

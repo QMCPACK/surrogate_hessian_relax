@@ -1,7 +1,11 @@
 #! /usr/bin/env python3
 
 from parameters import *
-from numpy import argmin,polyfit,polyval
+from copy import deepcopy
+from numpy import argmin,polyfit,polyval,poly1d,random,linspace
+from matplotlib import pyplot as plt
+from qmcpack_analyzer import QmcpackAnalyzer
+from nexus import settings,run_project
 
 try:
     from run_phonon import R_relax,FC_real,FC_param,FC_e,FC_v,P_orig,P_val,P_opt,num_params
@@ -10,84 +14,128 @@ except:
     exit()
 #end try
 
-n=0 # zeroth iteration
 # choose where to begin
 try:
     R_ls = [R_ls_init]
-    print('Starting from given geometry:')
+    print('Starting n=0 from given geometry:')
 except:
     R_ls = [deepcopy(R_relax)]
-    print('Starting from relaxed geometry:')
 #end try
-print(R_ls[0].reshape(shp2))
 P,Pv = pos_to_params(R_ls[0])
 P_ls = [Pv]
 
-settings(**main_settings)
+E0           = 0.0 
+E_min_ls     = [num_params*E0]  # start list of minimum energies: TODO: get here eqm jobs values
+P_min_ls     = [num_params*[0]] # start list of minimum parameters
+PES_ls       = []
+PES_error_ls = []
+n            = 0  # iteration count
 
+# run iteration: 
+R_this = R_ls[n]
+E_lim  = E_lim_ls[n]
 
 # figure out shifts for this iteration
 S_opt = []
 for p in range(num_params):
-    P_lim = (2*E_lim_ls[n]/FC_e[p])**0.5
+    P_lim = (2*E_lim/FC_e[p])**0.5
     S_opt.append(linspace(-P_lim,P_lim,E_dim))
 #end for
 
-# get jobs for this iteration
-P_jobs = []
+# define paths and displacements
+path_strings = []
+shifted_poss = []
 for p in range(num_params):
     for s,shift in enumerate(S_opt[p]):
-        pos     = deepcopy(R_ls[n]) + shift*P_opt[p,:]
-        pstr    = 'p'+str(p)+'_s'+str(s)
-        P_jobs += get_main_job(pos,n,pstr)
+        path_strings.append( 'p'+str(p)+'_s'+str(s) )
+        shifted_poss.append( deepcopy(R_this) + shift*P_opt[p,:] )
     #end for
 #end for
 
+# run iteration
 if __name__=='__main__':
+    settings(**main_settings)
+    P_jobs   = []
+    for p,pos in enumerate(shifted_poss):
+        P_jobs += get_main_job(pos,n,path_strings[p])
+    #end for
     run_project(P_jobs)
 #end if
 
 # try to load an analyze
-if True: #try:
+try:
     E_load   = []
     Err_load = []
-    for j,job in enumerate(P_jobs):
-        if job.identifier=='dmc':
-           AI      = job.load_analyzer_image()
-           E_mean  = AI.qmc[1].scalars.LocalEnergy.mean
-           E_error = AI.qmc[1].scalars.LocalEnergy.error
-           E_load.append(E_mean)
-           Err_load.append(E_error)
-        #end if
+    for s,string in enumerate(path_strings):
+        AI = QmcpackAnalyzer('../ls'+str(n)+'/'+string+'/dmc/dmc.in.xml',equilibration=0)
+        AI.analyze()
+        E_mean  = AI.qmc[1].scalars.LocalEnergy.mean
+        E_error = AI.qmc[1].scalars.LocalEnergy.error
+        E_load.append(E_mean)
+        Err_load.append(E_error)
     #end for
-    PES_ls = [array(E_load).reshape((num_params,E_dim))]
-#except:
-#    print('Could not load energies. Make sure to finish LS calculation first')
-#    exit()
+    PES_this       = array(E_load).reshape((num_params,E_dim))
+    PES_error_this = array(Err_load).reshape((num_params,E_dim))
+except:
+    print('Could not load energies. Make sure to finish first n='+str(n))
+    exit()
 #end if
 
-def get_min_params(shifts,PES,n=2):
-    pf = polyfit(shifts,PES,n)
-    dr = linspace(min(shifts),max(shifts),1001) # more elegant solution, please
-    Emin = min(polyval(pf,dr))
-    pmin = dr[argmin(polyval(pf,dr))]
-    return Emin,pmin
-#end def
 
+# analyze LS PES and propose new optimal geometry
+R_new = deepcopy(R_this)
+f,ax  = plt.subplots()
 Emins = []
-pmins = []
-R_new = deepcopy(R_ls[n])
-print('Optimal parameters:')
+Pmins = []
 for p in range(num_params):
-    print('#'+str(p))
-    Emin,pmin = get_min_params(S_opt[p],PES_ls[n][p,:])
-    R_new += pmin*P_opt[p,:] # shift to optimum
+    shift = S_opt[p]
+    PES   = PES_this[p,:]
+    PESe  = PES_error_this[p,:]
+    Emin,Pmin,pf = get_min_params(shift,PES,n=4)
     Emins.append(Emin)
-    pmins.append(pmin)
-#end for
-R_ls.append( R_new )
-print('')
-print('New geometry:')
-print(R_new.reshape(shp2))
+    Pmins.append(Pmin)
 
-print(Emin,pmin)
+    # shift to optimum
+    R_new += Pmin*P_opt[p,:]
+
+    # plot PES
+    s_axis = linspace(min(shift),max(shift))
+    co = random.random((3,))
+    ax.errorbar(shift,PES,PESe,linestyle='-',label='p'+str(p),color=co)
+    # plot fitted PES
+    ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
+    # plot minima
+    ax.plot(Pmin,Emin,'o',label='E='+str(round(Emin,6))+' p='+str(round(Pmin,6)),color=co)
+#end for
+ax.set_title('Line-search #'+str(n))
+ax.set_xlabel('dp')
+ax.set_ylabel('E')
+ax.legend()
+
+# update values at n+1
+P,P_new = pos_to_params(R_new)
+R_ls.append(R_new)
+P_ls.append(P_new)
+# update values at n
+E_min_ls.append(Emins)
+P_min_ls.append(Pmins)
+PES_ls.append(PES_this)
+PES_error_ls.append(PES_this)
+
+# print and plot if needed
+if __name__=='__main__':
+    print('New geometry:')
+    print(R_ls[n+1].reshape(shp2))
+    print('Shift:')
+    print((R_ls[n+1]-R_ls[n]).reshape(shp2))
+    
+    print('Optimal parameters:')
+    for p in range(num_params):
+        print('#'+str(p))
+        print('  n=0: '+str(P_ls[0][p]))
+        for ni in range(1,n+2):
+            print('  n='+str(ni)+': '+str(P_ls[ni][p])+' Delta: '+str(P_ls[ni][p]-P_ls[ni-1][p]))
+        #end for
+    #end for
+    plt.show()
+#end if
