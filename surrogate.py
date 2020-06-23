@@ -98,7 +98,7 @@ def read_geometry(geometry_string):
             R.append(float(fields[3]))
        #end if
     #end for
-    return R,names
+    return array(R),names
 #end def
 
 # positions are given as a vector
