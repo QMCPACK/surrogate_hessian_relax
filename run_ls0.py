@@ -6,6 +6,7 @@ from numpy import argmin,polyfit,polyval,poly1d,random,linspace
 from matplotlib import pyplot as plt
 from qmcpack_analyzer import QmcpackAnalyzer
 from nexus import settings,run_project
+from surrogate import get_min_params
 
 try:
     from run_phonon import R_relax,FC_real,FC_param,FC_e,FC_v,P_orig,P_val,P_opt,num_params
