@@ -13,6 +13,7 @@ from surrogate import get_min_params
 #P_lims  = # give displacement FC limits to go
 #E_lim   = # give shift energy limit
 
+prefix    = ''
 optimal   = True
 iteration = 0
 E_lim     = E_lim_ls[iteration]
@@ -47,6 +48,7 @@ def load_parameters():
             for p in range(FC_param.shape[0]):
                 P_lims.append(FC_param[p,p])
             #end for
+            prefix += 'orig_'
         #end if
     #end try
     return P,P_lims
@@ -71,7 +73,7 @@ def shift_structure(R, params, shifts):
             if abs(shift)<1e-10: #eqm
                 paths.append( 'eqm' )
             else:
-                paths.append( 'p'+str(p)+'_s'+str(s) )
+                paths.append( prefix+'p'+str(p)+'_s'+str(s) )
             #end if
             R_shift.append( deepcopy(R) + shift*params[p,:] )
         #end for
