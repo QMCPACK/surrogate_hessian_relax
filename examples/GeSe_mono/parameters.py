@@ -4,5 +4,5 @@ label       = 'GeSe monolayer'
 axes        = (0,1) # xy
 xl,yl       = 'x','y'
 
-from GeSe_params import *
+from GeSe_structure import *
 from GeSe_jobs import *

@@ -12,20 +12,19 @@ Se   0.000000000000000   0.750000000000000   0.5532
 Ge   0.9000000000        0.750000000000000   0.4395
 '''
 pos_init,elem = read_geometry(pos_str)
-ax_init    = 8.32
-ay_init    = 7.35
-az_init    = 40.780286834
-dim       = 3
-masses    = [1.0,1.0,1.0,1.0]
-num_prt   = len(elem)
-shp2      = (num_prt,dim)
-shp1      = (num_prt*dim)
+dim           = 3
+masses        = [1.0,1.0,1.0,1.0]
+cell_init     = [8.32,7.35,40.780286834] 
+relax_cell    = False
+num_prt       = len(elem)
+shp2       = (num_prt+int(relax_cell)  ,dim)
+shp1       = ((num_prt+int(relax_cell))*dim)
 
-def generate_structure(pos_vect):
-    structure = Structure(dim=3)
-    structure.set_axes(axes = diag([ax_init,ay_init,az_init]))
+def generate_structure(pos_vect,cell_diag):
+    structure = Structure(dim=dim)
+    structure.set_axes(axes = diag(cell_diag))
     structure.set_elem(elem)
-    structure.pos = reshape(pos_vect,shp2)
+    structure.pos = pos_vect.reshape(shp2)*cell_diag # note what happens here!
     structure.units = 'B'
     structure.add_kmesh(
         kgrid = (8,8,1), # Monkhorst-Pack grid

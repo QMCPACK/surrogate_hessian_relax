@@ -43,17 +43,18 @@ H        6.248824460  17.339410360  15.000000000
 H        8.598463190   8.590814350  15.000000000
 H        6.248824460  12.660589630  15.000000000
 '''
-a         = 30.0
-dim       = 3
+dim        = 3
 pos_init,elem = read_geometry(pos_str)
-masses    = 24*[10947.356792250725] + 12*[918.68110941480279]
-num_prt   = len(elem)
-shp2      = (num_prt,dim)
-shp1      = (num_prt*dim)
+masses     = 24*[10947.356792250725] + 12*[918.68110941480279]
+cell_init  = [30.0,30.0,10.0]
+relax_cell = False
+num_prt    = len(elem)
+shp2       = (num_prt+int(relax_cell)  ,dim)
+shp1       = ((num_prt+int(relax_cell))*dim)
 
-def generate_structure(pos_vect):
-    structure = Structure(dim=3)
-    structure.set_axes(axes = diag([a,a,a]))
+def generate_structure(pos_vect,cell_vect):
+    structure = Structure(dim=dim)
+    structure.set_axes(axes = diag(cell_vect))
     structure.set_elem(elem)
     structure.pos = reshape(pos_vect,shp2)
     structure.units = 'B'
@@ -64,7 +65,7 @@ def generate_structure(pos_vect):
     return structure
 #end def
 
-def pos_to_params(pos):
+def pos_to_params(pos,cell=None):
     params = []
     pval = []
     pos2 = reshape(pos,shp2)

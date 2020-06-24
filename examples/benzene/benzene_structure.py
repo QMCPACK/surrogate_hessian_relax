@@ -5,8 +5,8 @@ from numpy import array,diag,reshape,linalg,sin,cos,pi
 from surrogate import read_geometry
 
 #settings for the structure
-dim       = 3
-a         = 15.0
+a = 15.0
+cell_init  = [a,a,a]
 pos_init  = array([ 0.        ,  2.65075664,  0.        ,
                     0.        ,  4.70596609,  0.        ,
                    -2.29562041,  1.32537832,  0.        ,
@@ -19,15 +19,17 @@ pos_init  = array([ 0.        ,  2.65075664,  0.        ,
                     4.07549676, -2.3529925 ,  0.        ,
                     2.29562041,  1.32537832,  0.        ,
                     4.07549676,  2.35299249,  0.        ])+a/2
+dim       = 3
 elem      = 6*['C','H']
 masses    = 6*[10947.356792250725,918.68110941480279]
-num_prt   = len(elem)
-shp2      = (num_prt,dim)
-shp1      = (num_prt*dim)
+relax_cell = False
+num_prt    = len(elem)
+shp2       = (num_prt+int(relax_cell)  ,dim)
+shp1       = ((num_prt+int(relax_cell))*dim)
 
-def generate_structure(pos_vect):
-    structure = Structure(dim=3)
-    structure.set_axes(axes = diag([a,a,a]))
+def generate_structure(pos_vect,cell_vect):
+    structure = Structure(dim=dim)
+    structure.set_axes(axes = diag(cell_vect))
     structure.set_elem(elem)
     structure.pos = reshape(pos_vect,shp2)
     structure.units = 'B'

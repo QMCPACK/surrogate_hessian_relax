@@ -4,5 +4,5 @@ label       = 'coronene'
 axes        = (0,1) # xy
 xl,yl       = 'x','y'
 
-from coronene_params import *
+from coronene_structure import *
 from coronene_jobs import *

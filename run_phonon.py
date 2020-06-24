@@ -1,43 +1,79 @@
 #!/usr/bin/env python3
+#
+# File to load force-constant matrix FC and compute optimal search directions
+# based on parameters 
 
 from parameters import *
 from numpy import linalg,reshape
 from surrogate import load_gamma_k,load_phonon_modes,K_from_W
 
-fc_file     = '../phonon/FC.fc'
-ph_file     = '../phonon/PH.dynG1'
+fc_file = '../phonon/FC.fc'    # default FC file
+ph_file = '../phonon/PH.dynG1' # default PH file
+#R_relax = # give R_relax or load
 
-try:
-    from run_relax import R_relax
-    P_orig,P_val = pos_to_params(R_relax)
-    num_params   = len(P_val)
-except:
-    print('Could not get eq_pos. Run relax first!')
-    exit()
-#end try
+def load_relax_geometry():
+    try:
+        R = R_relax
+    except: 
+        try:
+            from run_relax import R_relax as R
+            print('Loaded R_relax from run_relax.')
+        except:
+            print('Could not get R_relax. Run relax first!')
+            exit()
+        #end try
+    #end try
+    return R
+#end def
 
-try:
-    # load force-constant matrix:
-    FC_real   = load_gamma_k(fc_file,num_prt)
-    FC_param  = P_orig @ FC_real @ P_orig.T
-    FC_e,FC_v = linalg.eig(FC_param)
-    # optimal search directions
-    P_opt     = FC_v @ P_orig
-except:
-    print('Could not load PHonon force-constant matrices. Run ph.x and q2r.x first!')
-    exit()
-#end try
+def load_FC_matrix(fc_file):
+    try:
+        # load force-constant matrix:
+        FC_real = load_gamma_k(fc_file,num_prt)
+    except:
+        print('Could not load PHonon force-constant matrices from '+fc_file+'. Run ph.x and q2r.x first!')
+        exit()
+    #end try
+    return FC_real
+#end def
 
-try:
-    # load normal modes
-    PH_w,PH_v = load_phonon_modes(ph_file,num_prt)
-    KW_real   = K_from_W(PH_w,PH_v,masses)
+def load_KW_matrix(ph_file):
+    try:
+        # load normal modes
+        PH_w,PH_v = load_phonon_modes(ph_file,num_prt)
+        KW_real   = K_from_W(PH_w,PH_v,masses)
+    except:
+        print('Could not load Normal mode representation')
+        return None
+    #end try
+    return KW_real
+#end def
+
+# get parameters
+R_relax      = load_relax_geometry()
+P_orig,P_val = pos_to_params(R_relax)
+num_params   = len(P_val)
+
+
+#if __name__=='__main__':
+    # run phonon calculation
+#end if
+
+# get FC matrix
+FC_real   = load_FC_matrix(fc_file)
+FC_param  = P_orig @ FC_real @ P_orig.T
+# optimal search directions
+FC_e,FC_v = linalg.eig(FC_param)
+P_opt     = FC_v @ P_orig
+
+# get normal mode representation (optional)
+KW_real   = load_KW_matrix(ph_file)
+if not KW_real is None:
     KW_param  = P_orig @ KW_real @ P_orig.T
     KW_e,KW_v = linalg.eig(KW_param)
-except:
-    print('Could not load Normal mode representation')
-#end try
+#end if
 
+# print output
 if __name__=='__main__':
     #print_fc_matrix(fc=FC,num_prt=num_prt)
 
