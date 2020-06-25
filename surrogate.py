@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace
 from copy import deepcopy
 
 def load_gamma_k(fname, num_prt, dim=3):
@@ -236,8 +236,50 @@ def get_min_params(shifts,PES,n=2,generate=1000):
 
     # compute local minima
     # excluding range boundaries
-    Pmin = min(r_crit[test>0])
+    # choose the one closest to zero
+    min_idx = argmin(abs(r_crit[test>0]))
+    Pmin = r_crit[test>0][min_idx]
     Emin = c(Pmin)
     return Emin,Pmin,pf
 #end def
 
+
+def get_shifts(E_lim,P_lims,S_dim):
+    S = []
+    for p in range(len(P_lims)):
+        lim = (2*E_lim/P_lims[p])**0.5
+        shifts = linspace(-lim,lim,S_dim)
+        S.append(shifts)
+    #end for
+    return S
+#end def
+
+
+class IterationData():
+
+    def __init__(
+        self,
+        n           = 0,
+        E_lim       = 0.01,
+        S_num       = 7,
+        PF_n        = 4,
+        use_optimal = True,
+            ):
+
+        self.n           = n
+        self.E_lim       = E_lim
+        self.S_num       = S_num
+        self.PF_n        = PF_n
+        self.use_optimal = use_optimal
+    #end def
+
+    def load_R(self, R):
+        self.R = R
+    #end def
+
+    def set_PES(self,PES,PES_error):
+        self.PES       = PES
+        self.PES_error = PES_error
+    #end def
+
+#end class
