@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random
 from copy import deepcopy
+from qmcpack_analyzer import QmcpackAnalyzer
 
 def load_gamma_k(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
@@ -244,14 +245,28 @@ def get_min_params(shifts,PES,n=2,generate=1000):
 #end def
 
 
-def get_shifts(E_lim,P_lims,S_dim):
-    S = []
-    for p in range(len(P_lims)):
-        lim = (2*E_lim/P_lims[p])**0.5
-        shifts = linspace(-lim,lim,S_dim)
-        S.append(shifts)
+
+def print_structure_shift(R_old,R_new):
+    print('New geometry:')
+    print(R_new.reshape((-1,3)))
+    print('Shift:')
+    print((R_new-R_old).reshape((-1,3)))
+#end for
+
+def print_optimal_parameters(data_list):
+    print('Optimal parameters:')
+    PV_this = data_list[0].P_vals
+    for p in range(len(PV_this)):
+        print('  #0: '+str(PV_this[p]))
     #end for
-    return S
+    for n in range(len(data_list)):
+        print(' n=:'+str(n) )
+        PV_this = data_list[n].P_vals
+        PV_next = data_list[n].P_vals_next
+        for p in range(len(PV_this)):
+            print('  #'+str(p)+': '+str(PV_next[p])+' Delta: '+str(PV_next[p]-PV_this[p]))
+        #end for
+    #end for
 #end def
 
 
@@ -259,27 +274,157 @@ class IterationData():
 
     def __init__(
         self,
-        n           = 0,
-        E_lim       = 0.01,
-        S_num       = 7,
-        PF_n        = 4,
-        use_optimal = True,
-            ):
+        n             = 0,
+        E_lim         = 0.01,
+        S_num         =  7,
+        polyfit_n     = 4,
+        dmc_factor    = 1,
+        prefix        = '',
+        qmc_idx       = 1,
+        use_optimal   = True,
+        path          = '../ls0/',
+        eqm_str       = 'eqm',
+        equilibration = 10,
+        load_postfix  = '/dmc/dmc.in.xml'
+        ):
 
-        self.n           = n
-        self.E_lim       = E_lim
-        self.S_num       = S_num
-        self.PF_n        = PF_n
-        self.use_optimal = use_optimal
+        self.n             = n
+        self.E_lim         = E_lim
+        self.S_num         = S_num
+        self.polyfit_n     = polyfit_n
+        self.dmc_factor    = dmc_factor
+        self.use_optimal   = use_optimal
+        self.path          = path
+        self.eqm_str       = eqm_str
+        self.prefix        = prefix
+        self.eqm_path      = self.path+self.eqm_str
+        self.equilibration = equilibration
+        self.load_postfix  = load_postfix
+        self.qmc_idx       = qmc_idx
     #end def
 
-    def load_R(self, R):
+    def load_R(self, R, func_params):
         self.R = R
+        self.pos_to_params = func_params
+        P,PV = self.pos_to_params(R)
+        self.P_vals = PV
     #end def
 
-    def set_PES(self,PES,PES_error):
-        self.PES       = PES
-        self.PES_error = PES_error
+    def load_displacements(self, P, P_lims):
+        self.disp     = P
+        self.disp_num = P.shape[0]
+        self.P_lims   = P_lims
+        self.set_optimal_shifts()
+        self.shift_structure()
+    #end def
+
+    def set_optimal_shifts(self):
+        shifts_list = []
+        for p in range(self.disp_num):
+            lim = (2*self.E_lim/self.P_lims[p])**0.5
+            shifts = linspace(-lim,lim,self.S_num)
+            shifts_list.append(shifts)
+        #end for
+        self.shifts = shifts_list
+    #end def
+    
+    # define paths and displacements
+    def shift_structure(self):
+        ls_paths = []
+        R_shift = []
+        for p in range(len(self.shifts)):
+            disp = self.disp[p,:]
+            for s,shift in enumerate(self.shifts[p]):
+                if abs(shift)<1e-10: #eqm
+                    eqm_path = self.path+self.eqm_str
+                    ls_paths.append( self.eqm_path )
+                else:
+                    ls_paths.append( self.path+self.prefix+'p'+str(p)+'_s'+str(s) )
+                #end if
+                R_shift.append( deepcopy(self.R) + shift*disp )
+            #end for
+        #end for
+        self.R_shift  = R_shift
+        self.eqm_path = eqm_path
+        self.ls_paths = ls_paths
+    #end def
+
+    def load_PES(self):
+        E_load   = []
+        Err_load = []
+        # load eqm
+        E_eqm,Err_eqm = self.load_energy_error(self.eqm_path+self.load_postfix)
+        self.E   = E_eqm
+        self.Err = Err_eqm
+        # load ls
+        for s,path in enumerate(self.ls_paths):
+            E,Err = self.load_energy_error(path+self.load_postfix)
+            E_load.append(E)
+            Err_load.append(Err)
+        #end for
+        self.PES       = array(E_load).reshape((self.disp_num,self.S_num))
+        self.PES_error = array(Err_load).reshape((self.disp_num,self.S_num))
+
+        self.get_dp_E_mins()
+        self.compute_new_structure()
+    #end def
+
+    def load_energy_error(self,path):
+        AI = QmcpackAnalyzer(path,equilibration=self.equilibration)
+        AI.analyze()
+        E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
+        Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+        return E,Err
+    #end def
+    
+    
+    def get_dp_E_mins(self):
+        dPV = []
+        E_mins  = []
+        pfs     = []
+        for s,shift in enumerate(self.shifts):
+            Emin,Pmin,pf = get_min_params(shift,self.PES[s,:],n=self.polyfit_n)
+            E_mins.append(Emin)
+            dPV.append(Pmin)
+            pfs.append(pf)
+        #end for
+        self.dPV    = dPV
+        self.pfs    = pfs
+        self.E_mins = E_mins
+    #end def
+    
+    
+    def compute_new_structure(self):
+        R_next = deepcopy(self.R)
+        for p,dPV in enumerate(self.dPV):
+            R_next += dPV*self.disp[p,:]
+        #end for
+        P,PV_next        = self.pos_to_params(R_next)
+        self.R_next      = R_next
+        self.P_vals_next = PV_next
+    #end def
+
+    def plot_PES_fits(self,ax):
+        for s,shift in enumerate(self.shifts):
+            PES   = self.PES[s,:]
+            PESe  = self.PES_error[s,:]
+            pf    = self.pfs[s]
+            Pmin  = self.dPV[s]
+            Emin  = self.E_mins[s]
+    
+            # plot PES
+            co = random.random((3,))
+            s_axis = linspace(min(shift),max(shift))
+            # plot fitted PES
+            ax.errorbar(shift,PES,PESe,linestyle='-',label='p'+str(s),color=co)
+            ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
+            ax.plot(Pmin,Emin,'o',label='E='+str(round(Emin,6))+' p='+str(round(Pmin,6)),color=co)
+            # plot minima
+        #end for
+        ax.set_title('Line-search #'+str(self.n))
+        ax.set_xlabel('dp')
+        ax.set_ylabel('E')
+        ax.legend()
     #end def
 
 #end class
