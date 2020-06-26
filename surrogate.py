@@ -2,6 +2,8 @@
 
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random
 from copy import deepcopy
+from numerics import jackknife
+from nexus import obj
 from qmcpack_analyzer import QmcpackAnalyzer
 
 def load_gamma_k(fname, num_prt, dim=3):
@@ -228,7 +230,7 @@ def get_2d_sli(p0,p1,slicing):
     return tuple(sli)
 #end def
 
-def get_min_params(shifts,PES,n=2,generate=1000):
+def get_min_params(shifts,PES,n=2):
     pf = polyfit(shifts,PES,n)
     c = poly1d(pf)
     crit = c.deriv().r
@@ -286,7 +288,8 @@ class IterationData():
         path          = '../ls0/',
         eqm_str       = 'eqm',
         equilibration = 10,
-        load_postfix  = '/dmc/dmc.in.xml'
+        load_postfix  = '/dmc/dmc.in.xml',
+        generate      = 1000,
         ):
 
         self.n             = n
@@ -301,6 +304,7 @@ class IterationData():
         self.eqm_path      = self.path+self.eqm_str
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
+        self.generate      = generate
         self.qmc_idx       = qmc_idx
     #end def
 
@@ -380,18 +384,44 @@ class IterationData():
     
     
     def get_dp_E_mins(self):
-        dPV = []
-        E_mins  = []
-        pfs     = []
+        dPVs      = []
+        dPVs_err  = []
+        Emins     = []
+        Emins_err = []
+        pfs       = []
+        pfs_err   = []
         for s,shift in enumerate(self.shifts):
-            Emin,Pmin,pf = get_min_params(shift,self.PES[s,:],n=self.polyfit_n)
-            E_mins.append(Emin)
-            dPV.append(Pmin)
+            Emin,dPV,pf = get_min_params(shift,self.PES[s,:],n=self.polyfit_n)
+
+            # generate random data
+            data = []
+            for d,dp in enumerate(shift):
+                ste = self.PES_error[s,d]
+                data.append( self.PES[s,d]+self.generate**0.5*ste*random.randn(self.generate) )
+            #end for
+            data = array(data).T
+            # run jackknife
+            jcapture = obj()
+            jackknife(data = data,
+                      function = get_min_params,
+                      args     = [shift,None,self.polyfit_n],
+                      position = 1,
+                      capture  = jcapture)
+            dPV_err,Emin_err,pf_err = jcapture.jerror
+
+            dPVs.append(dPV)
+            dPVs_err.append(dPV_err)
+            Emins.append(Emin)
+            Emins_err.append(Emin_err)
             pfs.append(pf)
+            pfs_err.append(pf_err)
         #end for
-        self.dPV    = dPV
-        self.pfs    = pfs
-        self.E_mins = E_mins
+        self.dPV        = dPVs
+        self.dPV_err    = dPVs_err
+        self.Emins      = Emins
+        self.Emins_err  = Emins_err
+        self.pfs        = pfs
+        self.pfs_err    = pfs_err
     #end def
     
     
@@ -407,11 +437,13 @@ class IterationData():
 
     def plot_PES_fits(self,ax):
         for s,shift in enumerate(self.shifts):
-            PES   = self.PES[s,:]
-            PESe  = self.PES_error[s,:]
-            pf    = self.pfs[s]
-            Pmin  = self.dPV[s]
-            Emin  = self.E_mins[s]
+            PES       = self.PES[s,:]
+            PESe      = self.PES_error[s,:]
+            pf        = self.pfs[s]
+            Pmin      = self.dPV[s]
+            Emin      = self.Emins[s]
+            Pmin_err  = self.dPV_err[s]
+            Emin_err  = self.Emins_err[s]
     
             # plot PES
             co = random.random((3,))
@@ -419,8 +451,9 @@ class IterationData():
             # plot fitted PES
             ax.errorbar(shift,PES,PESe,linestyle='-',label='p'+str(s),color=co)
             ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
-            ax.plot(Pmin,Emin,'o',label='E='+str(round(Emin,6))+' p='+str(round(Pmin,6)),color=co)
             # plot minima
+            ax.errorbar(Pmin,Emin,yerr=Pmin_err,xerr=Emin_err,marker='o',color=co,
+                        label='E='+print_with_error(Emin,Emin_err)+' p='+print_with_error(Pmin,Pmin_err))
         #end for
         ax.set_title('Line-search #'+str(self.n))
         ax.set_xlabel('dp')
@@ -429,3 +462,29 @@ class IterationData():
     #end def
 
 #end class
+
+
+from math import log10
+def print_with_error( value, error, limit=15 ):
+
+    ex = -9
+    while ceil( error*10**(ex+1) ) > 0 and ceil( error*10**(ex+1)) < limit:
+        ex += 1
+    #end while
+    errstr = str(int(ceil(error*10**ex)))
+
+    if ex==1 and ceil(error) >= 1.0:
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+        errstr = '%1.1f' % error
+    elif ex>0: # error is in the decimals
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+    else:    # error is beyond decimals
+        fmt = '%1.0f'
+        errstr += (-ex)*'0'
+        val = round(value*10**ex)*10**(-ex)
+        valstr = fmt % val
+    #end if
+    return valstr+'('+errstr+')'
+#end def
