@@ -36,14 +36,14 @@ if __name__=='__main__':
 #end if
 
 data.load_PES()
+# append to list
+data_ls.append( data )
 
 if __name__=='__main__':
     print_structure_shift(data.R,data.R_next)
-    print_optimal_parameters([data])
+    print_optimal_parameters(data_ls)
     f,ax = plt.subplots()
     data.plot_PES_fits(ax)
     plt.show()
 #end if
 
-# append to list
-data_ls.append( [data] )

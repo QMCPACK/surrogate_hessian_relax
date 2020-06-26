@@ -245,7 +245,6 @@ def get_min_params(shifts,PES,n=2,generate=1000):
 #end def
 
 
-
 def print_structure_shift(R_old,R_new):
     print('New geometry:')
     print(R_new.reshape((-1,3)))
@@ -253,14 +252,16 @@ def print_structure_shift(R_old,R_new):
     print((R_new-R_old).reshape((-1,3)))
 #end for
 
+
 def print_optimal_parameters(data_list):
     print('Optimal parameters:')
+    print(' init:' )
     PV_this = data_list[0].P_vals
     for p in range(len(PV_this)):
-        print('  #0: '+str(PV_this[p]))
+        print('  #'+str(p)+': '+str(PV_this[p]))
     #end for
     for n in range(len(data_list)):
-        print(' n=:'+str(n) )
+        print(' n='+str(n) )
         PV_this = data_list[n].P_vals
         PV_next = data_list[n].P_vals_next
         for p in range(len(PV_this)):

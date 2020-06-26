@@ -24,7 +24,7 @@ def get_relax_structure(relax_path,relax_cell=False):
 #end def
 
 if __name__=='__main__':
-    settings(**relax_settings)
+    settings(**nx_settings)
     if relax_cell:
         relax = get_relax_job(pos_init,'../relax',cell=cell_init)[0]
     else:

@@ -46,8 +46,8 @@ except:
         for p in range(FC_param.shape[0]):
             P_lims_load.append(FC_param[p,p])
         #end for
-        data.load_displacements(P_orig,P_lims_load)
         data.prefix += 'orig_'
+        data.load_displacements(P_orig,P_lims_load)
     #end if
 #end try
 
@@ -67,14 +67,14 @@ if __name__=='__main__':
 #end if
 
 data.load_PES()
+# first item to list
+data_ls = [data]
 
 if __name__=='__main__':
     print_structure_shift(data.R,data.R_next)
-    print_optimal_parameters([data])
+    print_optimal_parameters(data_ls)
     f,ax = plt.subplots()
     data.plot_PES_fits(ax)
     plt.show()
 #end if
 
-# first item to list
-data_ls = [data]

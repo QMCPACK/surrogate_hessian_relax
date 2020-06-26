@@ -3,7 +3,8 @@
 # calculate brute-force PES from parameters
 
 from parameters import *
-from numpy import unravel_index,prod,polyfit
+from numpy import unravel_index,prod,polyfit,linspace
+from nexus import settings,run_project
 
 try:
     from run_phonon import R_relax,FC_param
@@ -13,14 +14,14 @@ except:
 #end try
 
 
-settings(**pes_settings)
+settings(**nx_settings)
 
 P_orig,P_val = pos_to_params(R_relax)
 num_params   = len(P_val)
 S_orig       = []
 for p in range(num_params):
     P_lim = (2*E_lim_pes/FC_param[p,p])**0.5
-    S_orig.append(linspace(-P_lim,P_lim,E_dim))
+    S_orig.append(linspace(-P_lim,P_lim,PES_dim))
 #end for
 S_orig_mesh = meshgrid(*tuple(S_orig))
 S_orig_shp  = S_orig_mesh[0].shape
