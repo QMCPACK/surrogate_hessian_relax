@@ -3,19 +3,16 @@
 from nexus import generate_pwscf,generate_pw2qmcpack,generate_qmcpack,job,obj
 from GeSe_structure import *
 
-E_dim         = 7
 valences      = obj(Ge=4,Se=6)
 qmcpseudos    = ['Ge.BFD.xml','Se.BFD.xml']
 scfpseudos    = ['Ge.BFD.upf','Se.BFD.upf']
 dmc_steps     = 200
-dmc_steps_ls  = [1,16]
-E_lim_ls      = [0.01,0.001] # Ha
 E_lim_pes     = 0.01 # Ry
 
 # jobs for coronene run
 # setting for the surrogate job
 pseudo_dir = '../pseudos'
-nx_account = 'theory'
+nx_account = 'qmc'
 nx_machine = 'cades'
 presub = '''
 export OMP_NUM_THREADS=1
@@ -65,7 +62,7 @@ scf_ls_inputs = obj(
     **scf_common,
     )
 
-relax_settings = obj(
+nx_settings = obj(
     sleep         = 3,
     pseudo_dir    = pseudo_dir,
     runs          = '',
@@ -88,7 +85,6 @@ def get_relax_job(pos,pstr,cell=cell_init):
     return [relax]
 
 # settings for the PES sweep
-pes_settings = obj(**relax_settings)
 def get_pes_job(pos,pstr,cell=cell_init):
     structure = generate_structure(pos,cell)
     system    = generate_physical_system(structure=structure,**valences)
@@ -136,22 +132,20 @@ dmc_inputs = obj(
     ntimesteps   = 1,
     )
 
-ls_settings = obj(**relax_settings)
-def get_eqm_jobs(pos,ls,pstr,cell=cell_init):
-    directory = '../ls'+str(ls)+'/'+pstr+'/'
+def get_eqm_jobs(pos,path,steps=1,cell=cell_init):
     structure = generate_structure(pos,cell)
     system    = generate_physical_system(structure=structure,**valences)
 
     scf = generate_pwscf(
         system     = system,
         job        = job(**scfjob),
-        path       = directory+'scf',
+        path       = path+'/scf',
         **scf_ls_inputs,
         )
 
     p2q = generate_pw2qmcpack(
         identifier   = 'p2q',
-        path         = directory+'scf',
+        path         = path+'/scf',
         job          = job(**p2qjob),
         dependencies = [(scf,'orbitals')],
         )
@@ -159,7 +153,7 @@ def get_eqm_jobs(pos,ls,pstr,cell=cell_init):
     system.bconds = 'nnn'
     opt = generate_qmcpack(
         system       = system,
-        path         = directory+'opt',
+        path         = path+'/opt',
         job          = job(**optjob),
         dependencies = [(p2q,'orbitals')],
         cycles       = 15,
@@ -168,36 +162,36 @@ def get_eqm_jobs(pos,ls,pstr,cell=cell_init):
 
     dmc = generate_qmcpack(
         system       = system,
-        path         = directory+'dmc',
+        path         = path+'/dmc',
         job          = job(**dmcjob),
         dependencies = [(p2q,'orbitals'),(opt,'jastrow') ],
+        steps        = dmc_steps*steps,
         **dmc_inputs
         )
     return [scf,p2q,opt,dmc]
 #end def
 
-def get_ls_job(pos,ls,pstr,eqm_job,cell=cell_init):
-    directory = '../ls'+str(ls)+'/'+pstr+'/'
+def get_ls_job(pos,path,eqm_job,steps=1,cell=cell_init):
     structure = generate_structure(pos,cell)
     system    = generate_physical_system(structure=structure,**valences)
 
     scf = generate_pwscf(
         system     = system,
         job        = job(**scfjob),
-        path       = directory+'scf',
+        path       = path+'/scf',
         **scf_ls_inputs,
         )
 
     p2q = generate_pw2qmcpack(
         identifier   = 'p2q',
-        path         = directory+'scf',
+        path         = path+'/scf',
         job          = job(**p2qjob),
         dependencies = [(scf,'orbitals')],
         )
 
     opt = generate_qmcpack(
         system       = system,
-        path         = directory+'opt',
+        path         = path+'/opt',
         job          = job(**optjob),
         dependencies = [(p2q,'orbitals'),(eqm_job[2],'jastrow')],
         cycles       = 5,
@@ -206,10 +200,10 @@ def get_ls_job(pos,ls,pstr,eqm_job,cell=cell_init):
 
     dmc = generate_qmcpack(
         system       = system,
-        path         = directory+'dmc',
+        path         = path+'/dmc',
         job          = job(**dmcjob),
         dependencies = [(p2q,'orbitals'),(opt,'jastrow') ],
-        steps        = dmc_steps*dmc_steps_ls[ls],
+        steps        = dmc_steps*steps,
         **dmc_inputs
         )
     return [scf,p2q,opt,dmc]

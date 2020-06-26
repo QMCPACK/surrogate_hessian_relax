@@ -46,7 +46,7 @@ H        6.248824460  12.660589630  15.000000000
 dim        = 3
 pos_init,elem = read_geometry(pos_str)
 masses     = 24*[10947.356792250725] + 12*[918.68110941480279]
-cell_init  = [30.0,30.0,10.0]
+cell_init  = [30.0,30.0,30.0]
 relax_cell = False
 num_prt    = len(elem)
 shp2       = (num_prt+int(relax_cell)  ,dim)
