@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 from nexus import settings,run_project
 from surrogate import IterationData,print_structure_shift,print_optimal_parameters
 from parameters import *
+from numpy import diagonal
 
 try:
     n    = 0
@@ -37,17 +38,13 @@ try:
 except: 
     if data.use_optimal:
         from run_phonon import P_opt
-        from run_phonon import FC_e
-        data.load_displacements(P_opt,FC_e)
+        from run_phonon import FC_opt
+        data.load_displacements(P_opt,diagonal(FC_opt))
     else:
         from run_phonon import P_orig
         from run_phonon import FC_param
-        P_lims_load = []
-        for p in range(FC_param.shape[0]):
-            P_lims_load.append(FC_param[p,p])
-        #end for
         data.prefix += 'orig_'
-        data.load_displacements(P_orig,P_lims_load)
+        data.load_displacements(P_orig,diagonal(FC_params))
     #end if
 #end try
 

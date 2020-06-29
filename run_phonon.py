@@ -65,6 +65,7 @@ FC_param  = P_orig @ FC_real @ P_orig.T
 # optimal search directions
 FC_e,FC_v = linalg.eig(FC_param)
 P_opt     = FC_v @ P_orig
+FC_opt    = P_opt @ FC_real @ P_opt.T
 
 # get normal mode representation (optional)
 KW_real   = load_KW_matrix(ph_file)

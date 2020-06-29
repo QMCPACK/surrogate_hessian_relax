@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal
 from copy import deepcopy
 from numerics import jackknife
 from nexus import obj
@@ -301,11 +301,11 @@ class IterationData():
         self.path          = path
         self.eqm_str       = eqm_str
         self.prefix        = prefix
-        self.eqm_path      = self.path+self.eqm_str
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
         self.generate      = generate
         self.qmc_idx       = qmc_idx
+        self.eqm_path      = self.path+self.prefix+self.eqm_str
     #end def
 
     def load_R(self, R, func_params):
@@ -341,7 +341,6 @@ class IterationData():
             disp = self.disp[p,:]
             for s,shift in enumerate(self.shifts[p]):
                 if abs(shift)<1e-10: #eqm
-                    eqm_path = self.path+self.eqm_str
                     ls_paths.append( self.eqm_path )
                 else:
                     ls_paths.append( self.path+self.prefix+'p'+str(p)+'_s'+str(s) )
@@ -350,7 +349,6 @@ class IterationData():
             #end for
         #end for
         self.R_shift  = R_shift
-        self.eqm_path = eqm_path
         self.ls_paths = ls_paths
     #end def
 
