@@ -44,7 +44,7 @@ except:
         from run_phonon import P_orig
         from run_phonon import FC_param
         data.prefix += 'orig_'
-        data.load_displacements(P_orig,diagonal(FC_params))
+        data.load_displacements(P_orig,diagonal(FC_param))
     #end if
 #end try
 

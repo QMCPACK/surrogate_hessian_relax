@@ -14,16 +14,18 @@ ph_file = '../phonon/PH.dynG1' # default PH file
 def load_relax_geometry():
     try:
         R = R_relax
-    except: 
+        C = C_relax
+    except:
         try:
             from run_relax import R_relax as R
+            from run_relax import C_relax as C
             print('Loaded R_relax from run_relax.')
         except:
             print('Could not get R_relax. Run relax first!')
             exit()
         #end try
     #end try
-    return R
+    return R,C
 #end def
 
 def load_FC_matrix(fc_file):
@@ -50,29 +52,38 @@ def load_KW_matrix(ph_file):
 #end def
 
 # get parameters
-R_relax      = load_relax_geometry()
-P_orig,P_val = pos_to_params(R_relax)
-num_params   = len(P_val)
-
+R_relax,C_relax  = load_relax_geometry()
 
 #if __name__=='__main__':
     # run phonon calculation
 #end if
 
-# get FC matrix
-FC_real   = load_FC_matrix(fc_file)
-FC_param  = P_orig @ FC_real @ P_orig.T
+if relax_cell:
+    FC_real       = load_FC_matrix(fc_file)
+    P_pos,P_val   = pos_to_params(R_relax)
+    P_orig,P_val  = pos_to_params_cell(R_relax,C_relax)
+    FC_param      = get_fc_for_cell(P_pos @ FC_real @ P_pos.T) # needs implementation in parameters
+else:
+    P_orig,P_val = pos_to_params(R_relax)
+    FC_real      = load_FC_matrix(fc_file)
+    FC_param     = P_orig @ FC_real @ P_orig.T
+#end if
+
 # optimal search directions
-FC_e,FC_v = linalg.eig(FC_param)
-P_opt     = FC_v @ P_orig
-FC_opt    = P_opt @ FC_real @ P_opt.T
+num_params = len(P_val)
+FC_e,FC_v  = linalg.eig(FC_param)
+P_opt      = FC_v.T @ P_orig
+FC_opt     = diag(FC_e)
 
 # get normal mode representation (optional)
-KW_real   = load_KW_matrix(ph_file)
-if not KW_real is None:
-    KW_param  = P_orig @ KW_real @ P_orig.T
-    KW_e,KW_v = linalg.eig(KW_param)
+if not relax_cell:
+    KW_real   = load_KW_matrix(ph_file)
+    if not KW_real is None:
+        KW_param  = P_orig @ KW_real @ P_orig.T
+        KW_e,KW_v = linalg.eig(KW_param)
+    #end if
 #end if
+
 
 # print output
 if __name__=='__main__':
@@ -81,21 +92,21 @@ if __name__=='__main__':
     print('Displacement vector representation of parameters:')
     for p in range(num_params):
         print('#'+str(p))
-        print(reshape(P_orig[p],shp2))
+        print(reshape(P_orig[p],(-1,dim)).round(3))
     #end for
     print('')
 
     print('Parameter matrix (PHonon)')
-    print(FC_param)
+    print(FC_param.round(3))
     print('')
     print('Eigenvectors:')
-    print(FC_v)
+    print(FC_v.round(3))
     print('')
 
     print('Optimal search directions:')
     for p in range(num_params):
         print('#'+str(p))
-        print(reshape(P_opt[p],shp2))
+        print(reshape(P_opt[p],(-1,dim)).round(3))
     #end for
     print('')
 #end if

@@ -256,18 +256,20 @@ def print_structure_shift(R_old,R_new):
 
 
 def print_optimal_parameters(data_list):
-    print('Optimal parameters:')
-    print(' init:' )
-    PV_this = data_list[0].P_vals
-    for p in range(len(PV_this)):
-        print('  #'+str(p)+': '+str(PV_this[p]))
-    #end for
+    print('Total energy:')
     for n in range(len(data_list)):
-        print(' n='+str(n) )
-        PV_this = data_list[n].P_vals
-        PV_next = data_list[n].P_vals_next
-        for p in range(len(PV_this)):
-            print('  #'+str(p)+': '+str(PV_next[p])+' Delta: '+str(PV_next[p]-PV_this[p]))
+       E,Err = data_list[n].E,data_list[n].Err
+       print('   n='+str(n)+': '+print_with_error(E,Err)) 
+    #end for
+    print('Optimal parameters:')
+    for p in range(data_list[0].disp_num):
+        print(' p'+str(p) )
+        PV_this = data_list[0].P_vals[p] # first value
+        print('  init: '+str(PV_this))
+        for n in range(len(data_list)):
+            PV_this = data_list[n].P_vals[p]
+            PV_next = data_list[n].P_vals_next[p]
+            print('   n='+str(n)+': '+str(PV_next)+' Delta: '+str(PV_next-PV_this))
         #end for
     #end for
 #end def
@@ -447,16 +449,16 @@ class IterationData():
             co = random.random((3,))
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
-            ax.errorbar(shift,PES,PESe,linestyle='-',label='p'+str(s),color=co)
+            ax.errorbar(shift,PES,PESe,linestyle='-',color=co)
             ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
             # plot minima
             ax.errorbar(Pmin,Emin,yerr=Pmin_err,xerr=Emin_err,marker='o',color=co,
-                        label='E='+print_with_error(Emin,Emin_err)+' p='+print_with_error(Pmin,Pmin_err))
+                        label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
         #end for
         ax.set_title('Line-search #'+str(self.n))
         ax.set_xlabel('dp')
         ax.set_ylabel('E')
-        ax.legend()
+        ax.legend(fontsize=8)
     #end def
 
 #end class

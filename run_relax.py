@@ -7,7 +7,7 @@ from numpy import diagonal
 
 relax_path = '../relax/relax.in' # default path
 
-def get_relax_structure(relax_path,relax_cell=False):
+def get_relax_structure(relax_path):
     try:
         relax_analyzer = PwscfAnalyzer(relax_path)
         relax_analyzer.analyze()
@@ -16,11 +16,13 @@ def get_relax_structure(relax_path,relax_cell=False):
     #end try
     eq_structure = relax_analyzer.structures[len(relax_analyzer.structures)-1]
     R_relax      = eq_structure.positions.reshape(shp1)
-    C_relax      = diagonal(relax_analyzer.input.cell_parameters.vectors)
     if relax_cell:
-        R_relax += C_relax
+        C_relax  = eq_structure.axes.diagonal()
+        R_relax = (R_relax.reshape(shp2)/C_relax).reshape(shp1)
+        return R_relax,C_relax
+    else:
+        return R_relax,None
     #end if
-    return R_relax
 #end def
 
 if __name__=='__main__':
@@ -33,9 +35,13 @@ if __name__=='__main__':
     run_project(relax)
 #end if
 
-R_relax = get_relax_structure(relax_path)
+R_relax,C_relax = get_relax_structure(relax_path)
 
 if __name__=='__main__':
     print('Relaxed geometry:')
     print(R_relax.reshape(shp2))
+    if relax_cell:
+        print('Relaxed cell:')
+        print(C_relax.reshape((-1,dim)))
+    #end if
 #end if
