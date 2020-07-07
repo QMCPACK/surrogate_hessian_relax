@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
 from parameters import *
-from calc_relax import *
-from calc_pes import *
+from run_phonon import FC_v
+from run_pes import *
 from matplotlib import pyplot as plt
 from numpy import polyfit,linalg,linspace,random
 
 # figure for PES derivatives
 def plot_dpes(ax):
     for p in range(num_params):
-        dE = deepcopy(PES_dEs[p])
+        dE = PES_dEs[p].copy()
         dE-= min(dE)
-        fc = FC_params[p,p]
+        fc = FC_param[p,p]
         shift = S_orig[p]
         dx = linspace(min(shift),max(shift),101)
         co = random.random((3,))
@@ -25,9 +25,9 @@ def plot_dpes(ax):
 #end def
 
 def plot_PES_contour(p0,p1,ax):
-    X = pshift_mesh[p0][get_2d_sli(p0,p1,slicing)]+pval[p0]
-    Y = pshift_mesh[p1][get_2d_sli(p0,p1,slicing)]+pval[p1]
-    Z = PES[get_2d_sli(p0,p1,slicing)]
+    X = S_orig_mesh[p0][get_2d_sli(p0,p1,slicing)]+P_val[p0]
+    Y = S_orig_mesh[p1][get_2d_sli(p0,p1,slicing)]+P_val[p1]
+    Z = PES_param[get_2d_sli(p0,p1,slicing)]
     ax.contourf(X,Y,Z)
 
     pvects = FC_v[[[p0],[p1]],[p0,p1]]
@@ -35,15 +35,15 @@ def plot_PES_contour(p0,p1,ax):
     ylim = ax.get_ylim()
     c   = ((xlim[1]-xlim[0])**2+(ylim[1]-ylim[0])**2)**0.5/8
 
-    ax.arrow( pval[p0], pval[p1], c*pvects[0,0], c*pvects[1,0], width=c/16 )
-    ax.arrow( pval[p0], pval[p1], c*pvects[0,1], c*pvects[1,1], width=c/16 )
+    ax.arrow( P_val[p0], P_val[p1], c*pvects[0,0], c*pvects[1,0], width=c/16 )
+    ax.arrow( P_val[p0], P_val[p1], c*pvects[0,1], c*pvects[1,1], width=c/16 )
 
     ax.set_xlabel('p'+str(p0))
     ax.set_ylabel('p'+str(p1))
 #end def
 
 def plot_structure(ax):
-    pos2 = reshape(eq_pos,shp2)
+    pos2 = reshape(R_relax,shp2)
     ax.set_xlim([0,a])
     ax.set_ylim([0,a])
 
