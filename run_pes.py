@@ -3,7 +3,8 @@
 # calculate brute-force PES from parameters
 
 from parameters import *
-from numpy import unravel_index,prod,polyfit,linspace
+from surrogate import get_1d_sli,get_2d_sli,bipolyfit
+from numpy import unravel_index,prod,polyfit,linspace,meshgrid
 from nexus import settings,run_project
 
 try:
@@ -13,8 +14,9 @@ except:
     exit()
 #end try
 
+get_job = get_scf_job
+path    = '../scf_pes/scf'
 
-settings(**nx_settings)
 
 P_orig,P_val = pos_to_params(R_relax)
 num_params   = len(P_val)
@@ -28,19 +30,20 @@ S_orig_shp  = S_orig_mesh[0].shape
 
 P_jobs = []
 for j in range(prod(S_orig_shp)):
-    pos  = deepcopy(R_relax)
+    pos  = R_relax.copy()
     ind  = unravel_index(j,S_orig_shp)
-    pstr = ''
+    pstr = path
     for p in range(num_params):
         param = P_orig[p,:]
         shift = S_orig_mesh[p][ind]
         pos  += param*shift
         pstr += '_p'+str(ind[p])
     #end for
-    P_jobs += get_pes_job(pos,pstr)
+    P_jobs += get_job(pos,pstr)
 #end for
 
 if __name__=='__main__':
+    settings(**nx_settings)
     run_project(P_jobs)
 #end if
 

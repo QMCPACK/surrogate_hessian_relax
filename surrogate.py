@@ -3,8 +3,7 @@
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal
 from copy import deepcopy
 from numerics import jackknife
-from nexus import obj
-from qmcpack_analyzer import QmcpackAnalyzer
+from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
 
 def load_gamma_k(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
@@ -275,38 +274,74 @@ def print_optimal_parameters(data_list):
 #end def
 
 
+from math import log10
+def print_with_error( value, error, limit=15 ):
+
+    if error==0.0:
+        return str(value)
+    #end if
+
+    ex = -9
+    while ceil( error*10**(ex+1) ) > 0 and ceil( error*10**(ex+1)) < limit:
+        ex += 1
+    #end while
+    errstr = str(int(ceil(error*10**ex)))
+
+    if ex==1 and ceil(error) >= 1.0:
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+        errstr = '%1.1f' % error
+    elif ex>0: # error is in the decimals
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+    else:    # error is beyond decimals
+        fmt = '%1.0f'
+        errstr += (-ex)*'0'
+        val = round(value*10**ex)*10**(-ex)
+        valstr = fmt % val
+    #end if
+    return valstr+'('+errstr+')'
+#end def
+
+
 class IterationData():
 
     def __init__(
         self,
+        get_jobs,  # function handle to get nexus jobs
         n             = 0,
         E_lim         = 0.01,
         S_num         =  7,
         polyfit_n     = 4,
-        dmc_factor    = 1,
+        dmcsteps      = 100,
         prefix        = '',
-        qmc_idx       = 1,
         use_optimal   = True,
         path          = '../ls0/',
+        type          = 'qmc',
+        qmc_idx       = 1,
+        qmc_j_idx     = 2,
         eqm_str       = 'eqm',
         equilibration = 10,
         load_postfix  = '/dmc/dmc.in.xml',
         generate      = 1000,
         ):
 
+        self.get_jobs      = get_jobs
         self.n             = n
         self.E_lim         = E_lim
         self.S_num         = S_num
         self.polyfit_n     = polyfit_n
-        self.dmc_factor    = dmc_factor
+        self.dmcsteps      = dmcsteps
         self.use_optimal   = use_optimal
         self.path          = path
+        self.type          = type
+        self.qmc_idx       = qmc_idx
+        self.qmc_j_idx     = qmc_j_idx if type=='qmc' else 0
         self.eqm_str       = eqm_str
         self.prefix        = prefix
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
         self.generate      = generate
-        self.qmc_idx       = qmc_idx
         self.eqm_path      = self.path+self.prefix+self.eqm_str
     #end def
 
@@ -316,6 +351,7 @@ class IterationData():
         P,PV = self.pos_to_params(R)
         self.P_vals = PV
     #end def
+
 
     def load_displacements(self, P, P_lims):
         self.disp     = P
@@ -375,14 +411,20 @@ class IterationData():
     #end def
 
     def load_energy_error(self,path):
-        AI = QmcpackAnalyzer(path,equilibration=self.equilibration)
-        AI.analyze()
-        E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
-        Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+        if self.type=='qmc':
+            AI  = QmcpackAnalyzer(path,equilibration=self.equilibration)
+            E   = AI.qmc[qmc_idx].scalars.LocalEnergy.mean
+            Err = AI.qmc[qmc_idx].scalars.LocalEnergy.error
+        else: # pwscf
+            AI  = PwscfAnalyzer(path)
+            AI.analyze()
+            E   = AI.E
+            Err = 0.0
+        #end if
         return E,Err
     #end def
     
-    
+
     def get_dp_E_mins(self):
         dPVs      = []
         dPVs_err  = []
@@ -449,11 +491,17 @@ class IterationData():
             co = random.random((3,))
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
-            ax.errorbar(shift,PES,PESe,linestyle='-',color=co)
+            if self.type=='qmc':
+                ax.errorbar(shift,PES,PESe,linestyle='-',color=co)
+                ax.errorbar(Pmin,Emin,yerr=Pmin_err,xerr=Emin_err,marker='o',color=co,
+                            label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
+            else:
+                ax.plot(shift,PES,linestyle='-',color=co)
+                ax.plot(Pmin,Emin,marker='o',color=co,
+                            label='E='+str(Emin.round(6))+' dp'+str(s)+'='+str(Pmin.round(6)))
+            #end if
             ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
             # plot minima
-            ax.errorbar(Pmin,Emin,yerr=Pmin_err,xerr=Emin_err,marker='o',color=co,
-                        label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
         #end for
         ax.set_title('Line-search #'+str(self.n))
         ax.set_xlabel('dp')
@@ -464,27 +512,3 @@ class IterationData():
 #end class
 
 
-from math import log10
-def print_with_error( value, error, limit=15 ):
-
-    ex = -9
-    while ceil( error*10**(ex+1) ) > 0 and ceil( error*10**(ex+1)) < limit:
-        ex += 1
-    #end while
-    errstr = str(int(ceil(error*10**ex)))
-
-    if ex==1 and ceil(error) >= 1.0:
-        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
-        valstr = fmt % value
-        errstr = '%1.1f' % error
-    elif ex>0: # error is in the decimals
-        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
-        valstr = fmt % value
-    else:    # error is beyond decimals
-        fmt = '%1.0f'
-        errstr += (-ex)*'0'
-        val = round(value*10**ex)*10**(-ex)
-        valstr = fmt % val
-    #end if
-    return valstr+'('+errstr+')'
-#end def

@@ -24,12 +24,12 @@ data.load_displacements(data_last.disp, data_last.P_lims)
 if __name__=='__main__':
     settings(**nx_settings)
     # eqm jobs
-    eqm_jobs = get_eqm_jobs(data.R,data.eqm_path,data.dmc_factor)
+    eqm_jobs = data.get_jobs(data.R,data.eqm_path,data.dmcsteps)
     P_jobs = eqm_jobs
     # ls jobs
     for p,R in enumerate(data.R_shift):
         if not data.ls_paths[p]==data.eqm_path:
-            P_jobs += get_ls_jobs(R,data.ls_paths[p],eqm_jobs,data.dmc_factor)
+            P_jobs += data.get_jobs(R,data.ls_paths[p],data.dmcsteps,jastrow=eqm_jobs[data.eqm_j_idx])
         #end if
     #end for
     run_project(P_jobs)
