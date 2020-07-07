@@ -314,7 +314,6 @@ class IterationData():
         S_num         =  7,
         polyfit_n     = 4,
         dmcsteps      = 100,
-        prefix        = '',
         use_optimal   = True,
         path          = '../ls0/',
         type          = 'qmc',
@@ -338,11 +337,10 @@ class IterationData():
         self.qmc_idx       = qmc_idx
         self.qmc_j_idx     = qmc_j_idx if type=='qmc' else 0
         self.eqm_str       = eqm_str
-        self.prefix        = prefix
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
         self.generate      = generate
-        self.eqm_path      = self.path+self.prefix+self.eqm_str
+        self.eqm_path      = self.path+self.eqm_str
     #end def
 
     def load_R(self, R, func_params):
@@ -381,7 +379,7 @@ class IterationData():
                 if abs(shift)<1e-10: #eqm
                     ls_paths.append( self.eqm_path )
                 else:
-                    ls_paths.append( self.path+self.prefix+'p'+str(p)+'_s'+str(s) )
+                    ls_paths.append( self.path+'p'+str(p)+'_s'+str(s) )
                 #end if
                 R_shift.append( deepcopy(self.R) + shift*disp )
             #end for

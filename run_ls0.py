@@ -6,17 +6,15 @@ from surrogate import IterationData,print_structure_shift,print_optimal_paramete
 from parameters import *
 from numpy import diagonal
 
-try:
-    n    = 0
-    data = IterationData(n=n,**ls_settings[n]) # define in parameters.py
-except:
-    print('Could not init IterationData object. Need a list of iteration data defined in parameters.py')
-    exit()
-#end try
+n = 0
+ls_settings = obj(get_jobs=get_dmc_jobs)
 
 #R_init        = # give R_init or load
 #P_init        = # give displacement vectors to go
 #P_lims_init   = # give displacement FC limits to go
+
+# automated from here
+data = IterationData(n=n,**ls_settings) # define in parameters.py
 
 # choose R to load
 try:
@@ -52,12 +50,12 @@ except:
 if __name__=='__main__':
     settings(**nx_settings)
     # eqm jobs
-    eqm_jobs = get_jobs(data.R,data.eqm_path,data.dmcsteps)
+    eqm_jobs = data.get_jobs(data.R,data.eqm_path,dmcsteps=data.dmcsteps)
     P_jobs = eqm_jobs
     # ls jobs
     for p,R in enumerate(data.R_shift):
         if not data.ls_paths[p]==data.eqm_path:
-            P_jobs += get_jobs(R,data.ls_paths[p],data.dmcsteps,jastrow=eqm_jobs[eqm_j_idx])
+            P_jobs += data.get_jobs(R,data.ls_paths[p],dmcsteps=data.dmcsteps,jastrow=eqm_jobs[data.qmc_j_idx])
         #end if
     #end for
     run_project(P_jobs)

@@ -17,7 +17,6 @@ except:
 get_job = get_scf_job
 path    = '../scf_pes/scf'
 
-
 P_orig,P_val = pos_to_params(R_relax)
 num_params   = len(P_val)
 S_orig       = []
@@ -28,6 +27,7 @@ for p in range(num_params):
 S_orig_mesh = meshgrid(*tuple(S_orig))
 S_orig_shp  = S_orig_mesh[0].shape
 
+settings(**nx_settings)
 P_jobs = []
 for j in range(prod(S_orig_shp)):
     pos  = R_relax.copy()
@@ -43,7 +43,6 @@ for j in range(prod(S_orig_shp)):
 #end for
 
 if __name__=='__main__':
-    settings(**nx_settings)
     run_project(P_jobs)
 #end if
 

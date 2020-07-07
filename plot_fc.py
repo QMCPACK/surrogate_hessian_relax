@@ -24,11 +24,11 @@ def plot_dpes(ax):
     ax.set_title(label+' PES gradients')
 #end def
 
-def plot_PES_contour(p0,p1,ax):
+def plot_PES_contour(p0,p1,ax,levels=20):
     X = S_orig_mesh[p0][get_2d_sli(p0,p1,slicing)]+P_val[p0]
     Y = S_orig_mesh[p1][get_2d_sli(p0,p1,slicing)]+P_val[p1]
     Z = PES_param[get_2d_sli(p0,p1,slicing)]
-    ax.contourf(X,Y,Z)
+    ax.contourf(X,Y,Z,levels)
 
     pvects = FC_v[[[p0],[p1]],[p0,p1]]
     xlim = ax.get_xlim()

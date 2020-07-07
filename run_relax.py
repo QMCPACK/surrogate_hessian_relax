@@ -40,6 +40,11 @@ R_relax,C_relax = get_relax_structure(relax_path)
 if __name__=='__main__':
     print('Relaxed geometry:')
     print(R_relax.reshape(shp2))
+    P,Pv = pos_to_params(R_relax)
+    print('Parameter values:')
+    for p,pval in enumerate(Pv):
+        print(' #'+str(p)+': '+str(pval))
+    #end for
     if relax_cell:
         print('Relaxed cell:')
         print(C_relax.reshape((-1,dim)))
