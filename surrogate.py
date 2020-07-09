@@ -411,8 +411,9 @@ class IterationData():
     def load_energy_error(self,path):
         if self.type=='qmc':
             AI  = QmcpackAnalyzer(path,equilibration=self.equilibration)
-            E   = AI.qmc[qmc_idx].scalars.LocalEnergy.mean
-            Err = AI.qmc[qmc_idx].scalars.LocalEnergy.error
+            AI.analyze()
+            E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
+            Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
         else: # pwscf
             AI  = PwscfAnalyzer(path)
             AI.analyze()
