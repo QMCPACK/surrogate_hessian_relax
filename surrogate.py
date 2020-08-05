@@ -4,6 +4,7 @@ from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,resh
 from copy import deepcopy
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
+from matplotlib import pyplot as plt
 from pickle import load,dump
 
 def load_gamma_k(fname, num_prt, dim=3):
@@ -256,10 +257,15 @@ def print_structure_shift(R_old,R_new):
 
 
 def print_optimal_parameters(data_list):
+    if data_list[0].P_target is None:
+        target = 0.0*data_list[0].P_vals
+    else:
+        target = data_list[0].P_target
+    #end if
     print('Total energy:')
     for n in range(len(data_list)):
-       E,Err = data_list[n].E,data_list[n].Err
-       print('   n='+str(n)+': '+print_with_error(E,Err)) 
+        E,Err = data_list[n].E,data_list[n].Err
+        print('   n='+str(n)+': '+print_with_error(E,Err)) 
     #end for
     print('Optimal parameters:')
     for p in range(data_list[0].disp_num):
@@ -272,7 +278,53 @@ def print_optimal_parameters(data_list):
             PV_err  = data_list[n].P_vals_err[p]
             print('   n='+str(n)+': '+print_with_error(PV_next,PV_err).ljust(12)+' Delta: '+print_with_error(PV_next-PV_this,PV_err).ljust(12))
         #end for
+        if not target is None:
+            print('  targ: '+str(target[p]).ljust(12))
+        #end if
     #end for
+#end def
+
+
+def plot_energy_convergence(ax,data_list,target=0.0):
+    ax.set_title('Equilibrium energy vs iteration')
+    ax.set_xlabel('iteration')
+    ax.set_ylabel('energy')
+    for n,data in enumerate(data_list):
+        co   = data.co
+        E    = data.E - target
+        Err  = data.Err
+        ax.errorbar(n,E,Err,color=co,marker='x')
+    #end for
+#end def
+
+
+def plot_parameter_convergence(ax,data_list,label=None,marker='x'):
+    if data_list[0].P_target is None:
+        target = 0.0*data_list[0].P_vals
+    else:
+        target = data_list[0].P_target
+    #end if
+    ax.set_xlabel('iteration')
+    ax.set_ylabel('parameter')
+    ax.set_title('Parameters vs iteration')
+    # init params
+    data = data_list[0]
+    for p,P in enumerate(data.P_vals):
+        Pco  = data.Pco[p]
+        ax.plot(0,P-target[p],color=Pco,marker=marker)
+    #end for 
+    # line search params
+    for n,data in enumerate(data_list):
+        for p,P in enumerate(data.P_vals_next):
+            Pco  = data.Pco[p]
+            Prr  = data.P_vals_err[p]
+            ax.errorbar(n+1,P-target[p],Prr,color=Pco,marker=marker)
+        #end for
+    #end for
+    if not label is None:
+        ax.plot(-1,-1,'k',marker=marker,label=label)
+        ax.legend()
+    #end if
 #end def
 
 
@@ -306,6 +358,25 @@ def print_with_error( value, error, limit=15 ):
 #end def
 
 
+def surrogate_diagnostics(data_list):
+    # print standard stuff
+    #print_structure_shift(data.R,data.R_next)
+    print_optimal_parameters(data_list)
+    # plot energy convergence
+    f,ax = plt.subplots()
+    plot_energy_convergence(ax,data_list)
+    # plot parameter convergence
+    f,ax = plt.subplots()
+    plot_parameter_convergence(ax,data_list)
+    # plot line searches
+    for data in data_list:
+        f,ax = plt.subplots()
+        data.plot_PES_fits(ax)
+    #end for
+    plt.show()
+#end def
+
+
 class IterationData():
 
     def __init__(
@@ -327,6 +398,9 @@ class IterationData():
         noise         = 0.0,
         generate      = 1000,
         extras        = [],
+        P_target      = None,
+        P_color       = None,
+        color         = random.random((3,)),
         ):
 
         self.get_jobs      = get_jobs
@@ -346,7 +420,10 @@ class IterationData():
         self.noise         = noise
         self.generate      = generate
         self.extras        = extras
+        self.P_target      = P_target
         self.eqm_path      = self.path+self.eqm_str
+        self.co            = color
+        self.Pco           = P_color
     #end def
 
     def load_R(self, R, func_params):
@@ -363,6 +440,9 @@ class IterationData():
         self.P_lims   = P_lims
         self.set_optimal_shifts()
         self.shift_structure()
+        if self.Pco is None:
+            self.Pco = random.rand(P.shape[0],3)
+        #end if
     #end def
 
     def set_optimal_shifts(self):
@@ -521,7 +601,7 @@ class IterationData():
             Emin_err  = self.Emins_err[s]
     
             # plot PES
-            co = random.random((3,))
+            co = self.Pco[s]
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
             if self.type=='qmc' or self.noise>0.0:
@@ -550,5 +630,4 @@ class IterationData():
     #end def
 
 #end class
-
 

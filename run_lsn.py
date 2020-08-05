@@ -1,9 +1,8 @@
 #! /usr/bin/env python3
 
 from parameters import *
-from matplotlib import pyplot as plt
 from nexus import settings,run_project
-from surrogate import IterationData,print_structure_shift,print_optimal_parameters
+from surrogate import IterationData,surrogate_diagnostics
 import pickle
 
 # edit these accordingly
@@ -51,11 +50,5 @@ if not loaded:
 data_ls.append(data)
 
 if __name__=='__main__':
-    # print standard stuff
-    print_structure_shift(data.R,data.R_next)
-    print_optimal_parameters(data_ls)
-    # plot
-    f,ax = plt.subplots()
-    data.plot_PES_fits(ax)
-    plt.show()
+    surrogate_diagnostics(data_ls)
 #end if
