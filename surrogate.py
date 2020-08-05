@@ -4,6 +4,7 @@ from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,resh
 from copy import deepcopy
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
+from pickle import load,dump
 
 def load_gamma_k(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
@@ -268,7 +269,8 @@ def print_optimal_parameters(data_list):
         for n in range(len(data_list)):
             PV_this = data_list[n].P_vals[p]
             PV_next = data_list[n].P_vals_next[p]
-            print('   n='+str(n)+': '+str(PV_next)+' Delta: '+str(PV_next-PV_this))
+            PV_err  = data_list[n].P_vals_err[p]
+            print('   n='+str(n)+': '+print_with_error(PV_next,PV_err).ljust(12)+' Delta: '+print_with_error(PV_next-PV_this,PV_err).ljust(12))
         #end for
     #end for
 #end def
@@ -322,7 +324,9 @@ class IterationData():
         eqm_str       = 'eqm',
         equilibration = 10,
         load_postfix  = '/dmc/dmc.in.xml',
+        noise         = 0.0,
         generate      = 1000,
+        extras        = [],
         ):
 
         self.get_jobs      = get_jobs
@@ -339,7 +343,9 @@ class IterationData():
         self.eqm_str       = eqm_str
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
+        self.noise         = noise
         self.generate      = generate
+        self.extras        = extras
         self.eqm_path      = self.path+self.eqm_str
     #end def
 
@@ -361,49 +367,74 @@ class IterationData():
 
     def set_optimal_shifts(self):
         shifts_list = []
+        S_nums      = []
         for p in range(self.disp_num):
             lim = (2*self.E_lim/self.P_lims[p])**0.5
-            shifts = linspace(-lim,lim,self.S_num)
+            shifts = list(linspace(-lim,lim,self.S_num))
             shifts_list.append(shifts)
+            S_nums.append(len(shifts))
+        #end for
+        # add extras
+        for p,extra in enumerate(self.extras):
+            for shift in extra:
+                shifts_list[p].append(shift)
+                S_nums[p] += 1
+            #end for
         #end for
         self.shifts = shifts_list
+        self.S_nums = S_nums
     #end def
     
     # define paths and displacements
     def shift_structure(self):
         ls_paths = []
-        R_shift = []
+        R_shifts = []
         for p in range(len(self.shifts)):
-            disp = self.disp[p,:]
+            paths   = []
+            R_shift = []
+            disp    = self.disp[p,:]
             for s,shift in enumerate(self.shifts[p]):
                 if abs(shift)<1e-10: #eqm
-                    ls_paths.append( self.eqm_path )
+                    paths.append( self.eqm_path )
                 else:
-                    ls_paths.append( self.path+'p'+str(p)+'_s'+str(s) )
+                    paths.append( self.path+'p'+str(p)+'_s'+str(s) )
                 #end if
                 R_shift.append( deepcopy(self.R) + shift*disp )
             #end for
+            R_shifts.append(R_shift)
+            ls_paths.append(paths)
         #end for
-        self.R_shift  = R_shift
+        self.R_shifts = R_shifts
         self.ls_paths = ls_paths
     #end def
 
     def load_PES(self):
-        E_load   = []
-        Err_load = []
         # load eqm
-        E_eqm,Err_eqm = self.load_energy_error(self.eqm_path+self.load_postfix)
-        self.E   = E_eqm
-        self.Err = Err_eqm
+        E_eqm,Err_eqm  = self.load_energy_error(self.eqm_path+self.load_postfix)
+        self.E         = E_eqm+self.noise*random.randn(1)[0]
+        self.Err       = Err_eqm+self.noise
+        self.PES       = []
+        self.PES_error = []
+        Epred          = 0.0
         # load ls
-        for s,path in enumerate(self.ls_paths):
-            E,Err = self.load_energy_error(path+self.load_postfix)
-            E_load.append(E)
-            Err_load.append(Err)
+        for s,paths in enumerate(self.ls_paths):
+            E_load   = []
+            Err_load = []
+            for path in paths:
+                if path==self.eqm_path:
+                    E_load.append(self.E)
+                    Err_load.append(self.Err)
+                else:
+                    E,Err = self.load_energy_error(path+self.load_postfix)
+                    E_load.append(E+self.noise*random.randn(1)[0])
+                    Err_load.append(Err+self.noise)
+                #end if
+            #end for
+            Epred = min(Epred,min(array(E_load)))
+            self.PES.append(array(E_load))
+            self.PES_error.append(array(Err_load))
         #end for
-        self.PES       = array(E_load).reshape((self.disp_num,self.S_num))
-        self.PES_error = array(Err_load).reshape((self.disp_num,self.S_num))
-
+        self.Epred = Epred
         self.get_dp_E_mins()
         self.compute_new_structure()
     #end def
@@ -432,23 +463,23 @@ class IterationData():
         pfs       = []
         pfs_err   = []
         for s,shift in enumerate(self.shifts):
-            Emin,dPV,pf = get_min_params(shift,self.PES[s,:],n=self.polyfit_n)
+            Emin,dPV,pf = get_min_params(shift,self.PES[s],n=self.polyfit_n)
 
             # generate random data
             data = []
             for d,dp in enumerate(shift):
-                ste = self.PES_error[s,d]
-                data.append( self.PES[s,d]+self.generate**0.5*ste*random.randn(self.generate) )
+                ste = self.PES_error[s][d]
+                data.append( self.PES[s][d]+self.generate**0.5*ste*random.randn(self.generate) )
             #end for
             data = array(data).T
             # run jackknife
             jcapture = obj()
-            jackknife(data = data,
+            jackknife(data     = data,
                       function = get_min_params,
                       args     = [shift,None,self.polyfit_n],
                       position = 1,
                       capture  = jcapture)
-            dPV_err,Emin_err,pf_err = jcapture.jerror
+            Emin_err,dPV_err,pf_err = jcapture.jerror
 
             dPVs.append(dPV)
             dPVs_err.append(dPV_err)
@@ -468,18 +499,21 @@ class IterationData():
     
     def compute_new_structure(self):
         R_next = deepcopy(self.R)
+        PV_err = self.P_vals*0
         for p,dPV in enumerate(self.dPV):
             R_next += dPV*self.disp[p,:]
+            PV_err += self.pos_to_params(self.disp[p,:])[1]*self.dPV_err
         #end for
         P,PV_next        = self.pos_to_params(R_next)
         self.R_next      = R_next
         self.P_vals_next = PV_next
+        self.P_vals_err  = PV_err
     #end def
 
     def plot_PES_fits(self,ax):
         for s,shift in enumerate(self.shifts):
-            PES       = self.PES[s,:]
-            PESe      = self.PES_error[s,:]
+            PES       = self.PES[s]
+            PESe      = self.PES_error[s]
             pf        = self.pfs[s]
             Pmin      = self.dPV[s]
             Emin      = self.Emins[s]
@@ -490,12 +524,12 @@ class IterationData():
             co = random.random((3,))
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
-            if self.type=='qmc':
-                ax.errorbar(shift,PES,PESe,linestyle='-',color=co)
-                ax.errorbar(Pmin,Emin,yerr=Pmin_err,xerr=Emin_err,marker='o',color=co,
+            if self.type=='qmc' or self.noise>0.0:
+                ax.errorbar(shift,PES,PESe,linestyle='None',color=co,marker='.')
+                ax.errorbar(Pmin,Emin,xerr=Pmin_err,yerr=Emin_err,marker='o',color=co,
                             label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
             else:
-                ax.plot(shift,PES,linestyle='-',color=co)
+                ax.plot(shift,PES,linestyle='None',color=co,marker='.')
                 ax.plot(Pmin,Emin,marker='o',color=co,
                             label='E='+str(Emin.round(6))+' dp'+str(s)+'='+str(Pmin.round(6)))
             #end if
@@ -506,6 +540,13 @@ class IterationData():
         ax.set_xlabel('dp')
         ax.set_ylabel('E')
         ax.legend(fontsize=8)
+    #end def
+
+    def write_to_file(self):
+        fname = self.path+'data.p'
+        with open(fname,mode='wb') as f:
+            dump(self,f)
+        #end with
     #end def
 
 #end class
