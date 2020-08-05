@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
 from parameters import *
-from nexus import settings,run_project
 from surrogate import IterationData,surrogate_diagnostics
 from numpy import diagonal
 import pickle
@@ -55,6 +54,7 @@ if not loaded:
         #end if
     #end try
 
+    from nexus import settings,run_project
     settings(**nx_settings)
     # eqm jobs
     eqm_jobs = data.get_jobs(data.R,data.eqm_path,dmcsteps=data.dmcsteps)

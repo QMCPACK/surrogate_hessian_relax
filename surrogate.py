@@ -271,7 +271,7 @@ def print_optimal_parameters(data_list):
     for p in range(data_list[0].disp_num):
         print(' p'+str(p) )
         PV_this = data_list[0].P_vals[p] # first value
-        print('  init: '+str(PV_this))
+        print('  init: '+str(PV_this.round(8)).ljust(12))
         for n in range(len(data_list)):
             PV_this = data_list[n].P_vals[p]
             PV_next = data_list[n].P_vals_next[p]
@@ -285,16 +285,23 @@ def print_optimal_parameters(data_list):
 #end def
 
 
-def plot_energy_convergence(ax,data_list,target=0.0):
+def plot_energy_convergence(ax,data_list,target=0.0,marker='x',pmarker='v'):
     ax.set_title('Equilibrium energy vs iteration')
     ax.set_xlabel('iteration')
     ax.set_ylabel('energy')
-    for n,data in enumerate(data_list):
-        co   = data.co
-        E    = data.E - target
-        Err  = data.Err
-        ax.errorbar(n,E,Err,color=co,marker='x')
+    Es        = []
+    Errs      = []
+    Epreds    = []
+    Eprederrs = []
+    for data in data_list:
+        Es.append(data.E - target)
+        Errs.append(data.Err)
+        Epreds.append(data.Epred)
+        Eprederrs.append(data.Epred_err)
     #end for
+    ax.errorbar(range(len(data_list)),    Es,    Errs,     color='b',marker=marker, label='Eqm energy')
+    ax.errorbar(range(1,len(data_list)+1),Epreds,Eprederrs,color='r',marker=pmarker,label='Pred. energy')
+    ax.legend()
 #end def
 
 
@@ -303,6 +310,7 @@ def plot_parameter_convergence(ax,data_list,label=None,marker='x'):
         target = 0.0*data_list[0].P_vals
     else:
         target = data_list[0].P_target
+        ax.plot([0,len(data_list)],[0,0],'k:')
     #end if
     ax.set_xlabel('iteration')
     ax.set_ylabel('parameter')
@@ -510,11 +518,16 @@ class IterationData():
                     Err_load.append(Err+self.noise)
                 #end if
             #end for
-            Epred = min(Epred,min(array(E_load)))
+            i = argmin(array(E_load))
+            if E_load[i]<Epred:
+                Epred     = E_load[i]
+                Epred_err = Err_load[i]
+            #end if
             self.PES.append(array(E_load))
             self.PES_error.append(array(Err_load))
         #end for
-        self.Epred = Epred
+        self.Epred     = Epred
+        self.Epred_err = Epred_err
         self.get_dp_E_mins()
         self.compute_new_structure()
     #end def
@@ -552,14 +565,18 @@ class IterationData():
                 data.append( self.PES[s][d]+self.generate**0.5*ste*random.randn(self.generate) )
             #end for
             data = array(data).T
-            # run jackknife
-            jcapture = obj()
-            jackknife(data     = data,
-                      function = get_min_params,
-                      args     = [shift,None,self.polyfit_n],
-                      position = 1,
-                      capture  = jcapture)
-            Emin_err,dPV_err,pf_err = jcapture.jerror
+            if self.type=='qmc' or self.noise>0:
+                # run jackknife
+                jcapture = obj()
+                jackknife(data     = data,
+                          function = get_min_params,
+                          args     = [shift,None,self.polyfit_n],
+                          position = 1,
+                          capture  = jcapture)
+                Emin_err,dPV_err,pf_err = jcapture.jerror
+            else:
+                Emin_err,dPV_err,pf_err = 0.,0.,0.
+            #end if
 
             dPVs.append(dPV)
             dPVs_err.append(dPV_err)
@@ -617,8 +634,8 @@ class IterationData():
             # plot minima
         #end for
         ax.set_title('Line-search #'+str(self.n))
-        ax.set_xlabel('dp')
-        ax.set_ylabel('E')
+        ax.set_xlabel('shift along direction')
+        ax.set_ylabel('energy')
         ax.legend(fontsize=8)
     #end def
 

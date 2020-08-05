@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
 from parameters import *
-from nexus import settings,run_project
 from surrogate import IterationData,surrogate_diagnostics
 import pickle
 
@@ -27,6 +26,7 @@ if not loaded:
     data.load_R(data_last.R_next,pos_to_params)
     data.load_displacements(data_last.disp, data_last.P_lims)
 
+    from nexus import settings,run_project
     settings(**nx_settings)
     # eqm jobs
     eqm_jobs = data.get_jobs(data.R,data.eqm_path,dmcsteps=data.dmcsteps)
