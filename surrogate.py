@@ -285,7 +285,19 @@ def print_optimal_parameters(data_list):
 #end def
 
 
-def plot_energy_convergence(ax,data_list,target=0.0,marker='x',pmarker='v'):
+def plot_energy_convergence(
+        ax,
+        data_list,
+        target     = 0.0,
+        linestyle  = ':',
+        marker     = 'x',
+        color      = 'b',
+        pcolor     = 'r',
+        pmarker    = 'v',
+        show_pred  = True,
+        label      = 'E (eqm)',
+        plabel     = 'E (pred)',
+        ):
     ax.set_title('Equilibrium energy vs iteration')
     ax.set_xlabel('iteration')
     ax.set_ylabel('energy')
@@ -299,40 +311,88 @@ def plot_energy_convergence(ax,data_list,target=0.0,marker='x',pmarker='v'):
         Epreds.append(data.Epred)
         Eprederrs.append(data.Epred_err)
     #end for
-    ax.errorbar(range(len(data_list)),    Es,    Errs,     color='b',marker=marker, label='Eqm energy')
-    ax.errorbar(range(1,len(data_list)+1),Epreds,Eprederrs,color='r',marker=pmarker,label='Pred. energy')
+    ax.errorbar(range(len(data_list)),    Es,    Errs,
+                linestyle  = linestyle,
+                color      = color,
+                marker     = marker, 
+                label      = label,
+                )
+    if show_pred:
+        ax.errorbar(range(1,len(data_list)+1),Epreds,Eprederrs,
+                    linestyle = linestyle,
+                    color     = pcolor,
+                    marker    = pmarker,
+                    label     = plabel,
+                    )
+    #end if
     ax.legend()
 #end def
 
 
-def plot_parameter_convergence(ax,data_list,label=None,marker='x'):
-    if data_list[0].P_target is None:
-        target = 0.0*data_list[0].P_vals
-    else:
-        target = data_list[0].P_target
-        ax.plot([0,len(data_list)],[0,0],'k:')
-    #end if
+def plot_parameter_convergence(
+        ax,
+        data_list,
+        marker    = 'x',
+        linestyle = ':',
+        colors    = None,
+        target    = None,
+        label     = '',
+        ):
     ax.set_xlabel('iteration')
     ax.set_ylabel('parameter')
     ax.set_title('Parameters vs iteration')
+
     # init params
-    data = data_list[0]
-    for p,P in enumerate(data.P_vals):
-        Pco  = data.Pco[p]
-        ax.plot(0,P-target[p],color=Pco,marker=marker)
-    #end for 
+    data0 = data_list[0]
+    P_num = len(data0.P_vals)
+    if colors is None:
+        P_cos = data0.Pco
+    else:
+        P_cos = colors
+    #end if
+
+    # targets
+    if not target is None:
+        P_target = target
+    elif not data0.P_target is None:
+        P_target = data0.P_target
+    else: # no target, use initial values
+        P_target = data0.P_vals
+    #end if
+
+    # init values
+    P_vals = []
+    P_errs = []
+    for p in range(P_num):
+        P_vals.append([data0.P_vals[p]-P_target[p]])
+        P_errs.append([0.0])
+    #end for
     # line search params
-    for n,data in enumerate(data_list):
-        for p,P in enumerate(data.P_vals_next):
-            Pco  = data.Pco[p]
-            Prr  = data.P_vals_err[p]
-            ax.errorbar(n+1,P-target[p],Prr,color=Pco,marker=marker)
+    for data in data_list:
+        for p in range(P_num):
+            P_vals[p].append(data.P_vals_next[p]-P_target[p])
+            P_errs[p].append(data.P_vals_err[p])
         #end for
     #end for
-    if not label is None:
-        ax.plot(-1,-1,'k',marker=marker,label=label)
-        ax.legend()
-    #end if
+    # plot
+    for p in range(P_num):
+        P_val   = P_vals[p]
+        P_err   = P_errs[p]
+        co      = P_cos[p]
+        P_label = 'p'+str(p)+' '+label
+        h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
+            color     = co,
+            marker    = marker,
+            linestyle = linestyle,
+            label     = P_label,
+            uplims    = True,
+            lolims    = True,
+            )
+        c[0].set_marker('_')
+        c[1].set_marker('_')
+    #end for
+    ax.plot([0,len(data_list)],[0,0],'k-')
+    ax.legend()
 #end def
 
 
@@ -623,11 +683,11 @@ class IterationData():
             # plot fitted PES
             if self.type=='qmc' or self.noise>0.0:
                 ax.errorbar(shift,PES,PESe,linestyle='None',color=co,marker='.')
-                ax.errorbar(Pmin,Emin,xerr=Pmin_err,yerr=Emin_err,marker='o',color=co,
+                ax.errorbar(Pmin,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co,
                             label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
             else:
                 ax.plot(shift,PES,linestyle='None',color=co,marker='.')
-                ax.plot(Pmin,Emin,marker='o',color=co,
+                ax.plot(Pmin,Emin,marker='x',color=co,
                             label='E='+str(Emin.round(6))+' dp'+str(s)+'='+str(Pmin.round(6)))
             #end if
             ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
