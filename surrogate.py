@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax
 from copy import deepcopy
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
@@ -393,6 +393,49 @@ def plot_parameter_convergence(
     #end for
     ax.plot([0,len(data_list)],[0,0],'k-')
     ax.legend()
+#end def
+
+
+def plot_linesearches(ax,data_list):
+    n = len(data_list)
+    data0 = data_list[0]
+    max_shift = amax(abs(array(data0.shifts)))
+    Pco = data0.Pco
+
+    xtlabel = []
+    xtval   = []
+    labels  = []
+    for n,data in enumerate(data_list):
+        xoffset = n*max_shift
+        xtval.append(xoffset)
+        xtlabel.append(str(n))
+        for s,shift in enumerate(data.shifts):
+            PES       = data.PES[s]
+            PESe      = data.PES_error[s]
+            pf        = data.pfs[s]
+            Pmin      = data.dPV[s]
+            Emin      = data.Emins[s]
+            Pmin_err  = data.dPV_err[s]
+            Emin_err  = data.Emins_err[s]
+            co = Pco[s]
+            # plot PES
+            s_axis = linspace(min(shift),max(shift))
+            # plot fitted PES
+            if data.type=='qmc' or data.noise>0.0:
+                ax.errorbar(shift+xoffset,PES,PESe,linestyle='None',color=co,marker='.')
+                ax.errorbar(Pmin+xoffset,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co)
+            else:
+                ax.plot(shift+xoffset,PES,linestyle='None',color=co,marker='.')
+                ax.plot(Pmin+xoffset,Emin,marker='x',color=co)
+            #end if
+            ax.plot(s_axis+xoffset,polyval(pf,s_axis),linestyle=':',color=co,label='p'+str(s))
+            ax.plot(2*[xoffset],[min(PES),max(PES)],'k-')
+        #end for
+    #end for
+    ax.set_xticks(xtval)
+    ax.set_xticklabels(xtlabel)
+    ax.set_xlabel('shift along direction per iteration')
+    ax.set_ylabel('energy')
 #end def
 
 
