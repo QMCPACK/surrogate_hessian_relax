@@ -262,11 +262,19 @@ def print_optimal_parameters(data_list):
     else:
         target = data_list[0].P_target
     #end if
-    print('Total energy:')
+    Epred = None
+    print('        Eqm energy     Predicted energy')
     for n in range(len(data_list)):
-        E,Err = data_list[n].E,data_list[n].Err
-        print('   n='+str(n)+': '+print_with_error(E,Err)) 
+        E,Err          = data_list[n].E,data_list[n].Err
+        if Epred is None:
+            print('   n='+str(n)+': '+print_with_error(E,Err).ljust(15))
+        else:
+            print('   n='+str(n)+': '+print_with_error(E,Err).ljust(15)+print_with_error(Epred,Eprederr).ljust(15))
+        #end if
+        Epred,Eprederr = data_list[n].Epred,data_list[n].Epred_err
     #end for
+    print('   n='+str(n+1)+': '+' '.ljust(15)+print_with_error(Epred,Eprederr).ljust(15))
+
     print('Optimal parameters:')
     for p in range(data_list[0].disp_num):
         print(' p'+str(p) )
@@ -301,10 +309,10 @@ def plot_energy_convergence(
     ax.set_title('Equilibrium energy vs iteration')
     ax.set_xlabel('iteration')
     ax.set_ylabel('energy')
-    Es        = []
-    Errs      = []
-    Epreds    = []
-    Eprederrs = []
+    Es         = []
+    Errs       = []
+    Epreds     = []
+    Eprederrs  = []
     for data in data_list:
         Es.append(data.E - target)
         Errs.append(data.Err)
@@ -561,7 +569,11 @@ class IterationData():
         S_nums      = []
         for p in range(self.disp_num):
             lim = (2*self.E_lim/self.P_lims[p])**0.5
-            shifts = list(linspace(-lim,lim,self.S_num))
+            if self.S_num==1: # only eqm
+                shifts = [0.0]
+            else:
+                shifts = list(linspace(-lim,lim,self.S_num))
+            #end if
             shifts_list.append(shifts)
             S_nums.append(len(shifts))
         #end for
@@ -631,8 +643,10 @@ class IterationData():
         #end for
         self.Epred     = Epred
         self.Epred_err = Epred_err
-        self.get_dp_E_mins()
-        self.compute_new_structure()
+        if self.S_num > 1:
+            self.get_dp_E_mins()
+            self.compute_new_structure()
+        #end if
     #end def
 
     def load_energy_error(self,path):
