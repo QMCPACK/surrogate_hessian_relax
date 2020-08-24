@@ -15,10 +15,10 @@ def get_relax_structure(relax_path):
         print('No relax geometry available: run relaxation first!')
     #end try
     eq_structure = relax_analyzer.structures[len(relax_analyzer.structures)-1]
-    R_relax      = eq_structure.positions.reshape(shp1)
+    R_relax      = eq_structure.positions.reshape((-1,))
     if relax_cell:
         C_relax  = eq_structure.axes.diagonal()
-        R_relax = (R_relax.reshape(shp2)/C_relax).reshape(shp1)
+        R_relax = (R_relax.reshape((-1,dim))/C_relax).reshape((-1,))
         return R_relax,C_relax
     else:
         return R_relax,None
@@ -39,7 +39,7 @@ R_relax,C_relax = get_relax_structure(relax_path)
 
 if __name__=='__main__':
     print('Relaxed geometry:')
-    print(R_relax.reshape(shp2))
+    print(R_relax.reshape((-1,dim)))
     P,Pv = pos_to_params(R_relax)
     print('Parameter values:')
     for p,pval in enumerate(Pv):
