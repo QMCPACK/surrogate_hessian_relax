@@ -543,6 +543,7 @@ def plot_error_cost(
         color     = color,
         marker    = marker,
         linestyle = linestyle,
+        label     = label,
         )
 #end for
 
@@ -603,7 +604,6 @@ class IterationData():
         get_jobs,  # function handle to get nexus jobs
         n             = 0,
         E_lim         = 0.01,
-        fixed_E_lim   = True, # causes uneven parameter error bars; False fixes error bars
         S_num         = 7,
         pfns          = [2,3,4],
         polyfit_n     = 4,
@@ -706,16 +706,8 @@ class IterationData():
             self.noises = noises
         else:
             for p in range(self.disp_num):
-                if self.fixed_E_lim:
-                    lim = (2*self.E_lim/self.P_lims[p])**0.5
-                else: # scaled E_lim
-                    lim = (2*self.E_lim*max(self.P_lims)**1*self.P_lims[p]**(-2))**0.5
-                #end if
-                if self.S_num==1: # only eqm
-                    shifts = [0.0]
-                else:
-                    shifts = list(linspace(-lim,lim,self.S_num))
-                #end if
+                lim = (2*self.E_lim/self.P_lims[p])**0.5
+                shifts = list(linspace(-lim,lim,self.S_num))
                 shifts_list.append(shifts)
             #end for
             self.noises = self.disp_num*[self.noise]
