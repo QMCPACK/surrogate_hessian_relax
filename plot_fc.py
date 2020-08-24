@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 from parameters import *
-from run_phonon import FC_v
-from run_pes import *
+from run_phonon import *
 from matplotlib import pyplot as plt
 from numpy import polyfit,linalg,linspace,random
 
@@ -42,52 +41,45 @@ def plot_PES_contour(p0,p1,ax,levels=20):
     ax.set_ylabel('p'+str(p1))
 #end def
 
-def plot_structure(ax):
+def plot_structure(ax,p,color_list=None):
     pos2 = reshape(R_relax,shp2)
     ax.set_xlim([0,a])
     ax.set_ylim([0,a])
 
     # plot eqm structure in xy projection
     elem_list  = list(set(elem))
-    color_list = list(random.random((len(elem_list),3)))
+    if color_list is None:
+        color_list = list(random.random((len(elem_list),3)))
+    #end if
     for prt in range(num_prt):
         color = color_list[elem_list.index(elem[prt])] # find color for particle
         ax.plot(pos2[prt,axes[0]],pos2[prt,axes[1]],'o',color=color)
     #end for
 
     # plot param displacements
-    for p in range(num_params):
-        color = list(random.random((3,)))
-        param2 = array([reshape(P_orig[p,:],shp2)[:,axes[0]],reshape(P_orig[p,:],shp2)[:,axes[1]]])
-        # plot displacement
-        for prt in range(num_prt):
-            x = pos2[prt,axes[0]]
-            y = pos2[prt,axes[1]]
-            dx = param2[0,prt]
-            dy = param2[1,prt]
-            if abs(dx+dy)>1e-10:
-                ax.arrow(x,y,dx,dy,head_width=0.4, head_length=0.2, fc=color, ec=color)
-            #end if
-        #end for
+    param2 = array([reshape(P_orig[p,:],shp2)[:,axes[0]],reshape(P_orig[p,:],shp2)[:,axes[1]]])
+    # plot displacement
+    for prt in range(num_prt):
+        color = color_list[elem_list.index(elem[prt])] # find color for particle
+        x = pos2[prt,axes[0]]
+        y = pos2[prt,axes[1]]
+        dx = param2[0,prt]
+        dy = param2[1,prt]
+        if abs(dx+dy)>1e-10:
+            ax.arrow(x,y,dx,dy,head_width=0.4, head_length=0.2, fc=color, ec=color)
+        #end if
     #end for
     ax.set_xlabel(xl)
     ax.set_ylabel(yl)
     ax.set_aspect('equal') # equal aspect
-    ax.set_title(label+': structure and displacements')
+    ax.set_title(label+': original parameter p'+str(p))
 #end def
 
-f,ax = plt.subplots()
-plot_dpes(ax)
-
+color_elem = list(random.random((len(list(set(elem))),3)))
 for p0 in range(num_params):
-    for p1 in range(p0+1,num_params):
-        f,ax = plt.subplots()
-        plot_PES_contour(p0,p1,ax)
-    #end for
+    f,ax = plt.subplots()
+    plot_structure(ax,p0,color_elem)
 #end for
-
-f,ax = plt.subplots()
-plot_structure(ax)
 
 plt.show()
 
