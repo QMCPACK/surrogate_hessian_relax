@@ -29,14 +29,16 @@ if not loaded:
     from nexus import settings,run_project
     settings(**nx_settings)
     # eqm jobs
-    eqm_jobs = data.get_jobs(data.R,data.eqm_path,dmcsteps=data.dmcsteps)
-    P_jobs = eqm_jobs
+    noise    = min(data.noises)
+    eqm_jobs = data.get_jobs(data.R,data.eqm_path,noise=noise)
+    P_jobs   = eqm_jobs
     # ls jobs
     for p,R_shifts in enumerate(data.R_shifts):
         for s,R in enumerate(R_shifts):
-            path = data.ls_paths[p][s]
+            path  = data.ls_paths[p][s]
+            noise = data.noises[p]
             if not path==data.eqm_path:
-                P_jobs += data.get_jobs(R,path,dmcsteps=data.dmcsteps,jastrow=eqm_jobs[data.qmc_j_idx])
+                P_jobs += data.get_jobs(R,path,noise=noise,jastrow=eqm_jobs[data.qmc_j_idx])
             #end if
         #end for
     #end for
