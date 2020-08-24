@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan
 from copy import deepcopy
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
@@ -231,6 +231,61 @@ def get_2d_sli(p0,p1,slicing):
     return tuple(sli)
 #end def
 
+# a is the prefactor of bias scaling, depends on
+#   force-constant k
+#   anharmonicity in terms of depth (Morse-like) or a_idx, where a_idx<1 for most systems
+def calculate_a(k,pfn,a_idx=1.0,De=None):
+    if De is None: # use rule of thumb
+        if pfn==2:
+            a = k**-1.0*a_idx
+        else:
+            a = k**-1.5/3*a_idx
+        #end if
+    else:
+        if pfn==2:
+            a = De**-0.5*k**-0.5*pi**2/18
+        else:
+            a = De**-1.5*k**-0.5/6/pi
+        #end if
+    #end if
+    return a
+#end def
+
+def calculate_b(k,pfn,pts):
+    if pfn==2:
+        b = (pts*k)**-0.5
+    else:
+        b = 3*(pts*k)**-0.5
+    #end if
+    return b
+#end def
+
+def calculate_cost(pts,sigma_in):
+    cost = pts*sigma_in**-2
+    return cost
+#end def
+
+# a is the prefactor of bias scaling
+#   depends on 
+# b is the prefactor of sigma scaling
+#   depends on
+# epsilon is the target accuracy
+# the optimal solutions depend on the order of the fit n
+#
+# returns: optimal energy window, target input errorbars
+def get_optimal_noise_window(a, b, epsilon=0.01, pfn=3):
+    if pfn==2:
+        W_E      = epsilon/3/a
+        sigma_in = 2*a/b*(epsilon/3/a)**1.5
+    elif pfn==3 or pfn==4:
+        W_E      = (epsilon/5/a)**0.5
+        sigma_in = 4*a/b*(epsilon/5/a)**(5/4)
+    else: 
+        print('The order not supported')
+    #end if
+    return W_E, sigma_in
+#end def
+
 def get_min_params(shifts,PES,n=2):
     pf = polyfit(shifts,PES,n)
     c = poly1d(pf)
@@ -429,7 +484,7 @@ def plot_linesearches(ax,data_list):
             # plot PES
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
-            if data.type=='qmc' or data.noise>0.0:
+            if data.is_noisy:
                 ax.errorbar(shift+xoffset,PES,PESe,linestyle='None',color=co,marker='.')
                 ax.errorbar(Pmin+xoffset,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co)
             else:
@@ -447,10 +502,55 @@ def plot_linesearches(ax,data_list):
 #end def
 
 
+def plot_error_cost(
+        ax,
+        data_list,
+        p_idx     = 0,
+        marker    = 'x',
+        linestyle = ':',
+        color     = 'b',
+        target    = None,
+        label     = '',
+     ):
+    costs  = []
+    PVs    = []
+    PVes   = []
+    cost   = 0.0 # accumulated cost per iteration
+    for data in data_list:
+        PES       = array(data.PES)
+        PES_error = array(data.PES_error)
+        sh        = PES.shape
+        for r in range(sh[0]):
+            for c in range(sh[1]):
+                cost += PES_error[r,c]**(-2)
+            #end for
+        #end for
+        costs.append(cost)
+
+        P_vals = data.P_vals_next[p_idx]
+        P_errs = data.P_vals_err[p_idx]
+        if target is None:
+            PVs.append( abs(P_vals) + P_errs )
+        else:
+            PVs.append( abs(P_vals - target) + P_errs )
+        #end if
+        PVes.append( P_errs )
+    #end for
+    ax.errorbar(
+        costs,
+        PVs,
+        PVes,
+        color     = color,
+        marker    = marker,
+        linestyle = linestyle,
+        )
+#end for
+
+
 from math import log10
 def print_with_error( value, error, limit=15 ):
 
-    if error==0.0:
+    if error==0.0 or isnan(error):
         return str(value)
     #end if
 
@@ -503,8 +603,11 @@ class IterationData():
         get_jobs,  # function handle to get nexus jobs
         n             = 0,
         E_lim         = 0.01,
-        S_num         =  7,
+        fixed_E_lim   = True, # causes uneven parameter error bars; False fixes error bars
+        S_num         = 7,
+        pfns          = [2,3,4],
         polyfit_n     = 4,
+        epsilon       = 0.01,
         dmcsteps      = 100,
         use_optimal   = True,
         path          = '../ls0/',
@@ -516,6 +619,7 @@ class IterationData():
         load_postfix  = '/dmc/dmc.in.xml',
         noise         = 0.0,
         generate      = 1000,
+        a_idx         = None,
         extras        = [],
         P_target      = None,
         P_color       = None,
@@ -527,6 +631,7 @@ class IterationData():
         self.E_lim         = E_lim
         self.S_num         = S_num
         self.polyfit_n     = polyfit_n
+        self.pfns          = pfns
         self.dmcsteps      = dmcsteps
         self.use_optimal   = use_optimal
         self.path          = path
@@ -536,13 +641,16 @@ class IterationData():
         self.eqm_str       = eqm_str
         self.equilibration = equilibration
         self.load_postfix  = load_postfix
+        self.epsilon       = epsilon
         self.noise         = noise
         self.generate      = generate
         self.extras        = extras
+        self.a_idx         = a_idx
         self.P_target      = P_target
         self.eqm_path      = self.path+self.eqm_str
         self.co            = color
         self.Pco           = P_color
+        self.is_noisy      = ( type=='qmc' or noise>0 or not a_idx is None )
     #end def
 
     def load_R(self, R, func_params):
@@ -553,10 +661,10 @@ class IterationData():
     #end def
 
 
-    def load_displacements(self, P, P_lims):
+    def load_displacements(self, P, H_P):
         self.disp     = P
         self.disp_num = P.shape[0]
-        self.P_lims   = P_lims
+        self.P_lims   = H_P
         self.set_optimal_shifts()
         self.shift_structure()
         if self.Pco is None:
@@ -566,26 +674,59 @@ class IterationData():
 
     def set_optimal_shifts(self):
         shifts_list = []
-        S_nums      = []
-        for p in range(self.disp_num):
-            lim = (2*self.E_lim/self.P_lims[p])**0.5
-            if self.S_num==1: # only eqm
-                shifts = [0.0]
-            else:
+        if not self.a_idx is None: # go fully automated 
+            a_idx  = self.a_idx
+            noises = []
+            for p in range(self.disp_num):
+                cost_old    = 1.0e99
+                k = self.P_lims[p]
+                for pfn in self.pfns:
+                    pts = self.S_num
+                    a = calculate_a(k=k,pfn=pfn,a_idx=a_idx)
+                    b = calculate_b(k=k,pts=pts,pfn=pfn)
+                    E,sigma = get_optimal_noise_window(a,b,pfn=pfn,epsilon=self.epsilon)
+                    cost = calculate_cost(pts,sigma)
+                    if cost < cost_old:
+                         cost_old  = cost
+                         E_opt     = E
+                         sigma_opt = sigma
+                         pfn_opt   = pfn
+                    #end if
+                #end for
+                noises.append(sigma_opt)
+                lim    = (2*E_opt/k)**0.5
                 shifts = list(linspace(-lim,lim,self.S_num))
-            #end if
-            shifts_list.append(shifts)
-            S_nums.append(len(shifts))
-        #end for
+                shifts_list.append(shifts)
+                print('chosen for param '+str(p)+':')
+                print('  target noise: '+str(sigma_opt))
+                print('  fit:          poly'+str(pfn))
+                print('  Elim:         '+str(E_opt))
+                print('  Rlim:         '+str(lim))
+            #end for
+            self.noises = noises
+        else:
+            for p in range(self.disp_num):
+                if self.fixed_E_lim:
+                    lim = (2*self.E_lim/self.P_lims[p])**0.5
+                else: # scaled E_lim
+                    lim = (2*self.E_lim*max(self.P_lims)**1*self.P_lims[p]**(-2))**0.5
+                #end if
+                if self.S_num==1: # only eqm
+                    shifts = [0.0]
+                else:
+                    shifts = list(linspace(-lim,lim,self.S_num))
+                #end if
+                shifts_list.append(shifts)
+            #end for
+            self.noises = self.disp_num*[self.noise]
+        #end if
         # add extras
         for p,extra in enumerate(self.extras):
             for shift in extra:
                 shifts_list[p].append(shift)
-                S_nums[p] += 1
             #end for
         #end for
         self.shifts = shifts_list
-        self.S_nums = S_nums
     #end def
     
     # define paths and displacements
@@ -614,8 +755,9 @@ class IterationData():
     def load_PES(self):
         # load eqm
         E_eqm,Err_eqm  = self.load_energy_error(self.eqm_path+self.load_postfix)
-        self.E         = E_eqm+self.noise*random.randn(1)[0]
-        self.Err       = Err_eqm+self.noise
+        noise = min(array(self.noises))
+        self.E         = E_eqm+noise*random.randn(1)[0]
+        self.Err       = Err_eqm+noise
         self.PES       = []
         self.PES_error = []
         Epred          = 0.0
@@ -623,14 +765,15 @@ class IterationData():
         for s,paths in enumerate(self.ls_paths):
             E_load   = []
             Err_load = []
+            noise = self.noises[s]
             for path in paths:
                 if path==self.eqm_path:
                     E_load.append(self.E)
                     Err_load.append(self.Err)
                 else:
                     E,Err = self.load_energy_error(path+self.load_postfix)
-                    E_load.append(E+self.noise*random.randn(1)[0])
-                    Err_load.append(Err+self.noise)
+                    E_load.append(E+noise*random.randn(1)[0])
+                    Err_load.append(Err+noise)
                 #end if
             #end for
             i = argmin(array(E_load))
@@ -682,7 +825,7 @@ class IterationData():
                 data.append( self.PES[s][d]+self.generate**0.5*ste*random.randn(self.generate) )
             #end for
             data = array(data).T
-            if self.type=='qmc' or self.noise>0:
+            if self.is_noisy:
                 # run jackknife
                 jcapture = obj()
                 jackknife(data     = data,
@@ -738,7 +881,7 @@ class IterationData():
             co = self.Pco[s]
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
-            if self.type=='qmc' or self.noise>0.0:
+            if self.is_noisy:
                 ax.errorbar(shift,PES,PESe,linestyle='None',color=co,marker='.')
                 ax.errorbar(Pmin,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co,
                             label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
