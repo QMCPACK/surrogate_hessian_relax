@@ -235,11 +235,13 @@ def get_2d_sli(p0,p1,slicing):
 #   force-constant k
 #   anharmonicity in terms of depth (Morse-like) or a_idx, where a_idx<1 for most systems
 def calculate_a(k,pfn,a_idx=1.0,De=None):
-    if De is None: # use rule of thumb
-        if pfn==2:
-            a = k**-1.0*a_idx
-        else:
-            a = k**-1.5/3*a_idx
+    # old rule of thumb: De**-3/2*k ~ 2*pi
+    if De is None: 
+        if pfn==2: 
+            a = k**-1.0*a_idx # to be updated
+        else: # use rule of thumb: k**2/3*De**-3/2 ~ 2*pi
+            #a = k**-1.5/3*a_idx
+            a = k**(-7/6)/3*a_idx
         #end if
     else:
         if pfn==2:
@@ -511,6 +513,7 @@ def plot_error_cost(
         color     = 'b',
         target    = None,
         label     = '',
+        max_error = True,
      ):
     costs  = []
     PVs    = []
@@ -536,15 +539,26 @@ def plot_error_cost(
         #end if
         PVes.append( P_errs )
     #end for
-    ax.errorbar(
-        costs,
-        PVs,
-        PVes,
-        color     = color,
-        marker    = marker,
-        linestyle = linestyle,
-        label     = label,
-        )
+    if max_error:
+        ax.plot(
+            costs,
+            array(PVs)+array(PVes),
+            color     = color,
+            marker    = marker,
+            linestyle = linestyle,
+            label     = label,
+            )
+    else:
+        ax.errorbar(
+            costs,
+            PVs,
+            PVes,
+            color     = color,
+            marker    = marker,
+            linestyle = linestyle,
+            label     = label,
+            )
+    #end if
 #end for
 
 
