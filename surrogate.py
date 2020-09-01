@@ -1,11 +1,42 @@
 #!/usr/bin/env python3
 
+import pickle
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan
 from copy import deepcopy
+from math import log10
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
 from matplotlib import pyplot as plt
-from pickle import load,dump
+
+
+def print_with_error( value, error, limit=15 ):
+
+    if error==0.0 or isnan(error):
+        return str(value)
+    #end if
+
+    ex = -9
+    while ceil( error*10**(ex+1) ) > 0 and ceil( error*10**(ex+1)) < limit:
+        ex += 1
+    #end while
+    errstr = str(int(ceil(error*10**ex)))
+
+    if ex==1 and ceil(error) >= 1.0:
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+        errstr = '%1.1f' % error
+    elif ex>0: # error is in the decimals
+        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
+        valstr = fmt % value
+    else:    # error is beyond decimals
+        fmt = '%1.0f'
+        errstr += (-ex)*'0'
+        val = round(value*10**ex)*10**(-ex)
+        valstr = fmt % val
+    #end if
+    return valstr+'('+errstr+')'
+#end def
+
 
 def load_gamma_k(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
@@ -115,12 +146,6 @@ def print_qe_geometry(atoms, positions,dim=3):
     #end for
 #end def
 
-# gets a list of pshift arrays (one list item for each parameter)
-def get_pshift_list(pshifts):
-    num_params = len(pshifts)
-    ar = array(meshgrid(*pshifts)).T.reshape((-1,num_params))
-    return ar
-#end def
 
 
 def print_fc_matrix(fc, num_prt, diagonals_only=True, title=None):
@@ -141,6 +166,7 @@ def print_fc_matrix(fc, num_prt, diagonals_only=True, title=None):
     print('')
 #end def
 
+# courtesy of Jaron Krogel
 # XYp = x**0 y**0, x**0 y**1, x**0 y**2, ...
 def bipolynomials(X,Y,nx,ny):
     X = X.flatten()
@@ -162,7 +188,7 @@ def bipolynomials(X,Y,nx,ny):
     return XYp
 #end def bipolynomials
 
-
+# courtesy of Jaron Krogel
 def bipolyfit(X,Y,Z,nx,ny):
     XYp = bipolynomials(X,Y,nx,ny)
     p,r,rank,s = linalg.lstsq(array(XYp).T,Z.flatten())
@@ -170,6 +196,7 @@ def bipolyfit(X,Y,Z,nx,ny):
 #end def bipolyfit
 
 
+# courtesy of Jaron Krogel
 def bipolyval(p,X,Y,nx,ny):
     shape = X.shape
     XYp = bipolynomials(X,Y,nx,ny)
@@ -181,6 +208,7 @@ def bipolyval(p,X,Y,nx,ny):
     return Z
 #end def bipolyval
 
+# courtesy of Jaron Krogel
 def bipolymin(p,X,Y,nx,ny,itermax=6,shrink=0.1,npoints=10):
     for i in range(itermax):
         Z = bipolyval(p,X,Y,nx,ny)
@@ -231,41 +259,110 @@ def get_2d_sli(p0,p1,slicing):
     return tuple(sli)
 #end def
 
+def get_min_params(shifts,PES,n=2):
+    pf     = polyfit(shifts,PES,n)
+    c      = poly1d(pf)
+    crit   = c.deriv().r
+    r_crit = crit[crit.imag==0].real
+    test   = c.deriv(2)(r_crit)
+
+    # compute local minima
+    # excluding range boundaries
+    # choose the one closest to zero
+    min_idx = argmin(abs(r_crit[test>0]))
+    Pmin    = r_crit[test>0][min_idx]
+    Emin    = c(Pmin)
+    return Emin,Pmin,pf
+#end def
+
+
+
+# Line-search related functions and classes
+
 # a is the prefactor of bias scaling, depends on
 #   force-constant k
 #   anharmonicity in terms of depth (Morse-like) or a_idx, where a_idx<1 for most systems
-def calculate_a(k,pfn,a_idx=1.0,De=None):
+def calculate_a(k,pfn,a_idx=1.0,De=None,pfnp1=0.0):
     # old rule of thumb: De**-3/2*k ~ 2*pi
-    if De is None: 
+    pfnp1 = abs(pfnp1)
+    if not De is None: 
+        if pfn==2:
+            a = De**-0.5*k**-0.5*pi**2/18
+        else:
+            a = De**-1.5*k**-0.5/6/pi
+        #end if
+    elif pfnp1 > 0.0:
+        if pfn==2:
+            a = pfnp1
+        elif pfn==3:
+            a = pfnp1**1.5/2
+        else:
+            a = 2*pfnp1/3
+        #end if
+    else:
         if pfn==2: 
             a = k**-1.0*a_idx # to be updated
         else: # use rule of thumb: k**2/3*De**-3/2 ~ 2*pi
             #a = k**-1.5/3*a_idx
             a = k**(-7/6)/3*a_idx
         #end if
-    else:
-        if pfn==2:
-            a = De**-0.5*k**-0.5*pi**2/18
-        else:
-            a = De**-1.5*k**-0.5/6/pi
-        #end if
     #end if
     return a
 #end def
 
-def calculate_b(k,pfn,pts):
+# b is the prefactor of noise scaling
+def calculate_b(k,pfn,S):
     if pfn==2:
-        b = (pts*k)**-0.5
+        b = (S*k)**-0.5
     else:
-        b = 3*(pts*k)**-0.5
+        b = 3*(S*k)**-0.5
     #end if
     return b
 #end def
 
-def calculate_cost(pts,sigma_in):
-    cost = pts*sigma_in**-2
-    return cost
+
+def surrogate_anharmonicity(data,pfn=None,output=False):
+    if pfn is None:
+        pfn = data.pfn
+    #end if
+    W      = data.W
+    pfnp1s = []
+    ans    = []
+    for p in range(data.P):
+        shift = data.Dshifts[p]
+        PES   = data.PES[p]
+        H     = data.hessian_e[p]
+        pf    = polyfit(shift,PES,pfn)
+        pfnp1 = polyfit(shift,PES,pfn+1)
+        dpf   = pfnp1[1:]-pf
+        if pfn==2:
+            an = -pfnp1[0]*H**-2*3/2
+        elif pfn==3:
+            #an = pfnp1[0]**1.5*H**-3.5 + dpf[1]/W
+            an = pfnp1[0]**1.5*H**-3.5
+        else: # n==4
+            #an = 5/4*pfnp1[0]*H**-3
+            an = 5/4*pfnp1[0]*H**-3
+        #end if
+        ans.append(an)
+        if output:
+            print('parameter #'+str(p)+', poly'+str(pfn)+', W='+str(W))
+            print('pfn - pfnp1: '+str(dpf.round(4)))
+            print('pfnp1[0]   : '+str(pfnp1[0].round(6)))
+        #end if
+    #end for
+    ans        = array(ans)
+    targets    = data.targets
+    param_vals = data.param_vals_next
+    print('D model    : '+str(ans*W**2))
+    print('D bias     : '+str(data.Dmins))
+    print('P model    : '+str(data.M @ ans *W**2))
+    print('P bias     : '+str(param_vals-targets))
+    print('anharm.    : '+str(ans))
+    return ans
 #end def
+
+
 
 # a is the prefactor of bias scaling
 #   depends on 
@@ -288,24 +385,8 @@ def get_optimal_noise_window(a, b, epsilon=0.01, pfn=3):
     return W_E, sigma_in
 #end def
 
-def get_min_params(shifts,PES,n=2):
-    pf = polyfit(shifts,PES,n)
-    c = poly1d(pf)
-    crit = c.deriv().r
-    r_crit = crit[crit.imag==0].real
-    test = c.deriv(2)(r_crit)
 
-    # compute local minima
-    # excluding range boundaries
-    # choose the one closest to zero
-    min_idx = argmin(abs(r_crit[test>0]))
-    Pmin = r_crit[test>0][min_idx]
-    Emin = c(Pmin)
-    return Emin,Pmin,pf
-#end def
-
-
-def print_structure_shift(R_old,R_new):
+def print_structure_shift(pos_old,pos_new):
     print('New geometry:')
     print(R_new.reshape((-1,3)))
     print('Shift:')
@@ -314,10 +395,11 @@ def print_structure_shift(R_old,R_new):
 
 
 def print_optimal_parameters(data_list):
-    if data_list[0].P_target is None:
-        target = 0.0*data_list[0].P_vals
+    data0 = data_list[0]
+    if data0.targets is None:
+        target = array(data0.P*[0])
     else:
-        target = data_list[0].P_target
+        target = data0.targets
     #end if
     Epred = None
     print('        Eqm energy     Predicted energy')
@@ -333,14 +415,14 @@ def print_optimal_parameters(data_list):
     print('   n='+str(n+1)+': '+' '.ljust(15)+print_with_error(Epred,Eprederr).ljust(15))
 
     print('Optimal parameters:')
-    for p in range(data_list[0].disp_num):
+    for p in range(data0.P):
         print(' p'+str(p) )
-        PV_this = data_list[0].P_vals[p] # first value
+        PV_this = data_list[0].param_vals[p] # first value
         print('  init: '+str(PV_this.round(8)).ljust(12))
         for n in range(len(data_list)):
-            PV_this = data_list[n].P_vals[p]
-            PV_next = data_list[n].P_vals_next[p]
-            PV_err  = data_list[n].P_vals_err[p]
+            PV_this = data_list[n].param_vals[p]
+            PV_next = data_list[n].param_vals_next[p]
+            PV_err  = data_list[n].param_vals_next_err[p]
             print('   n='+str(n)+': '+print_with_error(PV_next,PV_err).ljust(12)+' Delta: '+print_with_error(PV_next-PV_this,PV_err).ljust(12))
         #end for
         if not target is None:
@@ -363,9 +445,6 @@ def plot_energy_convergence(
         label      = 'E (eqm)',
         plabel     = 'E (pred)',
         ):
-    ax.set_title('Equilibrium energy vs iteration')
-    ax.set_xlabel('iteration')
-    ax.set_ylabel('energy')
     Es         = []
     Errs       = []
     Epreds     = []
@@ -376,14 +455,18 @@ def plot_energy_convergence(
         Epreds.append(data.Epred)
         Eprederrs.append(data.Epred_err)
     #end for
-    ax.errorbar(range(len(data_list)),    Es,    Errs,
+    ax.errorbar(range(len(data_list)),    
+                Es,    
+                Errs,
                 linestyle  = linestyle,
                 color      = color,
                 marker     = marker, 
                 label      = label,
                 )
     if show_pred:
-        ax.errorbar(range(1,len(data_list)+1),Epreds,Eprederrs,
+        ax.errorbar(range(1,len(data_list)+1),
+                    Epreds,
+                    Eprederrs,
                     linestyle = linestyle,
                     color     = pcolor,
                     marker    = pmarker,
@@ -391,67 +474,69 @@ def plot_energy_convergence(
                     )
     #end if
     ax.legend()
+    ax.set_title('Equilibrium energy vs iteration')
+    ax.set_xlabel('iteration')
+    ax.set_ylabel('energy')
 #end def
 
 
 def plot_parameter_convergence(
         ax,
         data_list,
+        colors    = None,
+        targets   = None,
+        label     = '',
         marker    = 'x',
         linestyle = ':',
-        colors    = None,
-        target    = None,
-        label     = '',
+        uplims    = True,
+        lolims    = True,
+        **kwargs
         ):
     ax.set_xlabel('iteration')
     ax.set_ylabel('parameter')
     ax.set_title('Parameters vs iteration')
 
-    # init params
     data0 = data_list[0]
-    P_num = len(data0.P_vals)
-    if colors is None:
-        P_cos = data0.Pco
+    if not targets is None:
+        targets = targets
+    elif not data0.targets is None:
+        targets = data0.targets
     else:
-        P_cos = colors
+        targets = data0.param_vals # no target, use initial values
     #end if
-
-    # targets
-    if not target is None:
-        P_target = target
-    elif not data0.P_target is None:
-        P_target = data0.P_target
-    else: # no target, use initial values
-        P_target = data0.P_vals
+    if colors is None:
+        colors = data0.colors
+    else:
+        colors = colors
     #end if
 
     # init values
     P_vals = []
     P_errs = []
-    for p in range(P_num):
-        P_vals.append([data0.P_vals[p]-P_target[p]])
+    for p in range(data0.P):
+        P_vals.append([data0.param_vals[p]-targets[p]])
         P_errs.append([0.0])
     #end for
     # line search params
     for data in data_list:
-        for p in range(P_num):
-            P_vals[p].append(data.P_vals_next[p]-P_target[p])
-            P_errs[p].append(data.P_vals_err[p])
+        for p in range(data.P):
+            P_vals[p].append(data.param_vals_next[p]-targets[p])
+            P_errs[p].append(data.param_vals_next_err[p])
         #end for
     #end for
     # plot
-    for p in range(P_num):
+    for p in range(data0.P):
         P_val   = P_vals[p]
         P_err   = P_errs[p]
-        co      = P_cos[p]
+        co      = colors[p]
         P_label = 'p'+str(p)+' '+label
         h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
             color     = co,
             marker    = marker,
             linestyle = linestyle,
             label     = P_label,
-            uplims    = True,
-            lolims    = True,
+            uplim     = uplims,
+            lolims    = lolims
             )
         c[0].set_marker('_')
         c[1].set_marker('_')
@@ -462,10 +547,10 @@ def plot_parameter_convergence(
 
 
 def plot_linesearches(ax,data_list):
-    n = len(data_list)
-    data0 = data_list[0]
+    n         = len(data_list)
+    data0     = data_list[0]
     max_shift = amax(abs(array(data0.shifts)))
-    Pco = data0.Pco
+    colors    = data0.colors
 
     xtlabel = []
     xtval   = []
@@ -476,22 +561,22 @@ def plot_linesearches(ax,data_list):
         xtlabel.append(str(n))
         for s,shift in enumerate(data.shifts):
             PES       = data.PES[s]
-            PESe      = data.PES_error[s]
+            PES_err   = data.PES_err[s]
             pf        = data.pfs[s]
-            Pmin      = data.dPV[s]
+            Dmin      = data.Dmins[s]
             Emin      = data.Emins[s]
-            Pmin_err  = data.dPV_err[s]
+            Dmin_err  = data.Dmins_err[s]
             Emin_err  = data.Emins_err[s]
-            co = Pco[s]
+            co        = colors[s]
             # plot PES
             s_axis = linspace(min(shift),max(shift))
             # plot fitted PES
             if data.is_noisy:
-                ax.errorbar(shift+xoffset,PES,PESe,linestyle='None',color=co,marker='.')
-                ax.errorbar(Pmin+xoffset,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co)
+                ax.errorbar(shift+xoffset,PES,PES_err,linestyle='None',color=co,marker='.')
+                ax.errorbar(Dmin+xoffset,Emin,xerr=Dmin_err,yerr=Emin_err,marker='x',color=co)
             else:
                 ax.plot(shift+xoffset,PES,linestyle='None',color=co,marker='.')
-                ax.plot(Pmin+xoffset,Emin,marker='x',color=co)
+                ax.plot(Dmin+xoffset,Emin,marker='x',color=co)
             #end if
             ax.plot(s_axis+xoffset,polyval(pf,s_axis),linestyle=':',color=co,label='p'+str(s))
             ax.plot(2*[xoffset],[min(PES),max(PES)],'k-')
@@ -562,34 +647,44 @@ def plot_error_cost(
 #end for
 
 
-from math import log10
-def print_with_error( value, error, limit=15 ):
+def plot_PES_fits(
+        ax,
+        data,
+        datamarker    = '.',
+        datalinestyle = 'None',
+        minmarker     = 'o',
+        **kwargs):
 
-    if error==0.0 or isnan(error):
-        return str(value)
-    #end if
+    for p in range(data.P):
+        co        = data.colors[p]
+        shifts    = data.Dshifts[p]
+        PES       = data.PES[p]
+        PES_err   = data.PES_err[p]
+        pf        = data.pfs[p]
+        Dmin      = data.Dmins[p]
+        Emin      = data.Emins[p]
+        Dmin_err  = data.Dmins_err[p]
+        Emin_err  = data.Emins_err[p]
 
-    ex = -9
-    while ceil( error*10**(ex+1) ) > 0 and ceil( error*10**(ex+1)) < limit:
-        ex += 1
-    #end while
-    errstr = str(int(ceil(error*10**ex)))
-
-    if ex==1 and ceil(error) >= 1.0:
-        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
-        valstr = fmt % value
-        errstr = '%1.1f' % error
-    elif ex>0: # error is in the decimals
-        fmt = '%'+str(ex+2)+'.'+str(ex)+'f'
-        valstr = fmt % value
-    else:    # error is beyond decimals
-        fmt = '%1.0f'
-        errstr += (-ex)*'0'
-        val = round(value*10**ex)*10**(-ex)
-        valstr = fmt % val
-    #end if
-    return valstr+'('+errstr+')'
+        # plot PES
+        if data.is_noisy:
+            label = 'Emin='+print_with_error(Emin,Emin_err)+' Dmin'+str(p)+'='+print_with_error(Dmin,Dmin_err)
+            ax.errorbar(shifts,PES ,PES_err, color=co, marker=datamarker, linestyle=datalinestyle)
+            ax.errorbar(Dmin  ,Emin,xerr=Dmin_err,yerr=Emin_err,color=co,label=label,linestyle='None',marker=minmarker)
+        else:
+            label = 'Emin='+str(Emin.round(6))+' Dmin'+str(p)+'='+str(Dmin.round(6))
+            ax.plot(shifts,PES, color=co, marker=datamarker, linestyle=datalinestyle)
+            ax.plot(Dmin  ,Emin,color=co,label=label,marker=minmarker,linestyle='None')
+        #end if
+        s_axis = linspace(min(shifts),max(shifts))
+        ax.plot(s_axis,polyval(pf,s_axis),color=co,**kwargs)
+    #end for
+    ax.set_title('Line-search #'+str(data.n))
+    ax.set_xlabel('shift along direction')
+    ax.set_ylabel('energy')
+    ax.legend(fontsize=8)
 #end def
+
 
 
 def surrogate_diagnostics(data_list):
@@ -597,15 +692,15 @@ def surrogate_diagnostics(data_list):
     #print_structure_shift(data.R,data.R_next)
     print_optimal_parameters(data_list)
     # plot energy convergence
-    f,ax = plt.subplots()
-    plot_energy_convergence(ax,data_list)
+#    f,ax = plt.subplots()
+#    plot_energy_convergence(ax,data_list)
     # plot parameter convergence
     f,ax = plt.subplots()
     plot_parameter_convergence(ax,data_list)
     # plot line searches
     for data in data_list:
         f,ax = plt.subplots()
-        data.plot_PES_fits(ax)
+        plot_PES_fits(ax,data)
     #end for
     plt.show()
 #end def
@@ -615,190 +710,264 @@ class IterationData():
 
     def __init__(
         self,
-        get_jobs,  # function handle to get nexus jobs
-        n             = 0,
-        E_lim         = 0.01,
-        S_num         = 7,
-        pfns          = [2,3,4],
-        polyfit_n     = 4,
-        epsilon       = 0.01,
-        dmcsteps      = 100,
-        use_optimal   = True,
-        path          = '../ls0/',
-        type          = 'qmc',
+        pos_to_params = None,               # function handle to get parameters from pos
+        get_jobs      = None,               # function handle to get nexus jobs
+        n             = 0,                  # iteration number
+        pfn           = 4,                  # polyfit degree
+        S             = 7,                  # points for fit
+        path          = '../ls',           # directory
+        # line-search properties
+        W             = 0.01,               # energy window
+        anharmonicity = None,               # estimated anharmonicities
+        epsilon       = 0.01,               # target accuracy for parameters
+        use_optimal   = True,               # use optimal directions
+        add_noise     = 0.0,                # add artificial noise
+        generate      = 1000,               # generate samples
+        # calculate method specifics
+        type          = 'qmc',              # job type
         qmc_idx       = 1,
         qmc_j_idx     = 2,
-        eqm_str       = 'eqm',
-        equilibration = 10,
         load_postfix  = '/dmc/dmc.in.xml',
-        noise         = 0.0,
-        generate      = 1000,
-        a_idx         = None,
-        extras        = [],
-        P_target      = None,
-        P_color       = None,
-        color         = random.random((3,)),
+        # misc properties
+        eqm_str       = 'eqm',             # eqm string
+        targets       = None,               # targets, if known
+        colors        = None,               # colors for parameters
         ):
 
+        self.pos_to_params = pos_to_params
         self.get_jobs      = get_jobs
         self.n             = n
-        self.E_lim         = E_lim
-        self.S_num         = S_num
-        self.polyfit_n     = polyfit_n
-        self.pfns          = pfns
-        self.dmcsteps      = dmcsteps
+        self.pfn           = pfn
+        self.S             = S
+        self.path          = path+'/ls'+str(n)+'/'  # format for line-search directions
+
+        self.W             = W
+        self.anharmonicity = anharmonicity
+        self.epsilon       = epsilon
         self.use_optimal   = use_optimal
-        self.path          = path
+        self.add_noise     = add_noise
+        self.generate      = generate
+
         self.type          = type
         self.qmc_idx       = qmc_idx
         self.qmc_j_idx     = qmc_j_idx if type=='qmc' else 0
-        self.eqm_str       = eqm_str
-        self.equilibration = equilibration
         self.load_postfix  = load_postfix
-        self.epsilon       = epsilon
-        self.noise         = noise
-        self.generate      = generate
-        self.extras        = extras
-        self.a_idx         = a_idx
-        self.P_target      = P_target
+
+        self.eqm_str       = eqm_str
+        self.targets       = targets
+        self.colors        = colors
+
         self.eqm_path      = self.path+self.eqm_str
-        self.co            = color
-        self.Pco           = P_color
-        self.is_noisy      = ( type=='qmc' or noise>0 or not a_idx is None )
+        self.is_noisy      = ( type=='qmc' or add_noise>0 or not anharmonicity is None )
+        self.ready         = False
     #end def
 
-    def load_R(self, R, func_params):
-        self.R = R
-        self.pos_to_params = func_params
-        P,PV = self.pos_to_params(R)
-        self.P_vals = PV
+    def load_pos(self, pos):
+        self.pos           = pos
+        P,PV               = self.pos_to_params(pos)
+        self.params        = P
+        self.param_vals    = PV
+        self.P             = len(PV)
     #end def
 
-
-    def load_displacements(self, P, H_P):
-        self.disp     = P
-        self.disp_num = P.shape[0]
-        self.P_lims   = H_P
-        self.set_optimal_shifts()
-        self.shift_structure()
-        if self.Pco is None:
-            self.Pco = random.rand(P.shape[0],3)
-        #end if
-    #end def
-
-    def set_optimal_shifts(self):
-        shifts_list = []
-        if not self.a_idx is None: # go fully automated 
-            a_idx  = self.a_idx
-            noises = []
-            for p in range(self.disp_num):
-                cost_old    = 1.0e99
-                k = self.P_lims[p]
-                for pfn in self.pfns:
-                    pts = self.S_num
-                    a = calculate_a(k=k,pfn=pfn,a_idx=a_idx)
-                    b = calculate_b(k=k,pts=pts,pfn=pfn)
-                    E,sigma = get_optimal_noise_window(a,b,pfn=pfn,epsilon=self.epsilon)
-                    cost = calculate_cost(pts,sigma)
-                    if cost < cost_old:
-                         cost_old  = cost
-                         E_opt     = E
-                         sigma_opt = sigma
-                         pfn_opt   = pfn
-                    #end if
-                #end for
-                noises.append(sigma_opt)
-                lim    = (2*E_opt/k)**0.5
-                shifts = list(linspace(-lim,lim,self.S_num))
-                shifts_list.append(shifts)
-                print('chosen for param '+str(p)+':')
-                print('  target noise: '+str(sigma_opt))
-                print('  fit:          poly'+str(pfn))
-                print('  Elim:         '+str(E_opt))
-                print('  Rlim:         '+str(lim))
-            #end for
-            self.noises = noises
-        else:
-            for p in range(self.disp_num):
-                lim = (2*self.E_lim/self.P_lims[p])**0.5
-                shifts = list(linspace(-lim,lim,self.S_num))
-                shifts_list.append(shifts)
-            #end for
-            self.noises = self.disp_num*[self.noise]
-        #end if
-        # add extras
-        for p,extra in enumerate(self.extras):
-            for shift in extra:
-                shifts_list[p].append(shift)
-            #end for
+    def load_hessian(self, hessian): # takes the parameter Hessian
+        eigs,vects      = linalg.eig(hessian)
+        directions      = vects.T @ self.params
+        M               = [] # propagation matrix from directions to params: dP = M x dD
+        for d,direction in enumerate(directions):
+            dP,dPV = self.pos_to_params(direction)
+            M.append(dPV)
         #end for
-        self.shifts = shifts_list
+        self.M          = array(M).T
+        self.hessian_e  = eigs
+        self.hessian_v  = vects.T
+        self.directions = directions
+        self.hessian    = hessian
+        self.epsilond   = linalg.inv(abs(self.M)) @ array(self.P*[self.epsilon]).T # scale target accuracy
+        print(self.epsilond)
     #end def
-    
-    # define paths and displacements
-    def shift_structure(self):
-        ls_paths = []
-        R_shifts = []
-        for p in range(len(self.shifts)):
-            paths   = []
-            R_shift = []
-            disp    = self.disp[p,:]
-            for s,shift in enumerate(self.shifts[p]):
+
+
+    def shift_positions(self,D_list=None):
+        if D_list is None:
+            D_list = range(self.P) # by default, shift all
+        #end if
+        shift_list    = []
+        sigma_min     = 1.0e99
+        for p in range(self.P):
+            shifts,sigma = self._shift_parameter(p)
+            direction    = self.directions[p]
+            shift_rows   = []
+            for s,shift in enumerate(shifts):
                 if abs(shift)<1e-10: #eqm
-                    paths.append( self.eqm_path )
+                    path = self.eqm_path
                 else:
-                    paths.append( self.path+'p'+str(p)+'_s'+str(s) )
+                    path = self.path+'p'+str(p)+'_s'+str(s)
                 #end if
-                R_shift.append( deepcopy(self.R) + shift*disp )
+                pos = self.pos.copy() + shift*direction
+                row = pos,path,sigma,shift
+                shift_rows.append(row)
             #end for
-            R_shifts.append(R_shift)
-            ls_paths.append(paths)
+            shift_list.append(shift_rows)
+            sigma_min = min(sigma_min,sigma)
         #end for
-        self.R_shifts = R_shifts
-        self.ls_paths = ls_paths
+        self.sigma_min  = sigma_min
+        self.shift_list = shift_list # dimensions: P x S x (pos,path,sigma,shift)
     #end def
 
-    def load_PES(self):
-        # load eqm
-        E_eqm,Err_eqm  = self.load_energy_error(self.eqm_path+self.load_postfix)
-        noise = min(array(self.noises))
-        self.E         = E_eqm+noise*random.randn(1)[0]
-        self.Err       = Err_eqm+noise
-        self.PES       = []
-        self.PES_error = []
-        Epred          = 0.0
-        # load ls
-        for s,paths in enumerate(self.ls_paths):
-            E_load   = []
-            Err_load = []
-            noise = self.noises[s]
-            for path in paths:
-                if path==self.eqm_path:
-                    E_load.append(self.E)
-                    Err_load.append(self.Err)
-                else:
-                    E,Err = self.load_energy_error(path+self.load_postfix)
-                    E_load.append(E+noise*random.randn(1)[0])
-                    Err_load.append(Err+noise)
+    # requires that nexus has been initiated
+    def get_job_list(self):
+        # eqm jobs
+        eqm_jobs = self.get_jobs(pos=self.pos,path=self.eqm_path,sigma=self.sigma_min)
+        jobs     = eqm_jobs
+        for p in range(self.P):
+            for s in range(self.S):
+                pos,path,sigma,shift = self.shift_list[p][s]
+                if not path==self.eqm_path:
+                    if self.type=='qmc':
+                        jastrow_job = eqm_jobs[self.qmc_j_idx]
+                        jobs += self.get_jobs(pos=pos,path=path,sigma=sigma,jastrow=jastrow_job)
+                    else:
+                        jobs += self.get_jobs(pos=pos,path=path,sigma=sigma)
+                    #end if
                 #end if
             #end for
-            i = argmin(array(E_load))
-            if E_load[i]<Epred:
-                Epred     = E_load[i]
-                Epred_err = Err_load[i]
-            #end if
-            self.PES.append(array(E_load))
-            self.PES_error.append(array(Err_load))
         #end for
+        return jobs
+    #end def
+
+    def load_results(self):
+        # load eqm
+        E_eqm,Err_eqm  = self._load_energy_error(self.eqm_path+self.load_postfix)
+        sigma_eqm      = self.sigma_min
+        self.E         = E_eqm # +sigma_eqm*random.randn(1)[0]
+        self.Err       = Err_eqm+sigma_eqm
+        # load ls
+        Epred          = 1.0e99
+        Emins          = []
+        Dmins          = []
+        Emins_err      = []
+        Dmins_err      = []
+        PES            = []
+        PES_err        = []
+        Dshifts        = []
+        pfs            = []
+        for p in range(self.P):
+            PES_row     = []
+            PES_err_row = []
+            shifts      = []
+            for s in range(self.S):
+                pos,path,sigma,shift = self.shift_list[p][s]
+                if path==self.eqm_path:
+                    E   = self.E
+                    Err = self.Err
+                else:
+                    E,Err = self._load_energy_error(path+self.load_postfix)
+                    #E    += sigma*random.randn((1))[0]
+                    Err  += sigma
+                #end if
+                if E < Epred:
+                    Epred     = E
+                    Epred_err = Err
+                #end if
+                shifts.append(shift)
+                PES_row.append(E)
+                PES_err_row.append(Err)
+            #end for
+            Emin,Emin_err,Dmin,Dmin_err,pf = self._get_shift_minimum(shifts,PES_row,PES_err_row)
+            Emins.append(Emin)
+            Dmins.append(Dmin)
+            Emins_err.append(Emin_err)
+            Dmins_err.append(Dmin_err)
+            PES.append(PES_row)
+            PES_err.append(PES_err_row)
+            Dshifts.append(shifts)
+            pfs.append(pf)
+        #end for
+        self.PES       = array(PES)
+        self.PES_err   = array(PES_err)
         self.Epred     = Epred
         self.Epred_err = Epred_err
-        if self.S_num > 1:
-            self.get_dp_E_mins()
-            self.compute_new_structure()
-        #end if
+        self.Emins     = Emins
+        self.Dmins     = Dmins
+        self.Emins_err = Emins_err
+        self.Dmins_err = Dmins_err
+        self.Dshifts   = Dshifts
+        self.pfs       = pfs
+
+        self.ready = self._compute_next_pos()
     #end def
 
-    def load_energy_error(self,path):
+    def write_to_file(self):
+        pickle.dump(self,open(self.path+'data.p',mode='wb'))
+    #end def
+
+    def load_from_file(self):
+        try:
+            data = pickle.load(open(self.path+'data.p',mode='rb'))
+            return data
+        except:
+            return None
+        #end try
+    #end def
+
+    # copies relevant information to new iteration
+    def iterate(
+            self, 
+            ls_settings    = obj(),
+            divide_epsilon = None, 
+            divide_W       = None,
+            ):
+
+        if not self.ready:
+            print('New position not calculated. Returning None')
+            return None
+        #end if
+        n = self.n+1 # advance iteration
+
+        if not divide_epsilon is None:
+            epsilon = self.epsilon/divide_epsilon
+            print('New target epsilon: '+str(epsilon))
+            ls_settings.set(epsilon=epsilon)
+        #end if
+        if not divide_W is None:
+            W = self.W/divide_W
+            print('New target energy window: '+str(epsilon))
+            ls_settings.set(W=W)
+        #end if
+
+        new_data = IterationData(n=n, **ls_settings)
+        new_data.load_pos(self.pos_next)
+        new_data.load_hessian(self.hessian)
+        new_data.shift_positions()
+        return new_data
+    #end def
+
+
+    def _shift_parameter(self,p):
+        pfn = self.pfn
+        S   = self.S
+        k   = self.hessian_e[p]
+        if self.anharmonicity is None: # use just fixed energy window
+            W     = self.W
+            sigma = self.add_noise
+        else:
+            a       = self.anharmonicity[p]
+            b       = calculate_b(k=k,S=S,pfn=pfn)
+            W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[p]))
+            print(p,a,b,self.epsilond[p],W,sigma)
+            print('bias: ' ,a*W**2)
+            print('noise: ',sigma*b*W**-0.5)
+            print('bias  (param):',abs(self.M[:,p])*a*W**2)
+            print('noise (param):',sigma*b*abs(self.M[:,p])*W**-0.5)
+        #end if
+        lim    = (2*W/k)**0.5
+        shifts = linspace(-lim,lim,S)
+        return shifts,sigma
+    #end def
+
+
+    def _load_energy_error(self,path):
         if self.type=='qmc':
             AI  = QmcpackAnalyzer(path,equilibration=self.equilibration)
             AI.analyze()
@@ -813,103 +982,46 @@ class IterationData():
         return E,Err
     #end def
     
-
-    def get_dp_E_mins(self):
-        dPVs      = []
-        dPVs_err  = []
-        Emins     = []
-        Emins_err = []
-        pfs       = []
-        pfs_err   = []
-        for s,shift in enumerate(self.shifts):
-            Emin,dPV,pf = get_min_params(shift,self.PES[s],n=self.polyfit_n)
-
-            # generate random data
+    def _get_shift_minimum(self,shifts,PES,PES_err):
+        pfn = self.pfn
+        if self.is_noisy:
+            # generate random data for jackknife resampling
+            generate = self.generate
             data = []
-            for d,dp in enumerate(shift):
-                ste = self.PES_error[s][d]
-                data.append( self.PES[s][d]+self.generate**0.5*ste*random.randn(self.generate) )
+            for s,shift in enumerate(shifts):
+                ste = PES_err[s]
+                data.append( PES[s]+generate**0.5*ste*random.randn(generate) )
             #end for
             data = array(data).T
-            if self.is_noisy:
-                # run jackknife
-                jcapture = obj()
-                jackknife(data     = data,
-                          function = get_min_params,
-                          args     = [shift,None,self.polyfit_n],
-                          position = 1,
-                          capture  = jcapture)
-                Emin_err,dPV_err,pf_err = jcapture.jerror
-            else:
-                Emin_err,dPV_err,pf_err = 0.,0.,0.
-            #end if
+            # run jackknife
+            jcapture = obj()
+            jackknife(data     = data,
+                      function = get_min_params,
+                      args     = [shifts,None,pfn],
+                      position = 1,
+                      capture  = jcapture)
+            Emin,Dmin,pf = jcapture.jmean
+            Emin_err,Dmin_err,pf_err = jcapture.jerror
+            print('jack:', Dmin)
+            Emin,Dmin,pf = get_min_params(shifts,PES,pfn) # TODO: remove this when this is over
+            print('acc:',  Dmin)
+        else:
+            Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
+            Emin_err,Dmin_err,pf_err = 0.,0.,0.
+        #end if
 
-            dPVs.append(dPV)
-            dPVs_err.append(dPV_err)
-            Emins.append(Emin)
-            Emins_err.append(Emin_err)
-            pfs.append(pf)
-            pfs_err.append(pf_err)
-        #end for
-        self.dPV        = dPVs
-        self.dPV_err    = dPVs_err
-        self.Emins      = Emins
-        self.Emins_err  = Emins_err
-        self.pfs        = pfs
-        self.pfs_err    = pfs_err
+        return Emin,Emin_err,Dmin,Dmin_err,pf
     #end def
     
     
-    def compute_new_structure(self):
-        R_next = deepcopy(self.R)
-        PV_err = self.P_vals*0
-        for p,dPV in enumerate(self.dPV):
-            R_next += dPV*self.disp[p,:]
-            PV_err += self.pos_to_params(self.disp[p,:])[1]*self.dPV_err
-        #end for
-        P,PV_next        = self.pos_to_params(R_next)
-        self.R_next      = R_next
-        self.P_vals_next = PV_next
-        self.P_vals_err  = PV_err
-    #end def
-
-    def plot_PES_fits(self,ax):
-        for s,shift in enumerate(self.shifts):
-            PES       = self.PES[s]
-            PESe      = self.PES_error[s]
-            pf        = self.pfs[s]
-            Pmin      = self.dPV[s]
-            Emin      = self.Emins[s]
-            Pmin_err  = self.dPV_err[s]
-            Emin_err  = self.Emins_err[s]
-    
-            # plot PES
-            co = self.Pco[s]
-            s_axis = linspace(min(shift),max(shift))
-            # plot fitted PES
-            if self.is_noisy:
-                ax.errorbar(shift,PES,PESe,linestyle='None',color=co,marker='.')
-                ax.errorbar(Pmin,Emin,xerr=Pmin_err,yerr=Emin_err,marker='x',color=co,
-                            label='E='+print_with_error(Emin,Emin_err)+' dp'+str(s)+'='+print_with_error(Pmin,Pmin_err))
-            else:
-                ax.plot(shift,PES,linestyle='None',color=co,marker='.')
-                ax.plot(Pmin,Emin,marker='x',color=co,
-                            label='E='+str(Emin.round(6))+' dp'+str(s)+'='+str(Pmin.round(6)))
-            #end if
-            ax.plot(s_axis,polyval(pf,s_axis),linestyle=':',color=co)
-            # plot minima
-        #end for
-        ax.set_title('Line-search #'+str(self.n))
-        ax.set_xlabel('shift along direction')
-        ax.set_ylabel('energy')
-        ax.legend(fontsize=8)
-    #end def
-
-    def write_to_file(self):
-        fname = self.path+'data.p'
-        with open(fname,mode='wb') as f:
-            dump(self,f)
-        #end with
+    def _compute_next_pos(self):
+        pos_next = self.pos.copy() + self.Dmins @ self.directions
+        P,PV     = self.pos_to_params(pos_next)
+        PV_err   = abs(self.M @ self.Dmins_err)
+        self.pos_next            = pos_next
+        self.param_vals_next     = PV
+        self.param_vals_next_err = PV_err
+        return True
     #end def
 
 #end class
