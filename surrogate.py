@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import pickle
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var
 from copy import deepcopy
 from math import log10
+from scipy.interpolate import interp1d
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
 from matplotlib import pyplot as plt
@@ -269,12 +270,35 @@ def get_min_params(shifts,PES,n=2):
     # compute local minima
     # excluding range boundaries
     # choose the one closest to zero
-    min_idx = argmin(abs(r_crit[test>0]))
-    Pmin    = r_crit[test>0][min_idx]
-    Emin    = c(Pmin)
+    try:
+        min_idx = argmin(abs(r_crit[test>0]))
+        Pmin    = r_crit[test>0][min_idx]
+        Emin    = c(Pmin)
+    except:
+        Pmin   = nan
+        Emin   = nan
+    #end try
     return Emin,Pmin,pf
 #end def
 
+
+def calculate_X_matrix(x_n,pfn):
+   X = []
+   for x in x_n:
+       row = []
+       for pf in range(pfn+1):
+           row.append(x**pf)
+       #end for
+       X.append(row)
+   #end for
+   X = array(X)
+   return X
+#end def
+
+def calculate_F_matrix(X):
+   F = linalg.inv(X.T @ X) @ X.T
+   return F
+#end def
 
 
 # Line-search related functions and classes
@@ -312,6 +336,17 @@ def calculate_a(k,pfn,a_idx=1.0,De=None,pfnp1=0.0):
 
 # b is the prefactor of noise scaling
 def calculate_b(k,pfn,S):
+    if pfn==2:
+        b = (S*k)**-0.5
+    else:
+        b = 3*(S*k)**-0.5
+    #end if
+    return b
+#end def
+
+
+# c is the prefactor of statistical bias scaling
+def calculate_c(k,pfn,S):
     if pfn==2:
         b = (S*k)**-0.5
     else:
@@ -361,7 +396,6 @@ def surrogate_anharmonicity(data,pfn=None,output=False):
     print('anharm.    : '+str(ans))
     return ans
 #end def
-
 
 
 # a is the prefactor of bias scaling
@@ -535,7 +569,7 @@ def plot_parameter_convergence(
             marker    = marker,
             linestyle = linestyle,
             label     = P_label,
-            uplim     = uplims,
+            uplims    = uplims,
             lolims    = lolims
             )
         c[0].set_marker('_')
@@ -706,6 +740,264 @@ def surrogate_diagnostics(data_list):
 #end def
 
 
+def init_error_scan(
+    data,
+    pfn,
+    pts,
+    W_max,
+    sigma_max,
+    corrn     = 0,
+    W_num     = 11,
+    sigma_num = 11,
+    generate  = 1000,
+    ):
+
+    Xs          = []
+    Ys          = []
+    error_scans = []
+    bias_scans  = []
+    for d in range(data.P):
+        x_n      = data.shifts[d]
+        y_n      = data.PES[d]
+        H        = data.hessian_e[d]
+        if corrn>0:
+            corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
+        else:
+            corr = None
+        #end if
+        X,Y,error_scan,bias_scan = scan_linesearch_error(
+            x_n,
+            y_n,
+            H,
+            pts       = pts,
+            pfn       = pfn,
+            W_num     = W_num,
+            W_max     = W_max,
+            W_min     = W_max/W_num,
+            sigma_num = sigma_num,
+            sigma_max = sigma_max,
+            sigma_min = 0.0,
+            bias_corr = corr,
+            generate  = generate
+            )
+        Xs.append(X)
+        Ys.append(Y)
+        errors_scans.append(error_scan)
+        bias_scans.append(bias_scan)
+    #end for
+    return X,Y,error_scans,bias_scans
+#end def
+
+# takes a set of points, hessian, parameters to define W and sigma grid
+#   x_n
+#   y_n
+#   H
+# returns W x sigma grid and total errors on it
+#   X, Y
+#   errors
+#   systematic bias
+def scan_linesearch_error(
+    x_n,
+    y_n,
+    H,
+    pfn       = 3,
+    pts       = 7,
+    x_0       = 0.0,
+    W_num     = 7,
+    W_min     = None,
+    W_max     = None,
+    sigma_num = 7,
+    sigma_min = 0.0,
+    sigma_max = None,
+    generate  = 1000,
+    quartile  = True,
+    bias_corr = None,
+    ):
+
+    W_eff = 0.5*H*max(abs(x_n))**2
+
+    if sigma_max is None:
+        sigma_max = W_eff/16 # max fluctuation set to 1/16 of effective W
+    #end if
+    sigmas = linspace(sigma_min, sigma_max, sigma_num)
+    
+    if W_max is None:
+        W_max = W_eff
+    #end if
+    if W_min is None:
+        W_min = W_max/W_num
+    #end if
+    Ws   = linspace(W_min, W_max, W_num)
+
+    Gs = random.randn(generate,pts)
+    xy_in = interp1d(x_n,y_n,kind='cubic')
+
+    X,Y = meshgrid(Ws,sigmas)
+
+    print('sigma #:   '+str(sigma_num))
+    print('sigma min: '+str(sigma_min))
+    print('sigma max: '+str(sigma_max))
+    print('W #:       '+str(W_num))
+    print('W min:     '+str(W_min))
+    print('W max:     '+str(W_max))
+    if quartile:
+        print('Using quartiles')
+    else:
+        print('Using jackknife')
+    #end if
+    
+    total_errors = []
+    sys_biases   = []
+    for w,W in enumerate(Ws):
+        if not bias_corr is None:
+            x_ref = x_0 + polyval(bias_corr,W)
+        else:
+            x_ref = x_0
+        #end iff
+        W_R      = (W/H/2)**0.5
+        x_r      = x_0 + linspace(-W_R,W_R,pts)
+        y_r      = xy_in(x_r)
+        y,x,p    = get_min_params(x_r,y_r,pfn)
+        sys_bias = x - x_ref # systematic bias
+        sys_biases.append(sys_bias)
+
+        total_errors_w = []
+        for s,sigma in enumerate(sigmas):
+            if quartile:
+                xdata = []
+                for n in range(generate):
+                    y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
+                    xdata.append(x_min)
+                #end for
+                dxdata      = array(xdata)
+                dxdata      = dxdata[~isnan(dxdata)] - x_ref  # remove nan
+                dxdata      = dxdata[dxdata.argsort()]     # sort
+                dxleft      = abs(dxdata[int(len(dxdata)/4)])
+                dxright     = abs(dxdata[int(3*len(dxdata)/4)])
+                total_error = max(dxleft,dxright)            
+            else: # jackknife
+                if abs(sigma-sigma_min)<1e-15:
+                    total_error = abs(sys_bias)
+                else:
+                    jackdata = y_r + sigma*generate**0.5*Gs
+                    jcapture = obj()
+                    jackknife(data     = jackdata,
+                              function = get_min_params,
+                              args     = [x_r,None,pfn],
+                              position = 1,
+                              capture  = jcapture)
+                    y_min,x_min,pf             = jcapture.jmean
+                    y_min_err,x_min_err,pf_err = jcapture.jerror
+                    total_error = abs(x_min-x_ref)+x_min_err
+                #end if
+            #end if
+            total_errors_w.append( total_error )
+        #end for
+        total_errors.append( total_errors_w )
+    #end for
+    total_errors = array(total_errors).T
+    sys_biases   = array(sys_biases)
+
+    return X,Y,total_errors,sys_biases
+#end def
+
+
+def bias_correction(
+    x_n,
+    y_n,
+    H,
+    pfn       = 3,
+    pts       = 7,
+    x_0       = 0.0,
+    W_num     = 7,
+    W_max     = None,
+    corrn     = 3,
+    ):
+
+    W_max = 0.5*H*max(abs(x_n))**2
+    Ws    = linspace(W_max/W_num,W_max,W_num)
+    xy_in = interp1d(x_n,y_n,kind='cubic')
+
+    sys_biases = []
+    for W in Ws:
+        W_R      = (W/H/2)**0.5
+        x_r      = x_0 + linspace(-W_R,W_R,pts)
+        y_r      = xy_in(x_r)
+        y,x,p    = get_min_params(x_r,y_r,pfn)
+        sys_bias = x - x_0 # systematic bias
+        sys_biases.append(sys_bias)
+    #end for
+    bias_corr = polyfit(Ws,sys_biases,corrn)
+    print('bias correction: '+str(bias_corr))
+
+    return bias_corr
+#end def
+
+
+def optimize_linesearch(
+    X,
+    Y,
+    error_surface,
+    epsilon     = 0.01,
+    show_plot   = True,
+    show_levels = 15,
+    savefig     = None,
+    title       = '',
+    ):
+
+    f,ax   = plt.subplots()
+    errors = False
+    ctf   = ax.contourf(X,Y,error_surface,show_levels)
+    ct1   = ax.contour(X,Y,error_surface,[epsilon],colors=['k'])
+
+    # find the optimal points
+    W_opt     = 0.0
+    sigma_opt = 0.0
+    for j in range(len(ct1.allsegs)):
+        for ii,seg in enumerate(ct1.allsegs[j]):
+            if not len(seg)==0:
+                i_opt = argmax(seg[:,1])
+                if seg[i_opt,1] > sigma_opt:
+                    W_opt     = seg[i_opt,0]
+                    sigma_opt = seg[i_opt,1]
+                #end if
+            #end if
+        #end for
+    #end for
+    if sigma_opt==0 or W_opt==0:
+        print('Warning: optimal points not found! Lower W and sigma ranges!')
+        errors = True
+    else:
+        ax.plot(W_opt,sigma_opt,'kx',label='W=%f, sigma=%f' % (W_opt,sigma_opt))
+    #end if
+    ax.set_xlabel('Energy window')
+    ax.set_ylabel('Input noise')
+    ax.legend()
+    ax.set_title(title+' total error')
+    plt.subplots_adjust(left=0.2,right=0.98)
+    f.colorbar(ctf)
+
+    if W_opt/max(X[0,:])==1.0:
+        print('Warning: bad resolution of W optimization. Increase W range!')
+        errors = True
+    #end if
+    if sigma_opt/max(Y[:,0])==1.0:
+        print('Warning: bad resolution of sigma optimization. Increase sigma range!')
+        errors = True
+    #end if
+
+    if not savefig is None:
+        plt.savefig(savefig)
+    #end if
+
+    print('optimal W:     '+str(W_opt))
+    print('optimal sigma: '+str(sigma_opt))
+    print('relative cost: '+str(sigma_opt**-2))
+
+    return W_opt,sigma_opt,errors
+#end def
+
+
 class IterationData():
 
     def __init__(
@@ -723,6 +1015,9 @@ class IterationData():
         use_optimal   = True,               # use optimal directions
         add_noise     = 0.0,                # add artificial noise
         generate      = 1000,               # generate samples
+        noises        = None,               # list of target noises for each direction
+        windows       = None,               # list of windows for each direction
+        corrections   = None,               # fitting bias correction
         # calculate method specifics
         type          = 'qmc',              # job type
         qmc_idx       = 1,
@@ -747,6 +1042,9 @@ class IterationData():
         self.use_optimal   = use_optimal
         self.add_noise     = add_noise
         self.generate      = generate
+        self.noises        = noises
+        self.windows       = windows
+        self.corrections   = corrections
 
         self.type          = type
         self.qmc_idx       = qmc_idx
@@ -758,7 +1056,7 @@ class IterationData():
         self.colors        = colors
 
         self.eqm_path      = self.path+self.eqm_str
-        self.is_noisy      = ( type=='qmc' or add_noise>0 or not anharmonicity is None )
+        self.is_noisy      = ( type=='qmc' or add_noise>0 or not anharmonicity is None or not noises is None )
         self.ready         = False
     #end def
 
@@ -784,7 +1082,6 @@ class IterationData():
         self.directions = directions
         self.hessian    = hessian
         self.epsilond   = linalg.inv(abs(self.M)) @ array(self.P*[self.epsilon]).T # scale target accuracy
-        print(self.epsilond)
     #end def
 
 
@@ -792,7 +1089,9 @@ class IterationData():
         if D_list is None:
             D_list = range(self.P) # by default, shift all
         #end if
-        shift_list    = []
+        shift_data    = []
+        shifts_d      = []
+
         sigma_min     = 1.0e99
         for p in range(self.P):
             shifts,sigma = self._shift_parameter(p)
@@ -808,11 +1107,13 @@ class IterationData():
                 row = pos,path,sigma,shift
                 shift_rows.append(row)
             #end for
-            shift_list.append(shift_rows)
+            shift_data.append(shift_rows)
+            shifts_d.append(shifts)
             sigma_min = min(sigma_min,sigma)
         #end for
         self.sigma_min  = sigma_min
-        self.shift_list = shift_list # dimensions: P x S x (pos,path,sigma,shift)
+        self.shifts     = shifts_d
+        self.shift_data = shift_data # dimensions: P x S x (pos,path,sigma,shift)
     #end def
 
     # requires that nexus has been initiated
@@ -822,7 +1123,7 @@ class IterationData():
         jobs     = eqm_jobs
         for p in range(self.P):
             for s in range(self.S):
-                pos,path,sigma,shift = self.shift_list[p][s]
+                pos,path,sigma,shift = self.shift_data[p][s]
                 if not path==self.eqm_path:
                     if self.type=='qmc':
                         jastrow_job = eqm_jobs[self.qmc_j_idx]
@@ -857,13 +1158,13 @@ class IterationData():
             PES_err_row = []
             shifts      = []
             for s in range(self.S):
-                pos,path,sigma,shift = self.shift_list[p][s]
+                pos,path,sigma,shift = self.shift_data[p][s]
                 if path==self.eqm_path:
                     E   = self.E
                     Err = self.Err
                 else:
                     E,Err = self._load_energy_error(path+self.load_postfix)
-                    #E    += sigma*random.randn((1))[0]
+                    #E    += sigma*random.randn(1)[0]
                     Err  += sigma
                 #end if
                 if E < Epred:
@@ -875,6 +1176,11 @@ class IterationData():
                 PES_err_row.append(Err)
             #end for
             Emin,Emin_err,Dmin,Dmin_err,pf = self._get_shift_minimum(shifts,PES_row,PES_err_row)
+            # bias corrections
+            if not self.corrections is None:
+                Dmin += polyval(corrections[p],self.W[p])
+                print(polyval(corrections[p],self.W[p]))
+            #end if
             Emins.append(Emin)
             Dmins.append(Dmin)
             Emins_err.append(Emin_err)
@@ -948,18 +1254,16 @@ class IterationData():
         pfn = self.pfn
         S   = self.S
         k   = self.hessian_e[p]
-        if self.anharmonicity is None: # use just fixed energy window
-            W     = self.W
-            sigma = self.add_noise
-        else:
+        if not ( self.noises is None or self.windows is None):
+            W     = self.windows[p]
+            sigma = self.noises[p]
+        elif not self.anharmonicity is None:
             a       = self.anharmonicity[p]
             b       = calculate_b(k=k,S=S,pfn=pfn)
             W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[p]))
-            print(p,a,b,self.epsilond[p],W,sigma)
-            print('bias: ' ,a*W**2)
-            print('noise: ',sigma*b*W**-0.5)
-            print('bias  (param):',abs(self.M[:,p])*a*W**2)
-            print('noise (param):',sigma*b*abs(self.M[:,p])*W**-0.5)
+        else: # use fixed energy window
+            W     = self.W
+            sigma = self.add_noise
         #end if
         lim    = (2*W/k)**0.5
         shifts = linspace(-lim,lim,S)
@@ -1002,9 +1306,6 @@ class IterationData():
                       capture  = jcapture)
             Emin,Dmin,pf = jcapture.jmean
             Emin_err,Dmin_err,pf_err = jcapture.jerror
-            print('jack:', Dmin)
-            Emin,Dmin,pf = get_min_params(shifts,PES,pfn) # TODO: remove this when this is over
-            print('acc:',  Dmin)
         else:
             Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
             Emin_err,Dmin_err,pf_err = 0.,0.,0.
