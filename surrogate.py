@@ -408,15 +408,15 @@ def surrogate_anharmonicity(data,pfn=None,output=False):
 # returns: optimal energy window, target input errorbars
 def get_optimal_noise_window(a, b, epsilon=0.01, pfn=3):
     if pfn==2:
-        W_E      = epsilon/3/a
+        W        = epsilon/3/a
         sigma_in = 2*a/b*(epsilon/3/a)**1.5
     elif pfn==3 or pfn==4:
-        W_E      = (epsilon/5/a)**0.5
+        W        = (epsilon/5/a)**0.5
         sigma_in = 4*a/b*(epsilon/5/a)**(5/4)
     else: 
         print('The order not supported')
     #end if
-    return W_E, sigma_in
+    return W, sigma_in
 #end def
 
 
@@ -740,7 +740,18 @@ def surrogate_diagnostics(data_list):
 #end def
 
 
-def init_error_scan(
+def W_to_R(W,H):
+    R = (2*W/H)**0.5
+    return R
+#end def
+
+def R_to_W(R,H):
+    W = 0.5*H*R**2
+    return W
+#end def
+
+
+def error_scan_data(
     data,
     pfn,
     pts,
@@ -752,10 +763,11 @@ def init_error_scan(
     generate  = 1000,
     ):
 
-    Xs          = []
-    Ys          = []
-    error_scans = []
-    bias_scans  = []
+    Xs = []
+    Ys = []
+    Es = []
+    Bs = []
+    Bcorrs = []
     for d in range(data.P):
         x_n      = data.shifts[d]
         y_n      = data.PES[d]
@@ -765,7 +777,7 @@ def init_error_scan(
         else:
             corr = None
         #end if
-        X,Y,error_scan,bias_scan = scan_linesearch_error(
+        X,Y,E,B = scan_linesearch_error(
             x_n,
             y_n,
             H,
@@ -778,14 +790,18 @@ def init_error_scan(
             sigma_max = sigma_max,
             sigma_min = 0.0,
             bias_corr = corr,
-            generate  = generate
+            generate  = generate,
             )
         Xs.append(X)
         Ys.append(Y)
-        errors_scans.append(error_scan)
-        bias_scans.append(bias_scan)
+        Es.append(E)
+        Bs.append(B)
+        Bcorrs.append(corr)
     #end for
-    return X,Y,error_scans,bias_scans
+    if corrn==0:
+         Bcorrs = None
+    #end if
+    return Xs,Ys,Es,Bs,Bcorrs
 #end def
 
 # takes a set of points, hessian, parameters to define W and sigma grid
@@ -814,7 +830,7 @@ def scan_linesearch_error(
     bias_corr = None,
     ):
 
-    W_eff = 0.5*H*max(abs(x_n))**2
+    W_eff = R_to_W(max(abs(x_n)),H)
 
     if sigma_max is None:
         sigma_max = W_eff/16 # max fluctuation set to 1/16 of effective W
@@ -854,8 +870,8 @@ def scan_linesearch_error(
         else:
             x_ref = x_0
         #end iff
-        W_R      = (W/H/2)**0.5
-        x_r      = x_0 + linspace(-W_R,W_R,pts)
+        R        = W_to_R(W,H)
+        x_r      = x_0 + linspace(-R,R,pts)
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
         sys_bias = x - x_ref # systematic bias
@@ -863,7 +879,9 @@ def scan_linesearch_error(
 
         total_errors_w = []
         for s,sigma in enumerate(sigmas):
-            if quartile:
+            if sigma > W*2:
+                total_error = nan
+            elif quartile:
                 xdata = []
                 for n in range(generate):
                     y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
@@ -914,14 +932,14 @@ def bias_correction(
     corrn     = 3,
     ):
 
-    W_max = 0.5*H*max(abs(x_n))**2
+    W_max = R_to_W(max(abs(x_n),H))
     Ws    = linspace(W_max/W_num,W_max,W_num)
     xy_in = interp1d(x_n,y_n,kind='cubic')
 
     sys_biases = []
     for W in Ws:
-        W_R      = (W/H/2)**0.5
-        x_r      = x_0 + linspace(-W_R,W_R,pts)
+        R        = W_to_R(W,H)
+        x_r      = x_0 + linspace(-R,R,pts)
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
         sys_bias = x - x_0 # systematic bias
@@ -943,6 +961,7 @@ def optimize_linesearch(
     show_levels = 15,
     savefig     = None,
     title       = '',
+    output      = False,
     ):
 
     f,ax   = plt.subplots()
@@ -972,17 +991,17 @@ def optimize_linesearch(
     #end if
     ax.set_xlabel('Energy window')
     ax.set_ylabel('Input noise')
-    ax.legend()
-    ax.set_title(title+' total error')
+    ax.legend(fontsize=8)
+    ax.set_title(title+' total error, epsilond=%f' %epsilon)
     plt.subplots_adjust(left=0.2,right=0.98)
     f.colorbar(ctf)
 
     if W_opt/max(X[0,:])==1.0:
-        print('Warning: bad resolution of W optimization. Increase W range!')
+        print('Warning: bad resolution of W optimization. Increase W range from %f!' % amax(X))
         errors = True
     #end if
     if sigma_opt/max(Y[:,0])==1.0:
-        print('Warning: bad resolution of sigma optimization. Increase sigma range!')
+        print('Warning: bad resolution of sigma optimization. Increase sigma range from %f!' % amax(Y))
         errors = True
     #end if
 
@@ -990,9 +1009,11 @@ def optimize_linesearch(
         plt.savefig(savefig)
     #end if
 
-    print('optimal W:     '+str(W_opt))
-    print('optimal sigma: '+str(sigma_opt))
-    print('relative cost: '+str(sigma_opt**-2))
+    if output:
+        print('optimal W:     '+str(W_opt))
+        print('optimal sigma: '+str(sigma_opt))
+        print('relative cost: '+str(sigma_opt**-2))
+    #end if
 
     return W_opt,sigma_opt,errors
 #end def
@@ -1011,7 +1032,7 @@ class IterationData():
         # line-search properties
         W             = 0.01,               # energy window
         anharmonicity = None,               # estimated anharmonicities
-        epsilon       = 0.01,               # target accuracy for parameters
+        #epsilon       = 0.01,               # target accuracy for parameters
         use_optimal   = True,               # use optimal directions
         add_noise     = 0.0,                # add artificial noise
         generate      = 1000,               # generate samples
@@ -1038,7 +1059,7 @@ class IterationData():
 
         self.W             = W
         self.anharmonicity = anharmonicity
-        self.epsilon       = epsilon
+        #self.epsilon       = epsilon
         self.use_optimal   = use_optimal
         self.add_noise     = add_noise
         self.generate      = generate
@@ -1081,9 +1102,42 @@ class IterationData():
         self.hessian_v  = vects.T
         self.directions = directions
         self.hessian    = hessian
-        self.epsilond   = linalg.inv(abs(self.M)) @ array(self.P*[self.epsilon]).T # scale target accuracy
     #end def
 
+    def get_epsilond(self, epsilon):
+        M2       = self.M**2
+        epsilon2 = array(self.P*[epsilon**2]).T
+        return (linalg.inv(M2) @ epsilon2)**0.5
+    #end def
+
+    def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01):
+        epsilond   = self.get_epsilond(epsilon)
+        windows    = []
+        noises     = []
+        bias_corrs = []
+        for d in range(self.P):
+            X = Xs[d]
+            Y = Ys[d]
+            E = Es[d]
+            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon))
+            if not Bcs is None:
+                Bc        = Bcs[d]
+                bias_corr = polyval(Bcs,W)
+            else:
+                bias_corr = 0.0
+            #end if
+            bias_corrs.append(bias_corr)
+            windows.append(W)
+            noises.append(sigma)
+        #end for
+        self.bias_corrs = bias_corrs
+        self.epsilon    = epsilon
+        self.epsilond   = epsilond
+        self.noises     = noises
+        self.windows    = windows
+        self.is_noisy   = True
+        return errors
+    #end def
 
     def shift_positions(self,D_list=None):
         if D_list is None:
@@ -1253,20 +1307,20 @@ class IterationData():
     def _shift_parameter(self,p):
         pfn = self.pfn
         S   = self.S
-        k   = self.hessian_e[p]
+        H   = self.hessian_e[p]
         if not ( self.noises is None or self.windows is None):
             W     = self.windows[p]
             sigma = self.noises[p]
         elif not self.anharmonicity is None:
             a       = self.anharmonicity[p]
-            b       = calculate_b(k=k,S=S,pfn=pfn)
+            b       = calculate_b(k=H,S=S,pfn=pfn)
             W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[p]))
         else: # use fixed energy window
             W     = self.W
             sigma = self.add_noise
         #end if
-        lim    = (2*W/k)**0.5
-        shifts = linspace(-lim,lim,S)
+        R      = W_to_R(W,H)
+        shifts = linspace(-R,R,S)
         return shifts,sigma
     #end def
 
@@ -1304,7 +1358,8 @@ class IterationData():
                       args     = [shifts,None,pfn],
                       position = 1,
                       capture  = jcapture)
-            Emin,Dmin,pf = jcapture.jmean
+            #Emin,Dmin,pf = jcapture.jmean
+            Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
             Emin_err,Dmin_err,pf_err = jcapture.jerror
         else:
             Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
@@ -1318,7 +1373,7 @@ class IterationData():
     def _compute_next_pos(self):
         pos_next = self.pos.copy() + self.Dmins @ self.directions
         P,PV     = self.pos_to_params(pos_next)
-        PV_err   = abs(self.M @ self.Dmins_err)
+        PV_err   = (self.M**2 @ array(self.Dmins_err)**2)**0.5 # sum of statistical errors
         self.pos_next            = pos_next
         self.param_vals_next     = PV
         self.param_vals_next_err = PV_err
