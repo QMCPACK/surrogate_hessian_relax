@@ -634,28 +634,32 @@ def plot_error_cost(
         label     = '',
         max_error = True,
      ):
+    data0 = data_list[0]
+    if target is None:
+        if data0.targets is None:
+            target = 0.0
+        else:
+            target = data0.targets[p_idx]
+        #end if
+    #end if
     costs  = []
     PVs    = []
     PVes   = []
     cost   = 0.0 # accumulated cost per iteration
     for data in data_list:
         PES       = array(data.PES)
-        PES_error = array(data.PES_error)
+        PES_err   = array(data.PES_err)
         sh        = PES.shape
         for r in range(sh[0]):
             for c in range(sh[1]):
-                cost += PES_error[r,c]**(-2)
+                cost += PES_err[r,c]**(-2)
             #end for
         #end for
         costs.append(cost)
 
-        P_vals = data.P_vals_next[p_idx]
-        P_errs = data.P_vals_err[p_idx]
-        if target is None:
-            PVs.append( abs(P_vals) + P_errs )
-        else:
-            PVs.append( abs(P_vals - target) + P_errs )
-        #end if
+        P_vals = data.param_vals_next[p_idx]
+        P_errs = data.param_vals_next_err[p_idx]
+        PVs.append( abs(P_vals - target) + P_errs )
         PVes.append( P_errs )
     #end for
     if max_error:
@@ -932,7 +936,7 @@ def bias_correction(
     corrn     = 3,
     ):
 
-    W_max = R_to_W(max(abs(x_n),H))
+    W_max = R_to_W(max(abs(0.9999999*x_n)),H)
     Ws    = linspace(W_max/W_num,W_max,W_num)
     xy_in = interp1d(x_n,y_n,kind='cubic')
 
@@ -1013,6 +1017,9 @@ def optimize_linesearch(
         print('optimal W:     '+str(W_opt))
         print('optimal sigma: '+str(sigma_opt))
         print('relative cost: '+str(sigma_opt**-2))
+    #end if
+    if not show_plot:
+        plt.close(f)
     #end if
 
     return W_opt,sigma_opt,errors
@@ -1110,7 +1117,7 @@ class IterationData():
         return (linalg.inv(M2) @ epsilon2)**0.5
     #end def
 
-    def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01):
+    def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01,show_plot=False):
         epsilond   = self.get_epsilond(epsilon)
         windows    = []
         noises     = []
@@ -1119,7 +1126,7 @@ class IterationData():
             X = Xs[d]
             Y = Ys[d]
             E = Es[d]
-            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon))
+            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
             if not Bcs is None:
                 Bc        = Bcs[d]
                 bias_corr = polyval(Bcs,W)
@@ -1195,7 +1202,7 @@ class IterationData():
         # load eqm
         E_eqm,Err_eqm  = self._load_energy_error(self.eqm_path+self.load_postfix)
         sigma_eqm      = self.sigma_min
-        self.E         = E_eqm # +sigma_eqm*random.randn(1)[0]
+        self.E         = E_eqm +sigma_eqm*random.randn(1)[0]
         self.Err       = Err_eqm+sigma_eqm
         # load ls
         Epred          = 1.0e99
@@ -1218,7 +1225,7 @@ class IterationData():
                     Err = self.Err
                 else:
                     E,Err = self._load_energy_error(path+self.load_postfix)
-                    #E    += sigma*random.randn(1)[0]
+                    E    += sigma*random.randn(1)[0]
                     Err  += sigma
                 #end if
                 if E < Epred:
