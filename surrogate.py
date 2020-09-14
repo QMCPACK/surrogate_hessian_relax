@@ -1114,7 +1114,7 @@ class IterationData():
     def get_epsilond(self, epsilon):
         M2       = self.M**2
         epsilon2 = array(self.P*[epsilon**2]).T
-        return (linalg.inv(M2) @ epsilon2)**0.5
+        return (abs(linalg.inv(M2) @ epsilon2))**0.5
     #end def
 
     def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01,show_plot=False):
