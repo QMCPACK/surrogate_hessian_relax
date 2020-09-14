@@ -765,8 +765,10 @@ def error_scan_data(
     W_num     = 11,
     sigma_num = 11,
     generate  = 1000,
+    relative  = False,
     ):
 
+    epsilond = data.get_epsilond(1.0)
     Xs = []
     Ys = []
     Es = []
@@ -781,6 +783,11 @@ def error_scan_data(
         else:
             corr = None
         #end if
+        if relative:
+            sigma_rel = sigma_max*epsilond[d]
+        else:
+            sigma_rel = sigma_max
+        #end if
         X,Y,E,B = scan_linesearch_error(
             x_n,
             y_n,
@@ -791,7 +798,7 @@ def error_scan_data(
             W_max     = W_max,
             W_min     = W_max/W_num,
             sigma_num = sigma_num,
-            sigma_max = sigma_max,
+            sigma_max = sigma_rel,
             sigma_min = 0.0,
             bias_corr = corr,
             generate  = generate,
