@@ -391,7 +391,7 @@ def surrogate_anharmonicity(data,pfn=None,output=False):
     param_vals = data.param_vals_next
     print('D model    : '+str(ans*W**2))
     print('D bias     : '+str(data.Dmins))
-    print('P model    : '+str(data.M @ ans *W**2))
+    #print('P model    : '+str(data.M @ ans *W**2))
     print('P bias     : '+str(param_vals-targets))
     print('anharm.    : '+str(ans))
     return ans
@@ -765,7 +765,7 @@ def error_scan_data(
     W_num     = 11,
     sigma_num = 11,
     generate  = 1000,
-    relative  = False,
+    relative  = True,
     ):
 
     epsilond = data.get_epsilond(1.0)
@@ -773,11 +773,13 @@ def error_scan_data(
     Ys = []
     Es = []
     Bs = []
+    Gs = []
     Bcorrs = []
     for d in range(data.P):
         x_n      = data.shifts[d]
         y_n      = data.PES[d]
         H        = data.hessian_e[d]
+
         if corrn>0:
             corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
         else:
@@ -788,7 +790,7 @@ def error_scan_data(
         else:
             sigma_rel = sigma_max
         #end if
-        X,Y,E,B = scan_linesearch_error(
+        X,Y,E,B,G = scan_linesearch_error(
             x_n,
             y_n,
             H,
@@ -807,12 +809,13 @@ def error_scan_data(
         Ys.append(Y)
         Es.append(E)
         Bs.append(B)
+        Gs.append(G)
         Bcorrs.append(corr)
     #end for
     if corrn==0:
          Bcorrs = None
     #end if
-    return Xs,Ys,Es,Bs,Bcorrs
+    return Xs,Ys,Es,Bs,Bcorrs,Gs
 #end def
 
 # takes a set of points, hessian, parameters to define W and sigma grid
@@ -873,8 +876,8 @@ def scan_linesearch_error(
         print('Using jackknife')
     #end if
     
-    total_errors = []
-    sys_biases   = []
+    Es = []
+    Bs = []
     for w,W in enumerate(Ws):
         if not bias_corr is None:
             x_ref = x_0 + polyval(bias_corr,W)
@@ -885,10 +888,10 @@ def scan_linesearch_error(
         x_r      = x_0 + linspace(-R,R,pts)
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
-        sys_bias = x - x_ref # systematic bias
-        sys_biases.append(sys_bias)
+        B        = x - x_ref # systematic bias
+        Bs.append(B)
 
-        total_errors_w = []
+        E_w = []
         for s,sigma in enumerate(sigmas):
             if sigma > W*2:
                 total_error = nan
@@ -899,11 +902,11 @@ def scan_linesearch_error(
                     xdata.append(x_min)
                 #end for
                 dxdata      = array(xdata)
-                dxdata      = dxdata[~isnan(dxdata)] - x_ref  # remove nan
+                dxdata      = dxdata[~isnan(dxdata)] - B  # remove nan
                 dxdata      = dxdata[dxdata.argsort()]     # sort
                 dxleft      = abs(dxdata[int(len(dxdata)/4)])
                 dxright     = abs(dxdata[int(3*len(dxdata)/4)])
-                total_error = max(dxleft,dxright)            
+                E           = max(dxleft,dxright) + abs(B)
             else: # jackknife
                 if abs(sigma-sigma_min)<1e-15:
                     total_error = abs(sys_bias)
@@ -917,17 +920,17 @@ def scan_linesearch_error(
                               capture  = jcapture)
                     y_min,x_min,pf             = jcapture.jmean
                     y_min_err,x_min_err,pf_err = jcapture.jerror
-                    total_error = abs(x_min-x_ref)+x_min_err
+                    E = abs(x_min-x_ref)+x_min_err
                 #end if
             #end if
-            total_errors_w.append( total_error )
+            E_w.append( E )
         #end for
-        total_errors.append( total_errors_w )
+        Es.append( E_w )
     #end for
-    total_errors = array(total_errors).T
-    sys_biases   = array(sys_biases)
+    Es = array(Es).T
+    Bs = array(Bs)
 
-    return X,Y,total_errors,sys_biases
+    return X,Y,Es,Bs,Gs
 #end def
 
 
@@ -963,10 +966,48 @@ def bias_correction(
 #end def
 
 
+def get_search_distribution(
+    x_n,
+    y_n,
+    H,
+    W_opt,
+    sigma_opt,
+    pfn,
+    pts,
+    Gs        = None,
+    generate  = 1000,
+    x_0       = 0.0,
+    ):
+    
+    xy_in = interp1d(x_n,y_n,kind='cubic')
+
+    if Gs is None:
+        Gs = random.randn(generate,pts)
+    else:
+        generate = Gs.shape[0]
+    #end if
+
+    R      = W_to_R(W,H)
+    x_r    = x_0 + linspace(-R,R,pts)
+    y_r    = xy_in(x_r)
+    y,x,p  = get_min_params(x_r,y_r,pfn)
+    B      = x - x_0 # systematic bias
+
+    xdata = []
+    for n in range(generate):
+        y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
+        xdata.append(x_min)
+    #end for
+    dxdata      = array(xdata)
+    dxdata      = dxdata[~isnan(dxdata)] - B   # remove nan
+    return dxdata
+#end def
+
+
 def optimize_linesearch(
     X,
     Y,
-    error_surface,
+    E,
     epsilon     = 0.01,
     show_plot   = True,
     show_levels = 15,
@@ -977,8 +1018,8 @@ def optimize_linesearch(
 
     f,ax   = plt.subplots()
     errors = False
-    ctf   = ax.contourf(X,Y,error_surface,show_levels)
-    ct1   = ax.contour(X,Y,error_surface,[epsilon],colors=['k'])
+    ctf   = ax.contourf(X,Y,E,show_levels)
+    ct1   = ax.contour( X,Y,E,[epsilon],colors=['k'])
 
     # find the optimal points
     W_opt     = 0.0
@@ -1037,7 +1078,6 @@ class IterationData():
 
     def __init__(
         self,
-        pos_to_params = None,               # function handle to get parameters from pos
         get_jobs      = None,               # function handle to get nexus jobs
         n             = 0,                  # iteration number
         pfn           = 4,                  # polyfit degree
@@ -1064,7 +1104,6 @@ class IterationData():
         colors        = None,               # colors for parameters
         ):
 
-        self.pos_to_params = pos_to_params
         self.get_jobs      = get_jobs
         self.n             = n
         self.pfn           = pfn
@@ -1095,33 +1134,29 @@ class IterationData():
         self.ready         = False
     #end def
 
-    def load_pos(self, pos):
+    def load_pos_delta(self, pos, delta):
         self.pos           = pos
-        P,PV               = self.pos_to_params(pos)
-        self.params        = P
-        self.param_vals    = PV
-        self.P             = len(PV)
+        self.delta         = delta
+        self.delta_pinv    = linalg.pinv(delta)
+        self.param_vals    = self.delta_pinv @ pos
+        self.P             = delta.shape[1]
     #end def
 
-    def load_hessian(self, hessian): # takes the parameter Hessian
-        eigs,vects      = linalg.eig(hessian)
-        directions      = vects.T @ self.params
-        M               = [] # propagation matrix from directions to params: dP = M x dD
-        for d,direction in enumerate(directions):
-            dP,dPV = self.pos_to_params(direction)
-            M.append(dPV)
-        #end for
-        self.M          = array(M).T
-        self.hessian_e  = eigs
-        self.hessian_v  = vects.T
+    def load_hessian(self, hessian_delta): # takes the parameter Hessian
+        Lambda,U        = linalg.eig(hessian_delta)
+        U               = U.T
+        delta           = self.delta
+        directions      = delta @ U.T
+        self.Lambda     = Lambda
+        self.U          = U
         self.directions = directions
-        self.hessian    = hessian
+        self.hessian    = hessian_delta
+        self.D          = directions.shape[1]
     #end def
 
     def get_epsilond(self, epsilon):
-        M2       = self.M**2
-        epsilon2 = array(self.P*[epsilon**2]).T
-        return (linalg.inv(M2) @ epsilon2)**0.5
+        epsilond = self.U.T @ array(self.P*[epsilon]).T
+        return abs(epsilond)
     #end def
 
     def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01,show_plot=False):
@@ -1129,7 +1164,7 @@ class IterationData():
         windows    = []
         noises     = []
         bias_corrs = []
-        for d in range(self.P):
+        for d in range(self.D):
             X = Xs[d]
             Y = Ys[d]
             E = Es[d]
@@ -1155,21 +1190,28 @@ class IterationData():
 
     def shift_positions(self,D_list=None):
         if D_list is None:
-            D_list = range(self.P) # by default, shift all
+            D_list = range(self.D) # by default, shift all
         #end if
         shift_data    = []
         shifts_d      = []
 
         sigma_min     = 1.0e99
-        for p in range(self.P):
-            shifts,sigma = self._shift_parameter(p)
-            direction    = self.directions[p]
+        for d in D_list:
+            shifts,sigma = self._shift_parameter(d)
+            minuss       = len(shifts[shifts<0.0])
+            pluss        = 1
+            direction    = self.directions[:,d]
             shift_rows   = []
+            # assume that shifts come in order
             for s,shift in enumerate(shifts):
                 if abs(shift)<1e-10: #eqm
                     path = self.eqm_path
+                elif shift<0.0:
+                    path = self.path+'d'+str(d)+'_m'+str(minuss)
+                    minuss -= 1
                 else:
-                    path = self.path+'p'+str(p)+'_s'+str(s)
+                    path = self.path+'d'+str(d)+'_p'+str(pluss)
+                    pluss += 1
                 #end if
                 pos = self.pos.copy() + shift*direction
                 row = pos,path,sigma,shift
@@ -1189,9 +1231,9 @@ class IterationData():
         # eqm jobs
         eqm_jobs = self.get_jobs(pos=self.pos,path=self.eqm_path,sigma=self.sigma_min)
         jobs     = eqm_jobs
-        for p in range(self.P):
+        for d in range(self.D):
             for s in range(self.S):
-                pos,path,sigma,shift = self.shift_data[p][s]
+                pos,path,sigma,shift = self.shift_data[d][s]
                 if not path==self.eqm_path:
                     if self.type=='qmc':
                         jastrow_job = eqm_jobs[self.qmc_j_idx]
@@ -1221,12 +1263,12 @@ class IterationData():
         PES_err        = []
         Dshifts        = []
         pfs            = []
-        for p in range(self.P):
+        for d in range(self.D):
             PES_row     = []
             PES_err_row = []
             shifts      = []
             for s in range(self.S):
-                pos,path,sigma,shift = self.shift_data[p][s]
+                pos,path,sigma,shift = self.shift_data[d][s]
                 if path==self.eqm_path:
                     E   = self.E
                     Err = self.Err
@@ -1246,8 +1288,8 @@ class IterationData():
             Emin,Emin_err,Dmin,Dmin_err,pf = self._get_shift_minimum(shifts,PES_row,PES_err_row)
             # bias corrections
             if not self.corrections is None:
-                Dmin += polyval(corrections[p],self.W[p])
-                print(polyval(corrections[p],self.W[p]))
+                Dmin += polyval(corrections[d],self.W[d])
+                print(polyval(corrections[d],self.W[d]))
             #end if
             Emins.append(Emin)
             Dmins.append(Dmin)
@@ -1311,24 +1353,24 @@ class IterationData():
         #end if
 
         new_data = IterationData(n=n, **ls_settings)
-        new_data.load_pos(self.pos_next)
+        new_data.load_pos_delta(self.pos_next, self.delta)
         new_data.load_hessian(self.hessian)
         new_data.shift_positions()
         return new_data
     #end def
 
 
-    def _shift_parameter(self,p):
+    def _shift_parameter(self,d):
         pfn = self.pfn
         S   = self.S
-        H   = self.hessian_e[p]
+        H   = self.Lambda[d]
         if not ( self.noises is None or self.windows is None):
-            W     = self.windows[p]
-            sigma = self.noises[p]
+            W     = self.windows[d]
+            sigma = self.noises[d]
         elif not self.anharmonicity is None:
-            a       = self.anharmonicity[p]
+            a       = self.anharmonicity[d]
             b       = calculate_b(k=H,S=S,pfn=pfn)
-            W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[p]))
+            W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[d]))
         else: # use fixed energy window
             W     = self.W
             sigma = self.add_noise
@@ -1385,9 +1427,10 @@ class IterationData():
     
     
     def _compute_next_pos(self):
-        pos_next = self.pos.copy() + self.Dmins @ self.directions
-        P,PV     = self.pos_to_params(pos_next)
-        PV_err   = (self.M**2 @ array(self.Dmins_err)**2)**0.5 # sum of statistical errors
+        pos_next = self.pos.copy() + self.directions @ self.Dmins
+        PV       = self.delta_pinv @ pos_next
+        #PV_err   = (self.M**2 @ array(self.Dmins_err)**2)**0.5 # sum of statistical errors
+        PV_err   = abs(self.U.T @ self.Dmins_err) # TODO: improve
         self.pos_next            = pos_next
         self.param_vals_next     = PV
         self.param_vals_next_err = PV_err
