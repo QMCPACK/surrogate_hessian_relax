@@ -778,7 +778,7 @@ def error_scan_data(
     for d in range(data.P):
         x_n      = data.shifts[d]
         y_n      = data.PES[d]
-        H        = data.hessian_e[d]
+        H        = data.Lambda[d]
 
         if corrn>0:
             corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
@@ -817,6 +817,37 @@ def error_scan_data(
     #end if
     return Xs,Ys,Es,Bs,Bcorrs,Gs
 #end def
+
+
+def propagate_search_error(
+    Ds,
+    U,
+    ):
+
+    generate = Ds.shape[0]
+    P        = Ds.shape[1]
+
+    data = []
+    for n in range(generate):
+        Dp = Ds[n] @ U 
+        data.append(Dp)
+    #end for
+    data = array(data)
+
+    Errs = []
+    for p in range(P):
+        pdata   = array(data[:,p])
+        pdata   = pdata[~isnan(pdata)]       # remove nan
+        pdata   = pdata[pdata.argsort()]     # sort
+        dpleft  = abs(pdata[int(len(pdata)/4)])
+        dpright = abs(pdata[int(3*len(pdata)/4)])
+        Err     = max(dpleft,dpright)
+        Errs.append(Err)
+    #end for
+
+    return data,Errs
+#end def
+
 
 # takes a set of points, hessian, parameters to define W and sigma grid
 #   x_n
@@ -893,8 +924,8 @@ def scan_linesearch_error(
 
         E_w = []
         for s,sigma in enumerate(sigmas):
-            if sigma > W*2:
-                total_error = nan
+            if sigma > W*1.5:
+                E = nan
             elif quartile:
                 xdata = []
                 for n in range(generate):
@@ -987,7 +1018,7 @@ def get_search_distribution(
         generate = Gs.shape[0]
     #end if
 
-    R      = W_to_R(W,H)
+    R      = W_to_R(W_opt,H)
     x_r    = x_0 + linspace(-R,R,pts)
     y_r    = xy_in(x_r)
     y,x,p  = get_min_params(x_r,y_r,pfn)
@@ -995,11 +1026,11 @@ def get_search_distribution(
 
     xdata = []
     for n in range(generate):
-        y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
+        y_min,x_min,pf = get_min_params(x_r,y_r+sigma_opt*Gs[n],pfn)
         xdata.append(x_min)
     #end for
-    dxdata      = array(xdata)
-    dxdata      = dxdata[~isnan(dxdata)] - B   # remove nan
+    dxdata      = array(xdata) - B
+    #dxdata      = dxdata[~isnan(dxdata)] - B   # remove nan
     return dxdata
 #end def
 
