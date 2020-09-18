@@ -755,73 +755,12 @@ def R_to_W(R,H):
 #end def
 
 
-def error_scan_data(
-    data,
-    pfn,
-    pts,
-    W_max,
-    sigma_max,
-    corrn     = 0,
-    W_num     = 11,
-    sigma_num = 11,
-    generate  = 1000,
-    relative  = True,
-    ):
-
-    epsilond = data.get_epsilond(1.0)
-    Xs = []
-    Ys = []
-    Es = []
-    Bs = []
-    Gs = []
-    Bcorrs = []
-    for d in range(data.P):
-        x_n      = data.shifts[d]
-        y_n      = data.PES[d]
-        H        = data.Lambda[d]
-
-        if corrn>0:
-            corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
-        else:
-            corr = None
-        #end if
-        if relative:
-            sigma_rel = sigma_max*epsilond[d]
-        else:
-            sigma_rel = sigma_max
-        #end if
-        X,Y,E,B,G = scan_linesearch_error(
-            x_n,
-            y_n,
-            H,
-            pts       = pts,
-            pfn       = pfn,
-            W_num     = W_num,
-            W_max     = W_max,
-            W_min     = W_max/W_num,
-            sigma_num = sigma_num,
-            sigma_max = sigma_rel,
-            sigma_min = 0.0,
-            bias_corr = corr,
-            generate  = generate,
-            )
-        Xs.append(X)
-        Ys.append(Y)
-        Es.append(E)
-        Bs.append(B)
-        Gs.append(G)
-        Bcorrs.append(corr)
-    #end for
-    if corrn==0:
-         Bcorrs = None
-    #end if
-    return Xs,Ys,Es,Bs,Bcorrs,Gs
-#end def
 
 
 def propagate_search_error(
     Ds,
     U,
+    fraction = 0.159
     ):
 
     generate = Ds.shape[0]
@@ -839,8 +778,8 @@ def propagate_search_error(
         pdata   = array(data[:,p])
         pdata   = pdata[~isnan(pdata)]       # remove nan
         pdata   = pdata[pdata.argsort()]     # sort
-        dpleft  = abs(pdata[int(len(pdata)/4)])
-        dpright = abs(pdata[int(3*len(pdata)/4)])
+        dpleft  = abs(pdata[int(len(pdata)*fraction)])
+        dpright = abs(pdata[int(len(pdata)*(1-fraction))])
         Err     = max(dpleft,dpright)
         Errs.append(Err)
     #end for
@@ -871,7 +810,7 @@ def scan_linesearch_error(
     sigma_min = 0.0,
     sigma_max = None,
     generate  = 1000,
-    quartile  = True,
+    fraction  = 0.159,
     bias_corr = None,
     ):
 
@@ -901,8 +840,8 @@ def scan_linesearch_error(
     print('W #:       '+str(W_num))
     print('W min:     '+str(W_min))
     print('W max:     '+str(W_max))
-    if quartile:
-        print('Using quartiles')
+    if fraction > 0.0:
+        print('Using fraction=%f' %fraction)
     else:
         print('Using jackknife')
     #end if
@@ -926,7 +865,7 @@ def scan_linesearch_error(
         for s,sigma in enumerate(sigmas):
             if sigma > W*1.5:
                 E = nan
-            elif quartile:
+            elif fraction>0.0:
                 xdata = []
                 for n in range(generate):
                     y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
@@ -935,8 +874,8 @@ def scan_linesearch_error(
                 dxdata      = array(xdata)
                 dxdata      = dxdata[~isnan(dxdata)] - B  # remove nan
                 dxdata      = dxdata[dxdata.argsort()]     # sort
-                dxleft      = abs(dxdata[int(len(dxdata)/4)])
-                dxright     = abs(dxdata[int(3*len(dxdata)/4)])
+                dxleft      = abs(dxdata[int(len(dxdata)*fraction)])
+                dxright     = abs(dxdata[int(len(dxdata)*(1-fraction))])
                 E           = max(dxleft,dxright) + abs(B)
             else: # jackknife
                 if abs(sigma-sigma_min)<1e-15:
@@ -1113,11 +1052,13 @@ class IterationData():
         n             = 0,                  # iteration number
         pfn           = 4,                  # polyfit degree
         S             = 7,                  # points for fit
-        path          = '../ls',           # directory
+        path          = '../ls',            # directory
+        pos           = None,               # starting positions
+        delta         = None,               # parameterization
+        hessian       = None,               # parameter hessian
         # line-search properties
         W             = 0.01,               # energy window
         anharmonicity = None,               # estimated anharmonicities
-        #epsilon       = 0.01,               # target accuracy for parameters
         use_optimal   = True,               # use optimal directions
         add_noise     = 0.0,                # add artificial noise
         generate      = 1000,               # generate samples
@@ -1143,7 +1084,6 @@ class IterationData():
 
         self.W             = W
         self.anharmonicity = anharmonicity
-        #self.epsilon       = epsilon
         self.use_optimal   = use_optimal
         self.add_noise     = add_noise
         self.generate      = generate
@@ -1163,6 +1103,13 @@ class IterationData():
         self.eqm_path      = self.path+self.eqm_str
         self.is_noisy      = ( type=='qmc' or add_noise>0 or not anharmonicity is None or not noises is None )
         self.ready         = False
+
+        if not pos is None and not delta is None:
+            self.load_pos_delta(pos, delta)
+            if not hessian is None:
+                self.load_hessian(hessian)
+            #end if
+        #end if
     #end def
 
     def load_pos_delta(self, pos, delta):
@@ -1186,37 +1133,88 @@ class IterationData():
     #end def
 
     def get_epsilond(self, epsilon):
-        epsilond = self.U.T @ array(self.P*[epsilon]).T
+        epsilond = self.U @ array(self.P*[epsilon]).T
         return abs(epsilond)
     #end def
 
-    def optimize_window_sigma(self,Xs,Ys,Es,Bcs=None,epsilon=0.01,show_plot=False):
-        epsilond   = self.get_epsilond(epsilon)
-        windows    = []
-        noises     = []
-        bias_corrs = []
-        for d in range(self.D):
-            X = Xs[d]
-            Y = Ys[d]
-            E = Es[d]
-            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
-            if not Bcs is None:
-                Bc        = Bcs[d]
-                bias_corr = polyval(Bcs,W)
+    def optimize_window_sigma(
+        self,
+        epsilon   = 0.01,
+        show_plot = False,
+        validate  = False,
+        fraction  = None,
+        ):
+
+        if fraction is None:
+            fraction = self.fraction
+        #end if
+
+        epsilon_this    = epsilon
+        distribution_ok = False
+        while not distribution_ok:
+            epsilond   = self.get_epsilond(epsilon_this)
+            windows    = []
+            noises     = []
+            bias_corrs = []
+            # first optimize each direction
+            for d in range(self.D):
+                X = self.Xs[d]
+                Y = self.Ys[d]
+                E = self.Es[d]
+                W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
+                if not self.Bcs is None:
+                    Bc        = self.Bcs[d]
+                    bias_corr = polyval(Bc,W)
+                else:
+                    bias_corr = 0.0
+                #end if
+                bias_corrs.append(bias_corr)
+                windows.append(W)
+                noises.append(sigma)
+            #end for
+
+            # validation
+            if validate and self.ready:
+                Ds  = []
+
+                for d in range(self.D):
+                    D = get_search_distribution(
+                        x_n       = self.shifts[d],
+                        y_n       = self.PES[d],
+                        H         = self.Lambda[d],
+                        W_opt     = windows[d],
+                        sigma_opt = noises[d],
+                        pfn       = self.pfn,
+                        pts       = self.pts,
+                        Gs        = self.Gs[d],
+                        )
+                    Ds.append(D)
+                #end for
+                Ds = array(Ds).T
+                Dp,Errs = propagate_search_error(Ds,self.U,fraction=fraction)
+                if max(Errs) > epsilon:
+                    distribution_ok = False
+                    print('Parameter errors NOT OK for epsilon=%f:' % epsilon_this)
+                    print(Errs)
+                    epsilon_this = epsilon_this**2/max(Errs)
+                    print('Changing to epsilon=%f' % epsilon_this)
+                else:
+                    distribution_ok = True
+                    print('Parameter errors OK for epsilon=%f:' % epsilon_this)
+                    print(Errs)
+                #end if
             else:
-                bias_corr = 0.0
+                distribution_ok = True
             #end if
-            bias_corrs.append(bias_corr)
-            windows.append(W)
-            noises.append(sigma)
-        #end for
+        #end while 
         self.bias_corrs = bias_corrs
-        self.epsilon    = epsilon
+        self.epsilon    = epsilon_this
         self.epsilond   = epsilond
         self.noises     = noises
         self.windows    = windows
+        self.fraction   = fraction
         self.is_noisy   = True
-        return errors
+        return epsilon_this
     #end def
 
     def shift_positions(self,D_list=None):
@@ -1383,11 +1381,90 @@ class IterationData():
             ls_settings.set(W=W)
         #end if
 
-        new_data = IterationData(n=n, **ls_settings)
-        new_data.load_pos_delta(self.pos_next, self.delta)
-        new_data.load_hessian(self.hessian)
+        new_data = IterationData(n=n, pos=self.pos_next, delta=self.delta, hessian=self.hessian,  **ls_settings)
         new_data.shift_positions()
         return new_data
+    #end def
+
+
+    def scan_error_data(
+        self,
+        pfn,
+        pts,
+        W_max,
+        sigma_max,
+        corrn     = 0,
+        W_num     = 11,
+        sigma_num = 11,
+        generate  = 1000,
+        relative  = True,
+        fraction  = 0.159,
+        ):
+    
+        epsilond = self.get_epsilond(1.0)
+        Xs  = []
+        Ys  = []
+        Es  = []
+        Bs  = []
+        Gs  = []
+        Bcs = []
+        for d in range(self.P):
+            x_n      = self.shifts[d]
+            y_n      = self.PES[d]
+            H        = self.Lambda[d]
+            if corrn>0:
+                corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
+            else:
+                corr = None
+            #end if
+            if relative:
+                sigma_rel = sigma_max*epsilond[d]
+            else:
+                sigma_rel = sigma_max
+            #end if
+            X,Y,E,B,G = scan_linesearch_error(
+                x_n,
+                y_n,
+                H,
+                pts       = pts,
+                pfn       = pfn,
+                W_num     = W_num,
+                W_max     = W_max,
+                W_min     = W_max/W_num,
+                sigma_num = sigma_num,
+                sigma_max = sigma_rel,
+                sigma_min = 0.0,
+                bias_corr = corr,
+                generate  = generate,
+                fraction  = fraction,
+                )
+            Xs.append(X)
+            Ys.append(Y)
+            Es.append(E)
+            Bs.append(B)
+            Gs.append(G)
+            Bcs.append(corr)
+        #end for
+        if corrn==0:
+             Bcs = None
+        #end if
+        self.Xs  = Xs
+        self.Ys  = Ys
+        self.Es  = Es
+        self.Bs  = Bs
+        self.Gs  = Gs
+        self.Bcs = Bcs
+        self.pts = pts
+        self.pfn = pfn
+        self.fraction = fraction
+    #end def
+
+    def copy_optimized_parameters(self, data):
+        self.pfn      = data.pfn
+        self.S        = data.pts
+        self.noises   = data.noises
+        self.windows  = data.windows
+        self.is_noisy = True
     #end def
 
 

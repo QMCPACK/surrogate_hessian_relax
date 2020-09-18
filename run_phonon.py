@@ -7,16 +7,10 @@ from parameters import *
 from numpy import linalg,reshape
 from surrogate import load_gamma_k
 
-hessian_file = '../phonon/FC.fc'    # default FC file
+from run_relax import pos_relax
+from run_relax import cell_relax
 
-try:
-    from run_relax import pos_relax
-    from run_relax import cell_relax
-    print('Loaded pos_relax from run_relax.')
-except:
-    print('Could not get pos_relax. Run relax first!')
-    exit()
-#end try
+hessian_file = '../phonon/FC.fc'    # default FC file
 
 #if __name__=='__main__':
     # run phonon calculation
