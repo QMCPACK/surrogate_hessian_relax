@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
 import pickle
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin
 from copy import deepcopy
 from math import log10
 from scipy.interpolate import interp1d
 from numerics import jackknife
 from nexus import obj,PwscfAnalyzer,QmcpackAnalyzer
 from matplotlib import pyplot as plt
+from functools import partial
+from scipy.optimize import broyden1
 
 
 def print_with_error( value, error, limit=15 ):
@@ -848,6 +850,7 @@ def scan_linesearch_error(
     
     Es = []
     Bs = []
+    B_old = 0.0
     for w,W in enumerate(Ws):
         if not bias_corr is None:
             x_ref = x_0 + polyval(bias_corr,W)
@@ -859,6 +862,12 @@ def scan_linesearch_error(
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
         B        = x - x_ref # systematic bias
+        if abs(B) - abs(B_old) < 0.0: # bias should grow monotonously
+            X = X[0:w+1,:]
+            Y = Y[0:w+1,:]
+            break
+        #end if
+        B_old = B
         Bs.append(B)
 
         E_w = []
@@ -973,7 +982,6 @@ def get_search_distribution(
     return dxdata
 #end def
 
-
 def optimize_linesearch(
     X,
     Y,
@@ -1041,6 +1049,72 @@ def optimize_linesearch(
     #end if
 
     return W_opt,sigma_opt,errors
+#end def
+
+
+def get_W_sigma_of_epsilon( X, Y, E, ):
+    epsilons = linspace(amin(E)+1e-5,0.99*amax(E),21)
+    f,ax     = plt.subplots()
+
+    Ws       = []
+    sigmas   = []
+    for epsilon in epsilons:
+        W_opt     = 0.0
+        sigma_opt = 0.0
+        ct1       = ax.contour( X,Y,E,[epsilon])
+        for j in range(len(ct1.allsegs)):
+            for ii,seg in enumerate(ct1.allsegs[j]):
+                if not len(seg)==0:
+                    i_opt = argmax(seg[:,1])
+                    if seg[i_opt,1] > sigma_opt:
+                        W_opt     = seg[i_opt,0]
+                        sigma_opt = seg[i_opt,1]
+                    #end if
+                #end if
+            #end for
+        #end for
+        if sigma_opt/max(Y[:,0])==1.0:
+            epsilons = epsilons[0:len(Ws)]
+            break
+        #end if
+        Ws.append(W_opt)
+        sigmas.append(sigma_opt)
+    #end for
+    plt.close(f)
+    return epsilons,array(Ws),array(sigmas)
+#end def
+
+
+# validation function
+def validate_error_targets(
+    data,        # Iteration data
+    epsilon,     # target parameter accuracy
+    fraction,    # statistical fraction
+    ab,          # vector of a and b prefactors
+    ):
+
+    epsilond = data.get_epsilond_ab(epsilon,ab)
+    Ds  = []
+    for d in range(data.D):
+        W_opt     = abs(polyval(data.W_of_epsilon[d],epsilond[d]))**0.5
+        sigma_opt = polyval(data.sigma_of_epsilon[d],epsilond[d])
+        D = get_search_distribution(
+            x_n       = data.shifts[d],
+            y_n       = data.PES[d],
+            H         = data.Lambda[d],
+            W_opt     = W_opt,
+            sigma_opt = sigma_opt,
+            pfn       = data.pfn,
+            pts       = data.pts,
+            Gs        = data.Gs[d],
+            )
+        Ds.append(D)
+    #end for
+    Ds = array(Ds).T
+    Dp,errors = propagate_search_error(Ds,data.U,fraction=fraction)
+    diff      = array(errors)/epsilon - 1.0
+
+    return diff
 #end def
 
 
@@ -1132,89 +1206,64 @@ class IterationData():
         self.D          = directions.shape[1]
     #end def
 
+
     def get_epsilond(self, epsilon):
         epsilond = self.U @ array(self.P*[epsilon]).T
         return abs(epsilond)
+    #end def
+
+    def get_epsilond_ab(self, epsilon, ab):
+        epsilond = abs(linalg.inv(ab[0]*self.U.T + ab[1]*self.U**2) @ array(self.P*[epsilon]).T)
+        return epsilond
+    #end def
+
+    def load_of_epsilon(self):
+        Wfuncs = []
+        Sfuncs = []
+        for d in range(self.D):
+            eps,Ws,sigmas = get_W_sigma_of_epsilon(self.Xs[d],self.Ys[d],self.Es[d])
+            Wfuncs.append( polyfit(eps,Ws**2,2) )
+            Sfuncs.append( polyfit(eps,sigmas,2) )
+        #end for
+        self.W_of_epsilon     = Wfuncs
+        self.sigma_of_epsilon = Sfuncs
     #end def
 
     def optimize_window_sigma(
         self,
         epsilon   = 0.01,
         show_plot = False,
-        validate  = False,
         fraction  = None,
+        ab0       = [1.0,0.0]
         ):
 
         if fraction is None:
             fraction = self.fraction
         #end if
 
-        epsilon_this    = epsilon
-        distribution_ok = False
-        while not distribution_ok:
-            epsilond   = self.get_epsilond(epsilon_this)
-            windows    = []
-            noises     = []
-            bias_corrs = []
-            # first optimize each direction
-            for d in range(self.D):
-                X = self.Xs[d]
-                Y = self.Ys[d]
-                E = self.Es[d]
-                W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
-                if not self.Bcs is None:
-                    Bc        = self.Bcs[d]
-                    bias_corr = polyval(Bc,W)
-                else:
-                    bias_corr = 0.0
-                #end if
-                bias_corrs.append(bias_corr)
-                windows.append(W)
-                noises.append(sigma)
-            #end for
+        self.load_of_epsilon()
+        optimize_epsilond = partial(validate_error_targets, self, epsilon, fraction)
+        ab_opt    = broyden1(optimize_epsilond, ab0, f_tol=1e-3,verbose=True)
+        epsilond  = self.get_epsilond_ab(epsilon,ab_opt)
+        print(ab_opt,epsilond)
 
-            # validation
-            if validate and self.ready:
-                Ds  = []
-
-                for d in range(self.D):
-                    D = get_search_distribution(
-                        x_n       = self.shifts[d],
-                        y_n       = self.PES[d],
-                        H         = self.Lambda[d],
-                        W_opt     = windows[d],
-                        sigma_opt = noises[d],
-                        pfn       = self.pfn,
-                        pts       = self.pts,
-                        Gs        = self.Gs[d],
-                        )
-                    Ds.append(D)
-                #end for
-                Ds = array(Ds).T
-                Dp,Errs = propagate_search_error(Ds,self.U,fraction=fraction)
-                if max(Errs) > epsilon:
-                    distribution_ok = False
-                    print('Parameter errors NOT OK for epsilon=%f:' % epsilon_this)
-                    print(Errs)
-                    epsilon_this = epsilon_this**2/max(Errs)
-                    print('Changing to epsilon=%f' % epsilon_this)
-                else:
-                    distribution_ok = True
-                    print('Parameter errors OK for epsilon=%f:' % epsilon_this)
-                    print(Errs)
-                #end if
-            else:
-                distribution_ok = True
-            #end if
-        #end while 
+        windows    = []
+        noises     = []
+        bias_corrs = None # not for the moment
+        for d in range(self.D):
+            X = self.Xs[d]
+            Y = self.Ys[d]
+            E = self.Es[d]
+            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
+            windows.append(W)
+            noises.append(sigma)
+        #end for
         self.bias_corrs = bias_corrs
-        self.epsilon    = epsilon_this
         self.epsilond   = epsilond
         self.noises     = noises
         self.windows    = windows
         self.fraction   = fraction
         self.is_noisy   = True
-        return epsilon_this
     #end def
 
     def shift_positions(self,D_list=None):
@@ -1538,7 +1587,8 @@ class IterationData():
         pos_next = self.pos.copy() + self.directions @ self.Dmins
         PV       = self.delta_pinv @ pos_next
         #PV_err   = (self.M**2 @ array(self.Dmins_err)**2)**0.5 # sum of statistical errors
-        PV_err   = abs(self.U.T @ self.Dmins_err) # TODO: improve
+        #PV_err   = abs(self.U.T @ self.Dmins_err) # TODO: improve
+        PV_err   = abs((self.U**2).T @ self.Dmins_err) 
         self.pos_next            = pos_next
         self.param_vals_next     = PV
         self.param_vals_next_err = PV_err
