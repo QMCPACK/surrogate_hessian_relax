@@ -862,10 +862,10 @@ def scan_linesearch_error(
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
         B        = x - x_ref # systematic bias
-        if abs(B) - abs(B_old) < 0.0: # bias should grow monotonously
-            X = X[0:w+1,:]
-            Y = Y[0:w+1,:]
-            break
+        #if abs(B) - abs(B_old) < -1.0e-2: # bias should grow monotonously
+        #    X = X[0:w,:]
+        #    Y = Y[0:w,:]
+        #    break
         #end if
         B_old = B
         Bs.append(B)
@@ -1053,7 +1053,7 @@ def optimize_linesearch(
 
 
 def get_W_sigma_of_epsilon( X, Y, E, ):
-    epsilons = linspace(amin(E)+1e-5,0.99*amax(E),21)
+    epsilons = linspace(amin(E[~isnan(E)])+1e-5,0.99*amax(E[~isnan(E)]),21)
     f,ax     = plt.subplots()
 
     Ws       = []
@@ -1061,7 +1061,12 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
     for epsilon in epsilons:
         W_opt     = 0.0
         sigma_opt = 0.0
-        ct1       = ax.contour( X,Y,E,[epsilon])
+        try:
+            ct1 = ax.contour( X,Y,E,[epsilon])
+        except:
+            epsilons = epsilons[0:len(Ws)]
+            break
+        #end try
         for j in range(len(ct1.allsegs)):
             for ii,seg in enumerate(ct1.allsegs[j]):
                 if not len(seg)==0:
@@ -1073,7 +1078,7 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
                 #end if
             #end for
         #end for
-        if sigma_opt/max(Y[:,0])==1.0:
+        if sigma_opt/max(Y[:,0])==1.0 or isnan(sigma_opt):
             epsilons = epsilons[0:len(Ws)]
             break
         #end if
