@@ -1351,7 +1351,7 @@ class IterationData():
         for d in D_list:
             shifts       = self._shift_parameter(d)
             sigma        = self.noises[d]
-            minuss       = len(shifts[shifts<0.0])
+            minuss       = len(shifts[shifts<-1e-10])
             pluss        = 1
             direction    = self.directions[:,d]
             shift_rows   = []
