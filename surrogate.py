@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar
 from copy import deepcopy
 from math import log10
 from scipy.interpolate import interp1d
@@ -1148,8 +1148,6 @@ class IterationData():
         hessian       = None,               # parameter hessian
         # line-search properties
         W             = 0.01,               # energy window
-        anharmonicity = None,               # estimated anharmonicities
-        use_optimal   = True,               # use optimal directions
         add_noise     = 0.0,                # add artificial noise
         generate      = 1000,               # generate samples
         noises        = None,               # list of target noises for each direction
@@ -1173,8 +1171,6 @@ class IterationData():
         self.path          = path+'/ls'+str(n)+'/'  # format for line-search directions
 
         self.W             = W
-        self.anharmonicity = anharmonicity
-        self.use_optimal   = use_optimal
         self.add_noise     = add_noise
         self.generate      = generate
         self.noises        = noises
@@ -1191,7 +1187,7 @@ class IterationData():
         self.colors        = colors
 
         self.eqm_path      = self.path+self.eqm_str
-        self.is_noisy      = ( type=='qmc' or add_noise>0 or not anharmonicity is None or not noises is None )
+        self.is_noisy      = ( type=='qmc' or add_noise>0 or not noises is None )
         self.ready         = False
 
         if not pos is None and not delta is None:
@@ -1220,6 +1216,13 @@ class IterationData():
         self.directions = directions
         self.hessian    = hessian_delta
         self.D          = directions.shape[1]
+        # windows
+        if self.windows is None:
+            self.windows = array(self.D*[self.W])
+        #end if
+        if self.noises is None:
+            self.noises  = array(self.D*[self.add_noise])
+        #end if
     #end def
 
 
@@ -1291,7 +1294,8 @@ class IterationData():
 
         sigma_min     = 1.0e99
         for d in D_list:
-            shifts,sigma = self._shift_parameter(d)
+            shifts       = self._shift_parameter(d)
+            sigma        = self.noises[d]
             minuss       = len(shifts[shifts<0.0])
             pluss        = 1
             direction    = self.directions[:,d]
@@ -1380,11 +1384,6 @@ class IterationData():
                 PES_err_row.append(Err)
             #end for
             Emin,Emin_err,Dmin,Dmin_err,pf = self._get_shift_minimum(shifts,PES_row,PES_err_row)
-            # bias corrections
-            if not self.corrections is None:
-                Dmin += polyval(corrections[d],self.W[d])
-                print(polyval(corrections[d],self.W[d]))
-            #end if
             Emins.append(Emin)
             Dmins.append(Dmin)
             Emins_err.append(Emin_err)
@@ -1426,7 +1425,6 @@ class IterationData():
             self, 
             ls_settings    = obj(),
             divide_epsilon = None, 
-            divide_W       = None,
             ):
 
         if not self.ready:
@@ -1440,11 +1438,6 @@ class IterationData():
             print('New target epsilon: '+str(epsilon))
             ls_settings.set(epsilon=epsilon)
         #end if
-        if not divide_W is None:
-            W = self.W/divide_W
-            print('New target energy window: '+str(epsilon))
-            ls_settings.set(W=W)
-        #end if
 
         new_data = IterationData(n=n, pos=self.pos_next, delta=self.delta, hessian=self.hessian,  **ls_settings)
         new_data.shift_positions()
@@ -1456,8 +1449,8 @@ class IterationData():
         self,
         pfn,
         pts,
-        W_max,
         sigma_max,
+        W_max     = None,
         corrn     = 0,
         W_num     = 11,
         sigma_num = 11,
@@ -1468,6 +1461,8 @@ class IterationData():
 
         if isscalar(W_max):
             W_max = self.D*[W_max]
+        else:
+            W_max = self.windows
         #end if
     
         epsilond = self.get_epsilond(1.0)
@@ -1476,16 +1471,10 @@ class IterationData():
         Es  = []
         Bs  = []
         Gs  = []
-        Bcs = []
         for d in range(self.P):
             x_n      = self.shifts[d]
             y_n      = self.PES[d]
             H        = self.Lambda[d]
-            if corrn>0:
-                corr = bias_correction(x_n,y_n,H,pfn=pfn,W_num=W_num,corrn=corrn)
-            else:
-                corr = None
-            #end if
             if relative:
                 sigma_rel = sigma_max*epsilond[d]
             else:
@@ -1503,7 +1492,6 @@ class IterationData():
                 sigma_num = sigma_num,
                 sigma_max = sigma_rel,
                 sigma_min = 0.0,
-                bias_corr = corr,
                 generate  = generate,
                 fraction  = fraction,
                 )
@@ -1512,17 +1500,13 @@ class IterationData():
             Es.append(E)
             Bs.append(B)
             Gs.append(G)
-            Bcs.append(corr)
         #end for
-        if corrn==0:
-             Bcs = None
-        #end if
         self.Xs  = Xs
         self.Ys  = Ys
         self.Es  = Es
         self.Bs  = Bs
         self.Gs  = Gs
-        self.Bcs = Bcs
+        self.Bcs = None
         self.pts = pts
         self.pfn = pfn
         self.fraction = fraction
@@ -1538,23 +1522,13 @@ class IterationData():
 
 
     def _shift_parameter(self,d):
-        pfn = self.pfn
-        S   = self.S
-        H   = self.Lambda[d]
-        if not ( self.noises is None or self.windows is None):
-            W     = self.windows[d]
-            sigma = self.noises[d]
-        elif not self.anharmonicity is None:
-            a       = self.anharmonicity[d]
-            b       = calculate_b(k=H,S=S,pfn=pfn)
-            W,sigma = get_optimal_noise_window(abs(a),b,pfn=pfn,epsilon=abs(self.epsilond[d]))
-        else: # use fixed energy window
-            W     = self.W
-            sigma = self.add_noise
-        #end if
+        pfn    = self.pfn
+        S      = self.S
+        H      = self.Lambda[d]
+        W      = self.windows[d]
         R      = W_to_R(W,H)
         shifts = linspace(-R,R,S)
-        return shifts,sigma
+        return shifts
     #end def
 
 
