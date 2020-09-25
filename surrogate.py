@@ -953,18 +953,16 @@ def get_search_distribution(
     sigma_opt,
     pfn,
     pts,
-    Gs        = None,
-    generate  = 1000,
+    Gs        = 1000,
     x_0       = 0.0,
     ):
     
     xy_in = interp1d(x_n,y_n,kind='cubic')
 
-    if Gs is None:
-        Gs = random.randn(generate,pts)
-    else:
-        generate = Gs.shape[0]
+    if isscalar(Gs):
+        Gs = random.randn(Gs,pts)
     #end if
+    generate = Gs.shape[0]
 
     R      = W_to_R(W_opt,H)
     R      = max(min(x_n),R)
@@ -1087,32 +1085,98 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
 #end def
 
 
-# validation function
-def validate_error_targets_ab(
-    data,        # Iteration data
-    epsilon,     # target parameter accuracy
-    fraction,    # statistical fraction
-    ab,          # vector of a and b prefactors
-    ):
-    epsilond = data.get_epsilond_ab(epsilon,ab)
-    diff     = validate_error_targets(data,epsilon,fraction,epsilond)
-    return diff
+def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
+    if fraction is None:
+        fraction = data.fraction
+    #end if
+    try:
+        data.load_of_epsilon()
+    except:
+        print('Did not load *_of_epsilon()')
+    #end try
+    epsilond0 = data.D*[epsilon]
+    validate_epsilond = partial(validate_error_targets, data, epsilon, fraction, generate)
+    epsilond_opt = broyden1(validate_epsilond,epsilond0,f_tol=1e-3,verbose=verbose)
+    return epsilond_opt
 #end def
+
+
+def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
+    if fraction is None:
+        fraction = data.fraction
+    #end if
+    try:
+        data.load_of_epsilon()
+    except:
+        print('Did not load *_of_epsilon()')
+    #end try
+
+    def get_epsilond(A,sigma):
+        epsilonp = array(data.D*[sigma])
+        return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+    #end def
+
+    As = linspace(0.0,1.0,11)
+
+    # optimize epsilond ab fraction that evens out parameter errors
+    diffs = []
+    varAs = []
+    for A in As:
+        epsilond = get_epsilond(A,epsilon)
+        diff     = validate_error_targets(data, epsilon, fraction, generate, epsilond)
+        diffs.append(diff)
+        varAs.append(var(diff))
+    #end for
+    A_opt = As[argmin(array(varAs))]
+    if verbose:
+        print(A_opt)
+    #end if
+    
+    # optimize input noise prefactor
+    sigmas = linspace(0.1,2.0,20)*epsilon
+    diffAs = []
+    for sigma in sigmas:
+        epsilond = get_epsilond(A_opt,sigma)
+        diffA    = validate_error_targets(data, epsilon, fraction, 500, epsilond)
+        diffAs.append(sum(diffA))
+    #end for
+    sigma_opt = sigmas[argmin(abs(array(diffAs)))]
+    epsilond_opt = get_epsilond(A_opt,sigma_opt)
+    if verbose:
+        print(sigma_opt)
+        print(epsilon_opt)
+    #end if
+    
+    return epsilond_opt
+#end def
+
 
 # validation function
 def validate_error_targets(
     data,        # Iteration data
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
+    generate,    # use old random data or create new
     epsilond,    # vector of a and b prefactors
     ):
 
     Ds  = []
     for d in range(data.D):
         eps       = abs(epsilond[d])
-        W_opt     = abs(polyval(data.W_of_epsilon[d],eps))**0.5
-        sigma_opt = abs(polyval(data.sigma_of_epsilon[d],eps))
-        print(W_opt,sigma_opt)
+        try:
+            W_opt     = abs(polyval(data.W_of_epsilon[d],eps))**0.5
+            sigma_opt = abs(polyval(data.sigma_of_epsilon[d],eps))
+        except:
+            X = data.Xs[d]
+            Y = data.Ys[d]
+            E = data.Es[d]
+            W_opt,sigma_opt,err = optimize_linesearch(X,Y,E,epsilon=epsilond[d],show_plot=False) 
+        #end try
+        if generate>0:
+            Gs = generate
+        else:
+            Gs = data.Gs[d]
+        #end if
         D = get_search_distribution(
             x_n       = data.shifts[d],
             y_n       = data.PES[d],
@@ -1121,7 +1185,7 @@ def validate_error_targets(
             sigma_opt = sigma_opt,
             pfn       = data.pfn,
             pts       = data.pts,
-            Gs        = data.Gs[d],
+            Gs        = Gs,
             )
         Ds.append(D)
     #end for
@@ -1225,15 +1289,9 @@ class IterationData():
         #end if
     #end def
 
-
     def get_epsilond(self, epsilon):
         epsilond = self.U @ array(self.P*[epsilon]).T
         return abs(epsilond)
-    #end def
-
-    def get_epsilond_ab(self, epsilon, ab):
-        epsilond = abs(linalg.inv(ab[0]*self.U.T + ab[1]*self.U**2) @ array(self.P*[epsilon]).T)
-        return epsilond
     #end def
 
     def load_of_epsilon(self):
@@ -1251,21 +1309,24 @@ class IterationData():
     def optimize_window_sigma(
         self,
         epsilon   = 0.01,
+        epsilond  = None,
         show_plot = False,
         fraction  = None,
-        ab0       = [1.0,0.0]
+        optimizer = optimize_epsilond_heuristic, # can also be e.g. optimize_epsilond_broyden1
+        generate  = 0, # default: use existing data
+        verbose   = False,
         ):
 
-        if fraction is None:
-            fraction = self.fraction
+        if epsilond is None:
+            try:
+                epsilond = optimizer(self,epsilon,fraction,generate,verbose)
+            except:
+                epsilond = self.get_epsilond(epsilon)
+                print('Epsilond optimization failed, falling back to default')
+            #end try
         #end if
 
-        self.load_of_epsilon()
-        optimize_epsilond = partial(validate_error_targets, self, epsilon, fraction)
-        ab_opt    = broyden1(optimize_epsilond, ab0, f_tol=1e-3,verbose=True)
-        epsilond  = self.get_epsilond_ab(epsilon,ab_opt)
-        print(ab_opt,epsilond)
-
+        # finally, set optimal windows and sigmas
         windows    = []
         noises     = []
         bias_corrs = None # not for the moment
