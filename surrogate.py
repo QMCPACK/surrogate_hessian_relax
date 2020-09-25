@@ -1089,11 +1089,6 @@ def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
     if fraction is None:
         fraction = data.fraction
     #end if
-    try:
-        data.load_of_epsilon()
-    except:
-        print('Did not load *_of_epsilon()')
-    #end try
     epsilond0 = data.D*[epsilon]
     validate_epsilond = partial(validate_error_targets, data, epsilon, fraction, generate)
     epsilond_opt = broyden1(validate_epsilond,epsilond0,f_tol=1e-3,verbose=verbose)
@@ -1105,11 +1100,6 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
     if fraction is None:
         fraction = data.fraction
     #end if
-    try:
-        data.load_of_epsilon()
-    except:
-        print('Did not load *_of_epsilon()')
-    #end try
 
     def get_epsilond(A,sigma):
         epsilonp = array(data.D*[sigma])
@@ -1135,16 +1125,20 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
     # optimize input noise prefactor
     sigmas = linspace(0.1,2.0,20)*epsilon
     diffAs = []
+    costs   = []
     for sigma in sigmas:
         epsilond = get_epsilond(A_opt,sigma)
-        diffA    = validate_error_targets(data, epsilon, fraction, 500, epsilond)
-        diffAs.append(sum(diffA))
+        diffA    = validate_error_targets(data, epsilon, fraction, generate, epsilond)
+        diffAs.append(diffA)
+        costs.append(abs(sum(diffA)))
     #end for
-    sigma_opt = sigmas[argmin(abs(array(diffAs)))]
-    epsilond_opt = get_epsilond(A_opt,sigma_opt)
+    i_opt     = argmin(costs)
+    sigma_opt = sigmas[i_opt]
+    diffA_opt  = diffAs[i_opt]
+    epsilond_opt = get_epsilond(A_opt,sigma_opt)/(1+max(array(diffA_opt))) # final linear adjustment
     if verbose:
         print(sigma_opt)
-        print(epsilon_opt)
+        print(epsilond_opt)
     #end if
     
     return epsilond_opt
