@@ -967,6 +967,8 @@ def get_search_distribution(
     #end if
 
     R      = W_to_R(W_opt,H)
+    R      = max(min(x_n),R)
+    R      = min(max(x_n),R)
     x_r    = x_0 + linspace(-R,R,pts)
     y_r    = xy_in(x_r)
     y,x,p  = get_min_params(x_r,y_r,pfn)
@@ -1086,18 +1088,31 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
 
 
 # validation function
-def validate_error_targets(
+def validate_error_targets_ab(
     data,        # Iteration data
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
     ab,          # vector of a and b prefactors
     ):
-
     epsilond = data.get_epsilond_ab(epsilon,ab)
+    diff     = validate_error_targets(data,epsilon,fraction,epsilond)
+    return diff
+#end def
+
+# validation function
+def validate_error_targets(
+    data,        # Iteration data
+    epsilon,     # target parameter accuracy
+    fraction,    # statistical fraction
+    epsilond,    # vector of a and b prefactors
+    ):
+
     Ds  = []
     for d in range(data.D):
-        W_opt     = abs(polyval(data.W_of_epsilon[d],epsilond[d]))**0.5
-        sigma_opt = polyval(data.sigma_of_epsilon[d],epsilond[d])
+        eps       = abs(epsilond[d])
+        W_opt     = abs(polyval(data.W_of_epsilon[d],eps))**0.5
+        sigma_opt = abs(polyval(data.sigma_of_epsilon[d],eps))
+        print(W_opt,sigma_opt)
         D = get_search_distribution(
             x_n       = data.shifts[d],
             y_n       = data.PES[d],
@@ -1116,6 +1131,7 @@ def validate_error_targets(
 
     return diff
 #end def
+
 
 
 class IterationData():
