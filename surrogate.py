@@ -1449,6 +1449,10 @@ class IterationData():
         relative  = True,
         fraction  = 0.159,
         ):
+
+        if isscalar(W_max):
+            W_max = self.D*[W_max]
+        #end if
     
         epsilond = self.get_epsilond(1.0)
         Xs  = []
@@ -1478,8 +1482,8 @@ class IterationData():
                 pts       = pts,
                 pfn       = pfn,
                 W_num     = W_num,
-                W_max     = W_max,
-                W_min     = W_max/W_num,
+                W_max     = W_max[d],
+                W_min     = W_max[d]/W_num,
                 sigma_num = sigma_num,
                 sigma_max = sigma_rel,
                 sigma_min = 0.0,
