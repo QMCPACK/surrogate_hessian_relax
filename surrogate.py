@@ -390,11 +390,11 @@ def surrogate_anharmonicity(data,pfn=None,output=False):
     #end for
     ans        = array(ans)
     targets    = data.targets
-    param_vals = data.param_vals_next
+    params     = data.params_next
     print('D model    : '+str(ans*W**2))
     print('D bias     : '+str(data.Dmins))
     #print('P model    : '+str(data.M @ ans *W**2))
-    print('P bias     : '+str(param_vals-targets))
+    print('P bias     : '+str(params-targets))
     print('anharm.    : '+str(ans))
     return ans
 #end def
@@ -453,12 +453,12 @@ def print_optimal_parameters(data_list):
     print('Optimal parameters:')
     for p in range(data0.P):
         print(' p'+str(p) )
-        PV_this = data_list[0].param_vals[p] # first value
+        PV_this = data_list[0].params[p] # first value
         print('  init: '+str(PV_this.round(8)).ljust(12))
         for n in range(len(data_list)):
-            PV_this = data_list[n].param_vals[p]
-            PV_next = data_list[n].param_vals_next[p]
-            PV_err  = data_list[n].param_vals_next_err[p]
+            PV_this = data_list[n].params[p]
+            PV_next = data_list[n].params_next[p]
+            PV_err  = data_list[n].params_next_err[p]
             print('   n='+str(n)+': '+print_with_error(PV_next,PV_err).ljust(12)+' Delta: '+print_with_error(PV_next-PV_this,PV_err).ljust(12))
         #end for
         if not target is None:
@@ -538,7 +538,7 @@ def plot_parameter_convergence(
     elif not data0.targets is None:
         targets = data0.targets
     else:
-        targets = data0.param_vals # no target, use initial values
+        targets = data0.params # no target, use initial values
     #end if
     if colors is None:
         colors = data0.colors
@@ -550,14 +550,14 @@ def plot_parameter_convergence(
     P_vals = []
     P_errs = []
     for p in range(data0.P):
-        P_vals.append([data0.param_vals[p]-targets[p]])
+        P_vals.append([data0.params[p]-targets[p]])
         P_errs.append([0.0])
     #end for
     # line search params
     for data in data_list:
         for p in range(data.P):
-            P_vals[p].append(data.param_vals_next[p]-targets[p])
-            P_errs[p].append(data.param_vals_next_err[p])
+            P_vals[p].append(data.params_next[p]-targets[p])
+            P_errs[p].append(data.params_next_err[p])
         #end for
     #end for
     # plot
@@ -659,8 +659,8 @@ def plot_error_cost(
         #end for
         costs.append(cost)
 
-        P_vals = data.param_vals_next[p_idx]
-        P_errs = data.param_vals_next_err[p_idx]
+        P_vals = data.params_next[p_idx]
+        P_errs = data.params_next_err[p_idx]
         PVs.append( abs(P_vals - target) + P_errs )
         PVes.append( P_errs )
     #end for
@@ -1209,6 +1209,8 @@ class IterationData():
         pos           = None,               # starting positions
         delta         = None,               # parameterization
         hessian       = None,               # parameter hessian
+        F             = None,               # mapping from params to pos
+        Finv          = None,               # mapping from pos to params
         # line-search properties
         W             = 0.01,               # energy window
         add_noise     = 0.0,                # add artificial noise
@@ -1222,7 +1224,7 @@ class IterationData():
         qmc_j_idx     = 2,
         load_postfix  = '/dmc/dmc.in.xml',
         # misc properties
-        eqm_str       = 'eqm',             # eqm string
+        eqm_str       = 'eqm',              # eqm string
         targets       = None,               # targets, if known
         colors        = None,               # colors for parameters
         ):
@@ -1253,8 +1255,13 @@ class IterationData():
         self.is_noisy      = ( type=='qmc' or add_noise>0 or not noises is None )
         self.ready         = False
 
-        if not pos is None and not delta is None:
-            self.load_pos_delta(pos, delta)
+        if not pos is None:
+            if not delta is None:
+                self.load_pos_delta(pos, delta)
+            #end if
+            if not F is None and not Finv is None:
+                self.load_pos_F(pos, F, Finv)
+            #end if
             if not hessian is None:
                 self.load_hessian(hessian)
             #end if
@@ -1265,20 +1272,28 @@ class IterationData():
         self.pos           = pos
         self.delta         = delta
         self.delta_pinv    = linalg.pinv(delta)
-        self.param_vals    = self.delta_pinv @ pos
-        self.P             = delta.shape[1]
+        self.params        = self.delta_pinv @ pos
+        self.P             = len(self.params)
+        self.F             = None
+        self.Finv          = None
+    #end def
+
+    def load_pos_F(self, pos, F, Finv):
+        self.pos           = pos
+        self.delta         = None
+        self.delta_pinv    = None
+        self.params        = Finv(pos)
+        self.P             = len(self.params)
+        self.F             = F
+        self.Finv          = Finv
     #end def
 
     def load_hessian(self, hessian_delta): # takes the parameter Hessian
         Lambda,U        = linalg.eig(hessian_delta)
-        U               = U.T
-        delta           = self.delta
-        directions      = delta @ U.T
+        self.U          = U.T # linalg.eig has opposite convention; here U is D x P
         self.Lambda     = Lambda
-        self.U          = U
-        self.directions = directions
+        self.D          = len(Lambda)
         self.hessian    = hessian_delta
-        self.D          = directions.shape[1]
         # windows
         if self.windows is None:
             self.windows = array(self.D*[self.W])
@@ -1358,7 +1373,7 @@ class IterationData():
             sigma        = self.noises[d]
             minuss       = len(shifts[shifts<-1e-10])
             pluss        = 1
-            direction    = self.directions[:,d]
+            #direction    = self.directions[:,d]
             shift_rows   = []
             # assume that shifts come in order
             for s,shift in enumerate(shifts):
@@ -1371,7 +1386,8 @@ class IterationData():
                     path = self.path+'d'+str(d)+'_p'+str(pluss)
                     pluss += 1
                 #end if
-                pos = self.pos.copy() + shift*direction
+                #pos = self.pos.copy() + shift*direction
+                pos = self.pos.copy() + self._shift_position(d,shift)
                 row = pos,path,sigma,shift
                 shift_rows.append(row)
             #end for
@@ -1464,7 +1480,9 @@ class IterationData():
         self.Dshifts   = Dshifts
         self.pfs       = pfs
 
-        self.ready = self._compute_next_pos()
+        self._compute_next_params()
+        self._compute_next_pos()
+        self.ready = True
     #end def
 
     def write_to_file(self):
@@ -1575,8 +1593,14 @@ class IterationData():
     def copy_optimized_parameters(self, data):
         self.pfn      = data.pfn
         self.S        = data.pts
-        self.noises   = data.noises
-        self.windows  = data.windows
+        # TODO: make this more robust
+        if data.type=='scf' and self.type=='qmc':
+            self.noises   = array(data.noises)/2 # from Ry to Ha
+            self.windows  = data.windows
+        else:
+            self.noises   = data.noises
+            self.windows  = data.windows
+        #end if
         self.is_noisy = True
     #end def
 
@@ -1592,9 +1616,20 @@ class IterationData():
     #end def
 
 
+    def _shift_position(self,d,shift):
+        if self.F is None: # linear directions
+            dpos    = (self.delta @ self.U.T)[:,d]*shift
+        else: 
+            dparams = self.params.copy() + self.U.T[:,d]*shift
+            dpos    = self.F(dparams)-self.F(self.params)
+        #end if
+        return dpos
+    #end def
+
+
     def _load_energy_error(self,path):
         if self.type=='qmc':
-            AI  = QmcpackAnalyzer(path,equilibration=self.equilibration)
+            AI  = QmcpackAnalyzer(path)
             AI.analyze()
             E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
             Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
@@ -1636,18 +1671,21 @@ class IterationData():
         return Emin,Emin_err,Dmin,Dmin_err,pf
     #end def
     
+
+    def _compute_next_params(self):
+        self.params_next     = self.params + self.U.T @ self.Dmins
+        self.params_next_err = abs((self.U**2).T @ self.Dmins_err)
+    #end def
+
     
     def _compute_next_pos(self):
-        pos_next = self.pos.copy() + self.directions @ self.Dmins
-        PV       = self.delta_pinv @ pos_next
-        #PV_err   = (self.M**2 @ array(self.Dmins_err)**2)**0.5 # sum of statistical errors
-        #PV_err   = abs(self.U.T @ self.Dmins_err) # TODO: improve
-        PV_err   = abs((self.U**2).T @ self.Dmins_err) 
-        self.pos_next            = pos_next
-        self.param_vals_next     = PV
-        self.param_vals_next_err = PV_err
-        return True
+        if self.F is None:
+            self.pos_next = self.pos.copy() + self.delta @ self.U.T @ self.Dmins
+        else:
+            self.pos_next = self.F(self.params_next)
+        #end if
     #end def
+
 
 #end class
 
