@@ -1107,7 +1107,11 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
     #end if
 
     def get_epsilond(A,sigma):
-        epsilonp = array(data.D*[sigma])
+        if isscalar(sigma):
+            epsilonp = array(data.D*[sigma])
+        else:
+            epsilonp = sigma
+        #end if
         return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
     #end def
 
@@ -1291,7 +1295,7 @@ class IterationData():
     def load_hessian(self, hessian_delta): # takes the parameter Hessian
         Lambda,U        = linalg.eig(hessian_delta)
         self.U          = U.T # linalg.eig has opposite convention; here U is D x P
-        self.Lambda     = Lambda
+        self.Lambda     = abs(Lambda)
         self.D          = len(Lambda)
         self.hessian    = hessian_delta
         # windows
@@ -1423,10 +1427,9 @@ class IterationData():
 
     def load_results(self):
         # load eqm
-        E_eqm,Err_eqm  = self._load_energy_error(self.eqm_path+self.load_postfix)
-        sigma_eqm      = self.sigma_min
-        self.E         = E_eqm +sigma_eqm*random.randn(1)[0]
-        self.Err       = Err_eqm+sigma_eqm
+        E_eqm,Err_eqm  = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
+        self.E         = E_eqm
+        self.Err       = Err_eqm
         # load ls
         Epred          = 1.0e99
         Emins          = []
@@ -1447,9 +1450,7 @@ class IterationData():
                     E   = self.E
                     Err = self.Err
                 else:
-                    E,Err = self._load_energy_error(path+self.load_postfix)
-                    E    += sigma*random.randn(1)[0]
-                    Err  += sigma
+                    E,Err = self._load_energy_error(path+self.load_postfix,sigma)
                 #end if
                 if E < Epred:
                     Epred     = E
@@ -1627,17 +1628,18 @@ class IterationData():
     #end def
 
 
-    def _load_energy_error(self,path):
+    def _load_energy_error(self,path,sigma):
         if self.type=='qmc':
             AI  = QmcpackAnalyzer(path)
             AI.analyze()
+            # no need to add noise
             E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
             Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
         else: # pwscf
             AI  = PwscfAnalyzer(path)
             AI.analyze()
-            E   = AI.E
-            Err = 0.0
+            E   = AI.E + sigma*random.randn(1)[0] # add noise artificially
+            Err = sigma
         #end if
         return E,Err
     #end def
