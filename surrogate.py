@@ -756,37 +756,15 @@ def R_to_W(R,H):
     return W
 #end def
 
-
-
-
-def propagate_search_error(
-    Ds,
-    U,
-    fraction = 0.159
-    ):
-
-    generate = Ds.shape[0]
-    P        = Ds.shape[1]
-
-    data = []
-    for n in range(generate):
-        Dp = Ds[n] @ U 
-        data.append(Dp)
-    #end for
-    data = array(data)
-
-    Errs = []
-    for p in range(P):
-        pdata   = array(data[:,p])
-        pdata   = pdata[~isnan(pdata)]       # remove nan
-        pdata   = pdata[pdata.argsort()]     # sort
-        dpleft  = abs(pdata[int(len(pdata)*fraction)])
-        dpright = abs(pdata[int(len(pdata)*(1-fraction))])
-        Err     = max(dpleft,dpright)
-        Errs.append(Err)
-    #end for
-
-    return data,Errs
+def get_fraction_error(data,fraction=0.159):
+    data   = array(data)
+    data   = data[~isnan(data)]        # remove nan
+    ave    = mean(data)
+    data   = data[data.argsort()]-ave  # sort and center
+    pleft  = abs(data[int(len(data)*fraction)])
+    pright = abs(data[int(len(data)*(1-fraction))])
+    err    = max(pleft,pright)
+    return ave,err
 #end def
 
 
@@ -842,65 +820,35 @@ def scan_linesearch_error(
     print('W #:       '+str(W_num))
     print('W min:     '+str(W_min))
     print('W max:     '+str(W_max))
-    if fraction > 0.0:
-        print('Using fraction=%f' %fraction)
-    else:
-        print('Using jackknife')
-    #end if
+    print('Using fraction=%f' %fraction)
     
     Es = []
     Bs = []
-    B_old = 0.0
     for w,W in enumerate(Ws):
         if not bias_corr is None:
             x_ref = x_0 + polyval(bias_corr,W)
         else:
             x_ref = x_0
-        #end iff
+        #end if
         R        = W_to_R(W,H)
         x_r      = x_0 + linspace(-R,R,pts)
         y_r      = xy_in(x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)
         B        = x - x_ref # systematic bias
-        #if abs(B) - abs(B_old) < -1.0e-2: # bias should grow monotonously
-        #    X = X[0:w,:]
-        #    Y = Y[0:w,:]
-        #    break
-        #end if
-        B_old = B
         Bs.append(B)
 
         E_w = []
         for s,sigma in enumerate(sigmas):
             if sigma > W*1.5:
                 E = nan
-            elif fraction>0.0:
+            else:
                 xdata = []
                 for n in range(generate):
                     y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
                     xdata.append(x_min)
                 #end for
-                dxdata      = array(xdata)
-                dxdata      = dxdata[~isnan(dxdata)] - B  # remove nan
-                dxdata      = dxdata[dxdata.argsort()]     # sort
-                dxleft      = abs(dxdata[int(len(dxdata)*fraction)])
-                dxright     = abs(dxdata[int(len(dxdata)*(1-fraction))])
-                E           = max(dxleft,dxright) + abs(B)
-            else: # jackknife
-                if abs(sigma-sigma_min)<1e-15:
-                    total_error = abs(sys_bias)
-                else:
-                    jackdata = y_r + sigma*generate**0.5*Gs
-                    jcapture = obj()
-                    jackknife(data     = jackdata,
-                              function = get_min_params,
-                              args     = [x_r,None,pfn],
-                              position = 1,
-                              capture  = jcapture)
-                    y_min,x_min,pf             = jcapture.jmean
-                    y_min_err,x_min_err,pf_err = jcapture.jerror
-                    E = abs(x_min-x_ref)+x_min_err
-                #end if
+                Aave,Aerr = get_fraction_error(array(xdata)-B,fraction=fraction)
+                E = Aerr + abs(B) # exact bias instead of Aave
             #end if
             E_w.append( E )
         #end for
@@ -1053,7 +1001,7 @@ def optimize_linesearch(
 
 
 def get_W_sigma_of_epsilon( X, Y, E, ):
-    epsilons = linspace(amin(E[~isnan(E)])+1e-5,0.99*amax(E[~isnan(E)]),21)
+    epsilons = linspace(amin(E[~isnan(E)])+1e-6,0.99*amax(E[~isnan(E)]),11)
     f,ax     = plt.subplots()
 
     Ws       = []
@@ -1101,7 +1049,7 @@ def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
 #end def
 
 
-def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
+def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=True):
     if fraction is None:
         fraction = data.fraction
     #end if
@@ -1112,7 +1060,8 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
         else:
             epsilonp = sigma
         #end if
-        return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        #return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
     #end def
 
     As = linspace(0.0,1.0,11)
@@ -1132,12 +1081,12 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=False):
     #end if
     
     # optimize input noise prefactor
-    sigmas = linspace(0.1,2.0,20)*epsilon
+    sigmas = linspace(0.1,2.0,20)
     diffAs = []
     costs   = []
     for sigma in sigmas:
-        epsilond = get_epsilond(A_opt,sigma)
-        diffA    = validate_error_targets(data, epsilon, fraction, generate, epsilond)
+        epsilond = get_epsilond(A_opt,sigma*epsilon)
+        diffA    = validate_error_targets(data, sigma*epsilon, fraction, generate, epsilond)
         diffAs.append(diffA)
         costs.append(abs(sum(diffA)))
     #end for
@@ -1193,10 +1142,15 @@ def validate_error_targets(
         Ds.append(D)
     #end for
     Ds = array(Ds).T
-    Dp,errors = propagate_search_error(Ds,data.U,fraction=fraction)
-    diff      = array(errors)/epsilon - 1.0
+    # propagate search error
+    errs = []
+    for p in range(Ds.shape[1]):
+        ave,err = get_fraction_error( (Ds @ data.U)[:,p], fraction=fraction)
+        errs.append( abs(ave)+err ) # conservative summation of errors
+    #end for
 
-    return diff
+    # return fractional error
+    return array(errs)/epsilon - 1.0
 #end def
 
 
@@ -1208,7 +1162,7 @@ class IterationData():
         get_jobs      = None,               # function handle to get nexus jobs
         n             = 0,                  # iteration number
         pfn           = 4,                  # polyfit degree
-        S             = 7,                  # points for fit
+        pts           = 7,                  # points for fit
         path          = '../ls',            # directory
         pos           = None,               # starting positions
         delta         = None,               # parameterization
@@ -1222,6 +1176,7 @@ class IterationData():
         noises        = None,               # list of target noises for each direction
         windows       = None,               # list of windows for each direction
         corrections   = None,               # fitting bias correction
+        fraction      = 0.159,              # fraction for error analysis
         # calculate method specifics
         type          = 'qmc',              # job type
         qmc_idx       = 1,
@@ -1236,7 +1191,7 @@ class IterationData():
         self.get_jobs      = get_jobs
         self.n             = n
         self.pfn           = pfn
-        self.S             = S
+        self.pts           = pts
         self.path          = path+'/ls'+str(n)+'/'  # format for line-search directions
 
         self.W             = W
@@ -1245,6 +1200,7 @@ class IterationData():
         self.noises        = noises
         self.windows       = windows
         self.corrections   = corrections
+        self.fraction      = fraction
 
         self.type          = type
         self.qmc_idx       = qmc_idx
@@ -1352,7 +1308,7 @@ class IterationData():
             X = self.Xs[d]
             Y = self.Ys[d]
             E = self.Es[d]
-            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d, epsilon=%f' % (d,epsilon),show_plot=show_plot)
+            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d' % d,show_plot=show_plot)
             windows.append(W)
             noises.append(sigma)
         #end for
@@ -1377,7 +1333,6 @@ class IterationData():
             sigma        = self.noises[d]
             minuss       = len(shifts[shifts<-1e-10])
             pluss        = 1
-            #direction    = self.directions[:,d]
             shift_rows   = []
             # assume that shifts come in order
             for s,shift in enumerate(shifts):
@@ -1390,7 +1345,6 @@ class IterationData():
                     path = self.path+'d'+str(d)+'_p'+str(pluss)
                     pluss += 1
                 #end if
-                #pos = self.pos.copy() + shift*direction
                 pos = self.pos.copy() + self._shift_position(d,shift)
                 row = pos,path,sigma,shift
                 shift_rows.append(row)
@@ -1410,7 +1364,7 @@ class IterationData():
         eqm_jobs = self.get_jobs(pos=self.pos,path=self.eqm_path,sigma=self.sigma_min)
         jobs     = eqm_jobs
         for d in range(self.D):
-            for s in range(self.S):
+            for s in range(self.pts):
                 pos,path,sigma,shift = self.shift_data[d][s]
                 if not path==self.eqm_path:
                     if self.type=='qmc':
@@ -1427,30 +1381,31 @@ class IterationData():
 
     def load_results(self):
         # load eqm
-        E_eqm,Err_eqm  = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
-        self.E         = E_eqm
-        self.Err       = Err_eqm
+        E,Err,kappa,Eblk = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
+        self.E     = E
+        self.Err   = Err
+        self.Eblk  = Eblk
+        self.kappa = kappa
         # load ls
         Epred          = 1.0e99
-        Emins          = []
-        Dmins          = []
-        Emins_err      = []
-        Dmins_err      = []
+        kappa_max      = kappa
         PES            = []
         PES_err        = []
+        PES_blk        = []
         Dshifts        = []
-        pfs            = []
         for d in range(self.D):
             PES_row     = []
             PES_err_row = []
+            PES_blk_row = []
             shifts      = []
-            for s in range(self.S):
+            for s in range(self.pts):
                 pos,path,sigma,shift = self.shift_data[d][s]
                 if path==self.eqm_path:
-                    E   = self.E
-                    Err = self.Err
+                    E    = self.E
+                    Err  = self.Err
+                    Eblk = self.Eblk
                 else:
-                    E,Err = self._load_energy_error(path+self.load_postfix,sigma)
+                    E,Err,kappa,Eblk = self._load_energy_error(path+self.load_postfix,sigma)
                 #end if
                 if E < Epred:
                     Epred     = E
@@ -1459,29 +1414,22 @@ class IterationData():
                 shifts.append(shift)
                 PES_row.append(E)
                 PES_err_row.append(Err)
+                PES_blk_row.append(Eblk)
             #end for
-            Emin,Emin_err,Dmin,Dmin_err,pf = self._get_shift_minimum(shifts,PES_row,PES_err_row)
-            Emins.append(Emin)
-            Dmins.append(Dmin)
-            Emins_err.append(Emin_err)
-            Dmins_err.append(Dmin_err)
+            Dshifts.append(shifts)
             PES.append(PES_row)
             PES_err.append(PES_err_row)
-            Dshifts.append(shifts)
-            pfs.append(pf)
+            PES_blk.append(PES_blk_row)
         #end for
         self.PES       = array(PES)
         self.PES_err   = array(PES_err)
+        self.PES_blk   = transpose(array(PES_blk),axes=(0,2,1)) # to D x blocks x pts
         self.Epred     = Epred
         self.Epred_err = Epred_err
-        self.Emins     = Emins
-        self.Dmins     = Dmins
-        self.Emins_err = Emins_err
-        self.Dmins_err = Dmins_err
         self.Dshifts   = Dshifts
-        self.pfs       = pfs
 
         self._compute_next_params()
+        self._compute_next_hessian()
         self._compute_next_pos()
         self.ready = True
     #end def
@@ -1535,8 +1483,12 @@ class IterationData():
         sigma_num = 11,
         generate  = 1000,
         relative  = True,
-        fraction  = 0.159,
+        fraction  = None,
         ):
+
+        if fraction is None:
+             fraction = self.fraction
+        #end if
 
         if isscalar(W_max):
             W_max = self.D*[W_max]
@@ -1593,7 +1545,7 @@ class IterationData():
 
     def copy_optimized_parameters(self, data):
         self.pfn      = data.pfn
-        self.S        = data.pts
+        self.pts      = data.pts
         # TODO: make this more robust
         if data.type=='scf' and self.type=='qmc':
             self.noises   = array(data.noises)/2 # from Ry to Ha
@@ -1608,11 +1560,11 @@ class IterationData():
 
     def _shift_parameter(self,d):
         pfn    = self.pfn
-        S      = self.S
+        pts    = self.pts
         H      = self.Lambda[d]
         W      = self.windows[d]
         R      = W_to_R(W,H)
-        shifts = linspace(-R,R,S)
+        shifts = linspace(-R,R,pts)
         return shifts
     #end def
 
@@ -1627,56 +1579,102 @@ class IterationData():
         return dpos
     #end def
 
-
     def _load_energy_error(self,path,sigma):
+        Eblk = None
         if self.type=='qmc':
             AI  = QmcpackAnalyzer(path)
             AI.analyze()
-            # no need to add noise
-            E   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
-            Err = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+            E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
+            Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+            kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
+            #Eblk  = AI.qmc[self.qmc_idx].scalars.data.LocalEnergy
+            Eblk = E + Err*random.randn(self.generate)
         else: # pwscf
-            AI  = PwscfAnalyzer(path)
+            AI = PwscfAnalyzer(path)
             AI.analyze()
-            E   = AI.E + sigma*random.randn(1)[0] # add noise artificially
-            Err = sigma
+            if sigma > 0:
+                Eblk = AI.E + sigma*random.randn(self.generate) # add noise artificially
+            else:
+                Eblk = [AI.E]
+            #end if
+            E     = Eblk[0]
+            Err   = sigma
+            kappa = 1.0
         #end if
-        return E,Err
+        return E,Err,kappa,Eblk
     #end def
-    
-    def _get_shift_minimum(self,shifts,PES,PES_err):
-        pfn = self.pfn
-        if self.is_noisy:
-            # generate random data for jackknife resampling
-            generate = self.generate
-            data = []
-            for s,shift in enumerate(shifts):
-                ste = PES_err[s]
-                data.append( PES[s]+generate**0.5*ste*random.randn(generate) )
-            #end for
-            data = array(data).T
-            # run jackknife
-            jcapture = obj()
-            jackknife(data     = data,
-                      function = get_min_params,
-                      args     = [shifts,None,pfn],
-                      position = 1,
-                      capture  = jcapture)
-            #Emin,Dmin,pf = jcapture.jmean
-            Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
-            Emin_err,Dmin_err,pf_err = jcapture.jerror
-        else:
-            Emin,Dmin,pf = get_min_params(shifts,PES,pfn)
-            Emin_err,Dmin_err,pf_err = 0.,0.,0.
-        #end if
 
-        return Emin,Emin_err,Dmin,Dmin_err,pf
+
+    def _compute_next_hessian(self):
+        Lambda_next = []
+        for d in range(self.D):
+            Lambda_next.append( self.pfs[d][-3] ) # pick the quadratic term
+        #end for
+        self.hessian_next = self.U.T @ diag(Lambda_next) @ self.U
+        self.Lambda_next = Lambda_next
     #end def
-    
+     
 
     def _compute_next_params(self):
-        self.params_next     = self.params + self.U.T @ self.Dmins
-        self.params_next_err = abs((self.U**2).T @ self.Dmins_err)
+        if self.is_noisy:
+            Emins     = []
+            Emins_err = []
+            Dmins     = []
+            Dmins_err = []
+            pfs       = []
+            Ds        = []
+            for d in range(self.D):
+                Emins_blk = []
+                Dmins_blk = []
+                pfs_blk   = []
+                for PES_row in self.PES_blk[d]:
+                    Emin,Dmin,pf = get_min_params(self.Dshifts[d],PES_row,self.pfn)
+                    Emins_blk.append(Emin)
+                    Dmins_blk.append(Dmin)
+                    pfs_blk.append(pf)
+                #end for
+                pf_ave        = mean(pfs_blk,axis=0)
+                Emin,Emin_err = get_fraction_error(Emins_blk, self.fraction)
+                Dmin,Dmin_err = get_fraction_error(Dmins_blk, self.fraction)
+                Dmins.append(Dmin)
+                Dmins_err.append(Dmin_err)
+                Emins.append(Emin)
+                Emins_err.append(Emin_err)
+                pfs.append(pf_ave)
+                Ds.append(Dmins_blk)
+            #end for
+
+            # propagate search error
+            Ps = self.params + array(Ds).T @ self.U
+            P_aves = []
+            P_errs = []
+            for p in range(self.P):
+                P_ave,P_err = get_fraction_error( Ps[:,p], self.fraction )
+                P_aves.append( Ps ) 
+                P_errs.append( P_err ) 
+            #end for
+            self.params_next     = Ps[0]
+            self.params_next_err = array(P_errs)
+        else:
+            Emins = []
+            Dmins = []
+            pfs   = []
+            for d in range(self.D):
+                Emin,Dmin,pf = get_min_params(self.Dshifts[d],self.PES[d],self.pfn)
+                Emins.append(Emin)
+                Dmins.append(Dmin)
+                pfs.append(pf)
+            #end for
+            self.params_next     = self.params + self.U.T @ Dmins
+            self.params_next_err = 0.0*self.params_next
+            Dmins_err            = 0.0*array(Dmins)
+            Emins_err            = 0.0*array(Emins)
+        #end if
+        self.Dmins     = array(Dmins)
+        self.Emins     = array(Emins)
+        self.Dmins_err = array(Dmins_err)
+        self.Emins_err = array(Emins_err)
+        self.pfs       = pfs
     #end def
 
     

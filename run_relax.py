@@ -40,7 +40,11 @@ pos_relax,cell_relax = get_relax_structure(relax_path)
 if __name__=='__main__':
     print('Relaxed geometry:')
     print(pos_relax.reshape((-1,dim)))
-    param_vals = delta_pinv @ pos_relax
+    try:
+        param_vals = delta_pinv @ pos_relax
+    except:
+        param_vals = pos_to_params(pos_relax)
+    #end try
     print('Parameter values:')
     for p,pval in enumerate(param_vals):
         print(' #'+str(p)+': '+str(pval))
