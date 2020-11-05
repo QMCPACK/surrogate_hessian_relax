@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder
 from copy import deepcopy
 from math import log10
 from scipy.interpolate import interp1d
@@ -262,24 +262,21 @@ def get_2d_sli(p0,p1,slicing):
     return tuple(sli)
 #end def
 
-def get_min_params(shifts,PES,n=2):
+def get_min_params(shifts,PES,n=2,endpts=[]):
     pf     = polyfit(shifts,PES,n)
-    c      = poly1d(pf)
-    crit   = c.deriv().r
-    r_crit = crit[crit.imag==0].real
-    test   = c.deriv(2)(r_crit)
-
-    # compute local minima
-    # excluding range boundaries
-    # choose the one closest to zero
+    r      = roots(polyder(pf))
+    Pmins  = list(r[r.imag==0].real)
+    for pt in endpts:
+        Pmins.append(pt)
+    #end for
+    Emins = polyval(pf,array(Pmins))
     try:
-        min_idx = argmin(abs(r_crit[test>0]))
-        Pmin    = r_crit[test>0][min_idx]
-        Emin    = c(Pmin)
+        imin = argmin(Emins)
+        Emin = Emins[imin]
+        Pmin = Pmins[imin]
     except:
-        Pmin   = nan
-        Emin   = nan
-    #end try
+        Pmin = nan
+        Emin = nan
     return Emin,Pmin,pf
 #end def
 
@@ -811,6 +808,7 @@ def scan_linesearch_error(
 
     Gs = random.randn(generate,pts)
     xy_in = interp1d(x_n,y_n,kind='cubic')
+    endpts = [min(x_n),max(x_n)] # evaluate at the end points
 
     X,Y = meshgrid(Ws,sigmas)
 
@@ -833,23 +831,19 @@ def scan_linesearch_error(
         R        = W_to_R(W,H)
         x_r      = x_0 + linspace(-R,R,pts)
         y_r      = xy_in(x_r)
-        y,x,p    = get_min_params(x_r,y_r,pfn)
+        y,x,p    = get_min_params(x_r,y_r,pfn)#,endpts=endpts)
         B        = x - x_ref # systematic bias
         Bs.append(B)
 
         E_w = []
         for s,sigma in enumerate(sigmas):
-            if sigma > W*1.5:
-                E = nan
-            else:
-                xdata = []
-                for n in range(generate):
-                    y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn)
-                    xdata.append(x_min)
-                #end for
-                Aave,Aerr = get_fraction_error(array(xdata)-B,fraction=fraction)
-                E = Aerr + abs(B) # exact bias instead of Aave
-            #end if
+            xdata = []
+            for n in range(generate):
+                y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn,endpts=endpts)
+                xdata.append(x_min)
+            #end for
+            Aave,Aerr = get_fraction_error(array(xdata)-B,fraction=fraction)
+            E = Aerr + abs(B) # exact bias instead of Aave
             E_w.append( E )
         #end for
         Es.append( E_w )
@@ -925,8 +919,7 @@ def get_search_distribution(
         y_min,x_min,pf = get_min_params(x_r,y_r+sigma_opt*Gs[n],pfn)
         xdata.append(x_min)
     #end for
-    dxdata      = array(xdata) - B
-    #dxdata      = dxdata[~isnan(dxdata)] - B   # remove nan
+    dxdata      = array(xdata) #-B
     return dxdata
 #end def
 
@@ -944,7 +937,8 @@ def optimize_linesearch(
 
     f,ax   = plt.subplots()
     errors = False
-    ctf   = ax.contourf(X,Y,E,show_levels)
+    levels = linspace(0,2*epsilon,15)
+    ctf   = ax.contourf(X,Y,E,levels)
     ct1   = ax.contour( X,Y,E,[epsilon],colors=['k'])
 
     # find the optimal points
@@ -1001,9 +995,9 @@ def optimize_linesearch(
 
 
 def get_W_sigma_of_epsilon( X, Y, E, ):
-    epsilons = linspace(amin(E[~isnan(E)])+1e-6,0.99*amax(E[~isnan(E)]),11)
+    # square grid spacing for better resolution at small errors
+    epsilons = linspace( (amin(E[~isnan(E)])+1e-6)**0.5,0.99*amax(E[~isnan(E)])**0.5, 51)**2
     f,ax     = plt.subplots()
-
     Ws       = []
     sigmas   = []
     for epsilon in epsilons:
@@ -1012,6 +1006,7 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
         try:
             ct1 = ax.contour( X,Y,E,[epsilon])
         except:
+            ct1 = ax.contour( X,Y,E,[epsilon])
             epsilons = epsilons[0:len(Ws)]
             break
         #end try
@@ -1026,6 +1021,10 @@ def get_W_sigma_of_epsilon( X, Y, E, ):
                 #end if
             #end for
         #end for
+        if W_opt/max(X[0,:])==1.0 or isnan(W_opt):
+            epsilons = epsilons[0:len(Ws)]
+            break
+        #end if
         if sigma_opt/max(Y[:,0])==1.0 or isnan(sigma_opt):
             epsilons = epsilons[0:len(Ws)]
             break
@@ -1049,7 +1048,7 @@ def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
 #end def
 
 
-def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=True):
+def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
     if fraction is None:
         fraction = data.fraction
     #end if
@@ -1076,27 +1075,22 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate,verbose=True):
         varAs.append(var(diff))
     #end for
     A_opt = As[argmin(array(varAs))]
-    if verbose:
-        print(A_opt)
-    #end if
     
     # optimize input noise prefactor
-    sigmas = linspace(0.1,2.0,20)
-    diffAs = []
-    costs   = []
-    for sigma in sigmas:
-        epsilond = get_epsilond(A_opt,sigma*epsilon)
-        diffA    = validate_error_targets(data, sigma*epsilon, fraction, generate, epsilond)
-        diffAs.append(diffA)
-        costs.append(abs(sum(diffA)))
-    #end for
-    i_opt     = argmin(costs)
-    sigma_opt = sigmas[i_opt]
-    diffA_opt  = diffAs[i_opt]
-    epsilond_opt = get_epsilond(A_opt,sigma_opt)/(1+max(array(diffA_opt))) # final linear adjustment
-    if verbose:
-        print(sigma_opt)
-        print(epsilond_opt)
+    dsigma = 0.1
+    sigma  = 0.0
+    diff   = [-1.0]
+    n      = 0
+    while all(array(diff)<0.0):
+        sigma       += dsigma
+        n           += 1
+        epsilond_opt = epsilond
+        epsilond     = get_epsilond(A_opt,sigma*epsilon)
+        diff         = validate_error_targets(data, epsilon, fraction, generate, epsilond)
+        print(n,sigma,diff)
+    #end while
+    if n==1:
+        print('Warning: epsilond broke at first try!')
     #end if
     
     return epsilond_opt
@@ -1109,21 +1103,34 @@ def validate_error_targets(
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
     generate,    # use old random data or create new
-    epsilond,    # vector of a and b prefactors
+    epsilond = None, # tolerances per searh direction
+    windows  = None, # set of noises
+    noises   = None, # set of windows
     ):
+
+    use_epsilond = not epsilond is None
+    use_W_sigma  = not windows is None and not noises is None
 
     Ds  = []
     for d in range(data.D):
-        eps       = abs(epsilond[d])
-        try:
-            W_opt     = abs(polyval(data.W_of_epsilon[d],eps))**0.5
-            sigma_opt = abs(polyval(data.sigma_of_epsilon[d],eps))
-        except:
-            X = data.Xs[d]
-            Y = data.Ys[d]
-            E = data.Es[d]
-            W_opt,sigma_opt,err = optimize_linesearch(X,Y,E,epsilon=epsilond[d],show_plot=False) 
-        #end try
+        if use_W_sigma:
+            W_opt     = windows[d]
+            sigma_opt = noises[d]
+        elif use_epsilond:
+            eps = abs(epsilond[d])
+            try:
+                W_opt     = abs(polyval(data.W_of_epsilon[d],eps))**0.5
+                sigma_opt = abs(polyval(data.sigma_of_epsilon[d],eps))
+            except:
+                X = data.Xs[d]
+                Y = data.Ys[d]
+                E = data.Es[d]
+                W_opt,sigma_opt,err = optimize_linesearch(X,Y,E,epsilon=epsilond[d],show_plot=False) 
+            #end try
+        else: # use raw data
+            W_opt     = data.windows[d]
+            sigma_opt = data.noises[d]
+        #end if
         if generate>0:
             Gs = generate
         else:
@@ -1268,13 +1275,16 @@ class IterationData():
         return abs(epsilond)
     #end def
 
+
     def load_of_epsilon(self):
         Wfuncs = []
         Sfuncs = []
         for d in range(self.D):
             eps,Ws,sigmas = get_W_sigma_of_epsilon(self.Xs[d],self.Ys[d],self.Es[d])
-            Wfuncs.append( polyfit(eps,Ws**2,2) )
-            Sfuncs.append( polyfit(eps,sigmas,2) )
+            pf_W2    = polyfit(eps,Ws**2,1)
+            pf_sigma = polyfit(eps,sigmas,2)
+            Wfuncs.append( pf_W2 )
+            Sfuncs.append( pf_sigma )
         #end for
         self.W_of_epsilon     = Wfuncs
         self.sigma_of_epsilon = Sfuncs
@@ -1293,7 +1303,7 @@ class IterationData():
 
         if epsilond is None:
             try:
-                epsilond = optimizer(self,epsilon,fraction,generate,verbose)
+                epsilond = optimizer(self,epsilon,fraction,generate)
             except:
                 epsilond = self.get_epsilond(epsilon)
                 print('Epsilond optimization failed, falling back to default')
@@ -1305,10 +1315,15 @@ class IterationData():
         noises     = []
         bias_corrs = None # not for the moment
         for d in range(self.D):
-            X = self.Xs[d]
-            Y = self.Ys[d]
-            E = self.Es[d]
-            W,sigma,errors = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d' % d,show_plot=show_plot)
+            try:
+                W     = abs(polyval(self.W_of_epsilon[d],eps))**0.5
+                sigma = abs(polyval(self.sigma_of_epsilon[d],eps))
+            except:
+                X = self.Xs[d]
+                Y = self.Ys[d]
+                E = self.Es[d]
+                W,sigma,err = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d' % d,show_plot=show_plot)
+            #end try
             windows.append(W)
             noises.append(sigma)
         #end for
@@ -1381,31 +1396,27 @@ class IterationData():
 
     def load_results(self):
         # load eqm
-        E,Err,kappa,Eblk = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
+        E,Err,kappa = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
         self.E     = E
         self.Err   = Err
-        self.Eblk  = Eblk
         self.kappa = kappa
         # load ls
         Epred          = 1.0e99
         kappa_max      = kappa
         PES            = []
         PES_err        = []
-        PES_blk        = []
         Dshifts        = []
         for d in range(self.D):
             PES_row     = []
             PES_err_row = []
-            PES_blk_row = []
             shifts      = []
             for s in range(self.pts):
                 pos,path,sigma,shift = self.shift_data[d][s]
                 if path==self.eqm_path:
                     E    = self.E
                     Err  = self.Err
-                    Eblk = self.Eblk
                 else:
-                    E,Err,kappa,Eblk = self._load_energy_error(path+self.load_postfix,sigma)
+                    E,Err,kappa = self._load_energy_error(path+self.load_postfix,sigma)
                 #end if
                 if E < Epred:
                     Epred     = E
@@ -1414,16 +1425,13 @@ class IterationData():
                 shifts.append(shift)
                 PES_row.append(E)
                 PES_err_row.append(Err)
-                PES_blk_row.append(Eblk)
             #end for
             Dshifts.append(shifts)
             PES.append(PES_row)
             PES_err.append(PES_err_row)
-            PES_blk.append(PES_blk_row)
         #end for
         self.PES       = array(PES)
         self.PES_err   = array(PES_err)
-        self.PES_blk   = transpose(array(PES_blk),axes=(0,2,1)) # to D x blocks x pts
         self.Epred     = Epred
         self.Epred_err = Epred_err
         self.Dshifts   = Dshifts
@@ -1472,6 +1480,51 @@ class IterationData():
     #end def
 
 
+    def load_W_max(
+        self,
+        epsilon,
+        pfn,
+        pts,
+        ):
+        if isscalar(epsilon):
+            epsilon = self.D*[epsilon]
+        #end if
+        Wmaxs = []
+        for d in range(self.D):
+            x_n   = self.shifts[d]
+            y_n   = self.PES[d]
+            xy_in = interp1d(x_n,y_n,kind='cubic')
+            H     = self.Lambda[d]
+            W_eff = R_to_W(max(x_n),H)
+            Ws    = linspace(1.0e-4, 0.999*W_eff,51)
+            Bs    = []
+            for W in Ws:
+                R        = W_to_R(W,H)
+                x_r      = linspace(-R,R,pts)
+                y_r      = xy_in(x_r)
+                y,x,p    = get_min_params(x_r,y_r,pfn)
+                Bs.append(x)
+            #end for
+            B_in = interp1d(Ws,Bs,kind='cubic')
+            Wmax = 0.0
+            epsilon_max = abs(self.U[d,:]*epsilon).max()
+            for W in Ws:
+                # when bias gets too large
+                if abs(B_in(W))>epsilon_max:
+                    Wmax = W
+                    break
+                #end if
+            #end for
+            if Wmax==0:
+                print('Warning: Wmax not reached with direction {}'.format(d))
+                Wmax = W_eff
+            #end if
+            Wmaxs.append(Wmax)
+        #end for
+        return Wmaxs
+    #end def
+
+
     def scan_error_data(
         self,
         pfn,
@@ -1492,7 +1545,7 @@ class IterationData():
 
         if isscalar(W_max):
             W_max = self.D*[W_max]
-        else:
+        elif W_max is None:
             W_max = self.windows
         #end if
     
@@ -1519,7 +1572,8 @@ class IterationData():
                 pfn       = pfn,
                 W_num     = W_num,
                 W_max     = W_max[d],
-                W_min     = W_max[d]/W_num,
+                #W_min     = W_max[d]/W_num,
+                W_min     = 1e-4,
                 sigma_num = sigma_num,
                 sigma_max = sigma_rel,
                 sigma_min = 0.0,
@@ -1580,28 +1634,20 @@ class IterationData():
     #end def
 
     def _load_energy_error(self,path,sigma):
-        Eblk = None
         if self.type=='qmc':
             AI  = QmcpackAnalyzer(path)
             AI.analyze()
             E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
             Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
             kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
-            #Eblk  = AI.qmc[self.qmc_idx].scalars.data.LocalEnergy
-            Eblk = E + Err*random.randn(self.generate)
         else: # pwscf
             AI = PwscfAnalyzer(path)
             AI.analyze()
-            if sigma > 0:
-                Eblk = AI.E + sigma*random.randn(self.generate) # add noise artificially
-            else:
-                Eblk = [AI.E]
-            #end if
-            E     = Eblk[0]
+            E = AI.E
             Err   = sigma
             kappa = 1.0
         #end if
-        return E,Err,kappa,Eblk
+        return E,Err,kappa
     #end def
 
 
@@ -1627,8 +1673,15 @@ class IterationData():
                 Emins_blk = []
                 Dmins_blk = []
                 pfs_blk   = []
-                for PES_row in self.PES_blk[d]:
-                    Emin,Dmin,pf = get_min_params(self.Dshifts[d],PES_row,self.pfn)
+                Gs        = random.randn(generate,pts)
+                PES       = self.PES[d]
+                PES_err   = self.PES_err[d]
+                shifts    = self.Dshifts[d]
+                PES_fit   = polyval(polyfit(shifts,PES,self.pfn),shifts)
+                #for PES_row in self.PES_blk[d]:
+                for G in Gs:
+                    PES_row = PES_fit + PES_err*G
+                    Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn)
                     Emins_blk.append(Emin)
                     Dmins_blk.append(Dmin)
                     pfs_blk.append(pf)
