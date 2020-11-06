@@ -1063,38 +1063,87 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
         return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
     #end def
 
-    As = linspace(0.0,1.0,11)
+    #As = linspace(0.0,1.0,11)
+    As = linspace(-0.1,0.1,11) 
 
     # optimize epsilond ab fraction that evens out parameter errors
-    diffs = []
     varAs = []
     for A in As:
         epsilond = get_epsilond(A,epsilon)
         diff     = validate_error_targets(data, epsilon, fraction, generate, epsilond)
-        diffs.append(diff)
         varAs.append(var(diff))
     #end for
     A_opt = As[argmin(array(varAs))]
     
     # optimize input noise prefactor
-    dsigma = 0.1
-    sigma  = 0.0
-    diff   = [-1.0]
-    n      = 0
-    while all(array(diff)<0.0):
-        sigma       += dsigma
-        n           += 1
-        epsilond_opt = epsilond
-        epsilond     = get_epsilond(A_opt,sigma*epsilon)
-        diff         = validate_error_targets(data, epsilon, fraction, generate, epsilond)
-        print(n,sigma,diff)
-    #end while
+    delta = 0.1
+    coeff = 0.0
+    for n in range(100):
+        coeff         += delta
+        epsilond_this  = get_epsilond(A_opt,coeff*epsilon)
+        diff,cost_this = validate_error_targets(data, epsilon, fraction, generate, epsilond=epsilond_this, get_cost=True)
+        if not all(array(diff)<0.0):
+            break
+        #end if
+        cost_opt      = cost_this
+        epsilond_opt  = epsilond_this
+    #end for
     if n==1:
         print('Warning: epsilond broke at first try!')
+    else:
+        print('Optimized epsilond, A_opt:{}, cost={}:'.format(A_opt, cost_opt))
+        print(epsilond_opt)
     #end if
     
     return epsilond_opt
 #end def
+
+
+def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
+    if fraction is None:
+        fraction = data.fraction
+    #end if
+
+    def get_epsilond(A,sigma):
+        if isscalar(sigma):
+            epsilonp = array(data.D*[sigma])
+        else:
+            epsilonp = sigma
+        #end if
+        #return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
+    #end def
+
+    #As = linspace(0.0,1.0,11)
+    As = linspace(-0.1,0.1,11)
+    cost_opt = 1.0e99
+
+    # optimize epsilond ab fraction that evens out parameter errors
+    delta = 0.1
+    for A in As:
+        coeff    = 0.0
+        for n in range(100): # increase in finite steps
+            coeff         += delta
+            epsilond_this  = get_epsilond(A,coeff*epsilon)
+            diff,cost_this = validate_error_targets(data, epsilon, fraction, generate, epsilond=epsilond_this, get_cost=True)
+            if not all(array(diff)<0.0):
+                break
+            #end if
+            cost      = cost_this
+            epsilond  = epsilond_this
+        #end for
+        if cost < cost_opt:
+            A_opt        = A
+            cost_opt     = cost
+            epsilond_opt = epsilond
+        #end if
+    #end for
+    print('Optimized epsilond, A_opt: {}, cost={}:'.format(A_opt, cost_opt))
+    print(epsilond_opt)
+
+    return epsilond_opt
+#end def
+
 
 
 # validation function
@@ -1103,15 +1152,19 @@ def validate_error_targets(
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
     generate,    # use old random data or create new
-    epsilond = None, # tolerances per searh direction
-    windows  = None, # set of noises
-    noises   = None, # set of windows
+    epsilond = None,  # tolerances per searh direction
+    windows  = None,  # set of noises
+    noises   = None,  # set of windows
+    get_cost = False, # estimate cost
     ):
 
     use_epsilond = not epsilond is None
     use_W_sigma  = not windows is None and not noises is None
 
-    Ds  = []
+    Ds     = []
+    Ws     = []
+    sigmas = []
+    cost   = 0.0
     for d in range(data.D):
         if use_W_sigma:
             W_opt     = windows[d]
@@ -1147,6 +1200,7 @@ def validate_error_targets(
             Gs        = Gs,
             )
         Ds.append(D)
+        cost += data.pts*sigma_opt**-2
     #end for
     Ds = array(Ds).T
     # propagate search error
@@ -1157,7 +1211,12 @@ def validate_error_targets(
     #end for
 
     # return fractional error
-    return array(errs)/epsilon - 1.0
+    diff = array(errs)/epsilon - 1.0
+    if get_cost:
+        return diff,cost
+    else:
+        return diff
+    #end if
 #end def
 
 
@@ -1673,12 +1732,11 @@ class IterationData():
                 Emins_blk = []
                 Dmins_blk = []
                 pfs_blk   = []
-                Gs        = random.randn(generate,pts)
+                Gs        = random.randn(self.generate,self.pts)
                 PES       = self.PES[d]
                 PES_err   = self.PES_err[d]
                 shifts    = self.Dshifts[d]
                 PES_fit   = polyval(polyfit(shifts,PES,self.pfn),shifts)
-                #for PES_row in self.PES_blk[d]:
                 for G in Gs:
                     PES_row = PES_fit + PES_err*G
                     Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn)
