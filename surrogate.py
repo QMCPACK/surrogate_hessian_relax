@@ -1064,7 +1064,7 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
     #end def
 
     #As = linspace(0.0,1.0,11)
-    As = linspace(-0.1,0.1,11) 
+    As = linspace(-0.2,0.2,11) 
 
     # optimize epsilond ab fraction that evens out parameter errors
     varAs = []
@@ -1086,7 +1086,7 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
             break
         #end if
         cost_opt      = cost_this
-        epsilond_opt  = epsilond_this
+        epsilond_opt  = epsilond_this.copy()
     #end for
     if n==1:
         print('Warning: epsilond broke at first try!')
@@ -1115,7 +1115,7 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
     #end def
 
     #As = linspace(0.0,1.0,11)
-    As = linspace(-0.1,0.1,11)
+    As = linspace(-0.2,0.2,11)
     cost_opt = 1.0e99
 
     # optimize epsilond ab fraction that evens out parameter errors
@@ -1130,7 +1130,7 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
                 break
             #end if
             cost      = cost_this
-            epsilond  = epsilond_this
+            epsilond  = epsilond_this.copy()
         #end for
         if cost < cost_opt:
             A_opt        = A
@@ -1355,7 +1355,7 @@ class IterationData():
         epsilond  = None,
         show_plot = False,
         fraction  = None,
-        optimizer = optimize_epsilond_heuristic, # can also be e.g. optimize_epsilond_broyden1
+        optimizer = optimize_epsilond_heuristic_cost, # can also be e.g. optimize_epsilond_broyden1
         generate  = 0, # default: use existing data
         verbose   = False,
         ):
