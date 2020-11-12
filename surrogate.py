@@ -723,6 +723,39 @@ def plot_PES_fits(
 #end def
 
 
+def error_scan_diagnostics(data, steps_times_error2=None):
+    # cost
+    cost_tot = data.pts*sum(array(data.noises)**-2)
+
+    print('Error scan completed')
+    print('  polyfit degree: {}'.format(data.pfn))
+    print('  pts:            {}'.format(data.pts))
+
+    if steps_times_error2 is None:
+        print('{:10s} {:15s} {:15s} {:15s} {:15s}'.format('direction','window','noise','rel. cost (%)'))
+        for d in range(data.D):
+            W        = data.windows[d]
+            sigma    = data.noises[d]
+            cost     = data.pts*sigma**-2/cost_tot*100
+            epsilond = data.epsilond[d]
+            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<04.2f}'.format(d,epsilond,W,sigma,cost))
+        #end for
+    else:
+        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window','noise','rel. cost (%)','steps'))
+        for d in range(data.D):
+            W        = data.windows[d]
+            sigma    = data.noises[d]
+            cost     = data.pts*sigma**-2/cost_tot*100
+            steps    = int(4*steps_times_error2*sigma**-2)+1 # 4x factor from unit conversion
+            epsilond = data.epsilond[d]
+            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<15.2f} {:<15d}'.format(d,epsilond,W,sigma,cost,steps))
+        #end for
+    #end if
+
+    print('\ntotal relative cost: {:e}'.format(cost_tot))
+
+#end def
+
 
 def surrogate_diagnostics(data_list):
     # print standard stuff
