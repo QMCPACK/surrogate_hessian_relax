@@ -753,7 +753,7 @@ def R_to_W(R,H):
     return W
 #end def
 
-def get_fraction_error(data,fraction=0.159):
+def get_fraction_error(data,fraction):
     data   = array(data)
     data   = data[~isnan(data)]        # remove nan
     ave    = mean(data)
@@ -994,9 +994,9 @@ def optimize_linesearch(
 #end def
 
 
-def get_W_sigma_of_epsilon( X, Y, E, ):
+def get_W_sigma_of_epsilon( X, Y, E, gridexp=2.0):
     # square grid spacing for better resolution at small errors
-    epsilons = linspace( (amin(E[~isnan(E)])+1e-6)**0.5,0.99*amax(E[~isnan(E)])**0.5, 51)**2
+    epsilons = linspace( (amin(E[~isnan(E)])+1e-6)**(1.0/gridexp),0.99*amax(E[~isnan(E)])**(1.0/gridexp), 101)**gridexp
     f,ax     = plt.subplots()
     Ws       = []
     sigmas   = []
@@ -1059,8 +1059,8 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
         else:
             epsilonp = sigma
         #end if
-        #return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
-        return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
+        return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        #return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
     #end def
 
     #As = linspace(0.0,1.0,11)
@@ -1091,7 +1091,7 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
     if n==1:
         print('Warning: epsilond broke at first try!')
     else:
-        print('Optimized epsilond, A_opt:{}, cost={}:'.format(A_opt, cost_opt))
+        print('Cost-optimized epsilond, A_opt:{}, cost={}:'.format(A_opt, cost_opt))
         print(epsilond_opt)
     #end if
     
@@ -1110,13 +1110,14 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
         else:
             epsilonp = sigma
         #end if
-        #return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
-        return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
+        return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        #return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
     #end def
 
     #As = linspace(0.0,1.0,11)
     As = linspace(-0.2,0.2,11)
     cost_opt = 1.0e99
+    cost = 0.0
 
     # optimize epsilond ab fraction that evens out parameter errors
     delta = 0.1
@@ -1242,7 +1243,7 @@ class IterationData():
         noises        = None,               # list of target noises for each direction
         windows       = None,               # list of windows for each direction
         corrections   = None,               # fitting bias correction
-        fraction      = 0.159,              # fraction for error analysis
+        fraction      = 0.025,              # fraction for error analysis
         # calculate method specifics
         type          = 'qmc',              # job type
         qmc_idx       = 1,
@@ -1335,15 +1336,22 @@ class IterationData():
     #end def
 
 
-    def load_of_epsilon(self):
+    def load_of_epsilon(self,gridexp=2.0):
         Wfuncs = []
         Sfuncs = []
         for d in range(self.D):
-            eps,Ws,sigmas = get_W_sigma_of_epsilon(self.Xs[d],self.Ys[d],self.Es[d])
+            print(d)
+            eps,Ws,sigmas = get_W_sigma_of_epsilon(self.Xs[d],self.Ys[d],self.Es[d],gridexp=gridexp)
             pf_W2    = polyfit(eps,Ws**2,1)
             pf_sigma = polyfit(eps,sigmas,2)
             Wfuncs.append( pf_W2 )
             Sfuncs.append( pf_sigma )
+            #plt.figure()
+            #plt.plot(eps,Ws,'rx')
+            #plt.plot(eps,polyval(pf_W2,eps)**0.5,'r-')
+            #plt.figure()
+            #plt.plot(eps,sigmas,'bx')
+            #plt.plot(eps,polyval(pf_sigma,eps),'b-')
         #end for
         self.W_of_epsilon     = Wfuncs
         self.sigma_of_epsilon = Sfuncs
@@ -1360,13 +1368,12 @@ class IterationData():
         verbose   = False,
         ):
 
+        if fraction is None:
+            fraction = self.fraction
+        #end if
+
         if epsilond is None:
-            try:
-                epsilond = optimizer(self,epsilon,fraction,generate)
-            except:
-                epsilond = self.get_epsilond(epsilon)
-                print('Epsilond optimization failed, falling back to default')
-            #end try
+            epsilond = optimizer(self,epsilon,fraction,generate)
         #end if
 
         # finally, set optimal windows and sigmas
@@ -1375,8 +1382,8 @@ class IterationData():
         bias_corrs = None # not for the moment
         for d in range(self.D):
             try:
-                W     = abs(polyval(self.W_of_epsilon[d],eps))**0.5
-                sigma = abs(polyval(self.sigma_of_epsilon[d],eps))
+                W     = abs(polyval(self.W_of_epsilon[d],epsilon[d]))**0.5
+                sigma = abs(polyval(self.sigma_of_epsilon[d],epsilond[d]))
             except:
                 X = self.Xs[d]
                 Y = self.Ys[d]
@@ -1694,15 +1701,15 @@ class IterationData():
 
     def _load_energy_error(self,path,sigma):
         if self.type=='qmc':
-            AI  = QmcpackAnalyzer(path)
+            AI    = QmcpackAnalyzer(path)
             AI.analyze()
             E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
             Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
             kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
         else: # pwscf
-            AI = PwscfAnalyzer(path)
+            AI    = PwscfAnalyzer(path)
             AI.analyze()
-            E = AI.E
+            E     = AI.E + sigma*random.randn(1)[0]
             Err   = sigma
             kappa = 1.0
         #end if
