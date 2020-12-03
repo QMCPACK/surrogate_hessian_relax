@@ -1,11 +1,10 @@
 #! /usr/bin/env python3
 
-from parameters import *
-from pwscf_analyzer import PwscfAnalyzer
 from nexus import settings,run_project
-from numpy import diagonal
+from pwscf_analyzer import PwscfAnalyzer
 
-relax_path = '../relax/relax.in' # default path
+from parameters import relax_dir,nx_settings,pos_to_params,params_to_pos,dim,pos_init,cell_init,relax_cell,get_relax_job,elem
+from surrogate_tools import print_relax
 
 def get_relax_structure(relax_path):
     try:
@@ -28,29 +27,16 @@ def get_relax_structure(relax_path):
 if __name__=='__main__':
     settings(**nx_settings)
     if relax_cell:
-        relax = get_relax_job(pos_init,'../relax',cell=cell_init)[0]
+        relax = get_relax_job(pos_init,relax_dir,cell=cell_init)[0]
     else:
-        relax = get_relax_job(pos_init,'../relax')[0]
+        relax = get_relax_job(pos_init,relax_dir)[0]
     #end if
     run_project(relax)
 #end if
 
-pos_relax,cell_relax = get_relax_structure(relax_path)
+pos_relax,cell_relax = get_relax_structure('{}/relax.in'.format(relax_dir))
+params_relax         = pos_to_params(pos_relax,cell=cell_relax)
 
 if __name__=='__main__':
-    print('Relaxed geometry:')
-    print(pos_relax.reshape((-1,dim)))
-    try:
-        param_vals = delta_pinv @ pos_relax
-    except:
-        param_vals = pos_to_params(pos_relax)
-    #end try
-    print('Parameter values:')
-    for p,pval in enumerate(param_vals):
-        print(' #'+str(p)+': '+str(pval))
-    #end for
-    if relax_cell:
-        print('Relaxed cell:')
-        print(cell_relax.reshape((-1,dim)))
-    #end if
+    print_relax(elem,pos_relax,params_relax,cell_relax,dim)
 #end if
