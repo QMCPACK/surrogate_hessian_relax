@@ -42,10 +42,12 @@ def load_W_max(
         B_in = interp1d(Ws,Bs-Bs[0],kind='cubic')
         Wmax = 0.0
         epsilon_max = abs(data.U[d,:]*epsilon).max()
+        #epsilon_max = abs(data.U[d,:]*epsilon).max()
         for W in Ws:
-            # when bias gets too large
-            if abs(B_in(W))>epsilon_max:
+            # break if bias gets too large for any parameter
+            if any( abs(B_in(W)*data.U[d,:]) - epsilon > 0):
                 Wmax = W
+                print(d,Wmax,abs(B_in(W)*data.U[d,:]) - epsilon)
                 break
             #end if
         #end for
@@ -224,18 +226,30 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False):
     Wfuncs = []
     Sfuncs = []
     for d in range(data.D):
-        eps,Ws,sigmas = get_W_sigma_of_epsilon(data.Xs[d],data.Ys[d],data.Es[d],gridexp=gridexp)
+        eps,Ws,sigmas = get_W_sigma_of_epsilon(
+                            data.Xs[d],
+                            data.Ys[d],
+                            data.Es[d],
+                            gridexp   = gridexp,
+                            show_plot = show_plot,
+                            )
         pf_W2    = polyfit(eps,Ws**2,1)
         pf_sigma = polyfit(eps,sigmas,2)
         Wfuncs.append( pf_W2 )
         Sfuncs.append( pf_sigma )
         if show_plot:
-            plt.figure()
-            plt.plot(eps,Ws,'rx')
-            plt.plot(eps,polyval(pf_W2,eps)**0.5,'r-')
-            plt.figure()
-            plt.plot(eps,sigmas,'bx')
-            plt.plot(eps,polyval(pf_sigma,eps),'b-')
+            f,ax = plt.subplots()
+            ax.plot(eps,Ws,'rx')
+            ax.plot(eps,polyval(pf_W2,eps)**0.5,'r-')
+            ax.set_ylabel('W_opt')
+            ax.set_xlabel('epsilon')
+            ax.set_title('linesearch #{}'.format(d))
+            f,ax = plt.subplots()
+            ax.plot(eps,sigmas,'bx')
+            ax.plot(eps,polyval(pf_sigma,eps),'b-')
+            ax.set_ylabel('sigma_opt')
+            ax.set_xlabel('epsilon')
+            ax.set_title('linesearch #{}'.format(d))
         #end if
     #end for
     data.W_of_epsilon     = Wfuncs
@@ -243,8 +257,13 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False):
 #end def
 
 
-def get_W_sigma_of_epsilon( X, Y, E, gridexp=4.0):
-    # square grid spacing for better resolution at small errors
+def get_W_sigma_of_epsilon( 
+    X, # W     mesh
+    Y, # sigma mesh
+    E, # error mesh
+    gridexp   = 4.0, # polynomial grid spacing for better resolution at small error values
+    show_plot = False,
+    ):
     epsilons = linspace( (amin(E[~isnan(E)])+1e-7)**(1.0/gridexp),0.99*amax(E[~isnan(E)])**(1.0/gridexp), 201)**gridexp
     f,ax     = plt.subplots()
     Ws       = []
@@ -281,7 +300,9 @@ def get_W_sigma_of_epsilon( X, Y, E, gridexp=4.0):
         Ws.append(W_opt)
         sigmas.append(sigma_opt)
     #end for
-    plt.close(f)
+    if not show_plot:
+        plt.close(f)
+    #end if
     return epsilons,array(Ws),array(sigmas)
 #end def
 
@@ -615,7 +636,7 @@ def get_search_distribution(
     R      = W_to_R(W_opt,H)
     R      = max(min(x_n),R)
     R      = min(max(x_n),R)
-    x_r    = x_0 + linspace(-R,R,pts)
+    x_r    = linspace(-R,R,pts)
     y_r    = xy_in(x_r)
 
     xdata = []
