@@ -356,16 +356,31 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
 #end def
 
 
+def optimize_epsilond_thermal(data,temperature,fraction,generate):
+    Lambda = data.Lambda
+
+    epsilond = []
+    for k in Lambda:
+        epsilond.append( (temperature/k)**0.5 )
+    #end for
+    epsilond = array(epsilond)
+    epsilonp = validate_error_targets(data, None, fraction, generate, epsilond=epsilond, get_cost=True, fractional=False)
+
+    return epsilonp,epsilond
+#end def
+
+
 
 def optimize_window_sigma(
     data,
-    epsilon   = 0.01,
-    epsilond  = None,
-    show_plot = False,
-    fraction  = None,
-    optimizer = optimize_epsilond_heuristic_cost, # can also be e.g. optimize_epsilond_broyden1
-    generate  = 0, # default: use existing data
-    verbose   = False,
+    epsilon     = 0.01,
+    temperature = 0,    # alternative to epsilon
+    epsilond    = None,
+    show_plot   = False,
+    fraction    = None,
+    optimizer   = optimize_epsilond_heuristic_cost, # can also be e.g. optimize_epsilond_broyden1
+    generate    = 0, # default: use existing data
+    verbose     = False,
     ):
 
     if fraction is None:
@@ -373,7 +388,13 @@ def optimize_window_sigma(
     #end if
 
     if epsilond is None:
-        epsilond = optimizer(data,epsilon,fraction,generate)
+        if temperature > 0:
+            epsilonp,epsilond = optimize_epsilond_thermal(data,temperature,fraction,generate)
+            data.epsilonp     = epsilonp
+            data.T            = temperature
+        else:
+            epsilond = optimizer(data,epsilon,fraction,generate)
+        #end if
     #end if
 
     # finally, set optimal windows and sigmas
@@ -543,10 +564,11 @@ def validate_error_targets(
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
     generate,    # use old random data or create new
-    epsilond = None,  # tolerances per searh direction
-    windows  = None,  # set of noises
-    noises   = None,  # set of windows
-    get_cost = False, # estimate cost
+    epsilond   = None,  # tolerances per searh direction
+    windows    = None,  # set of noises
+    noises     = None,  # set of windows
+    get_cost   = False, # estimate cost
+    fractional = True,  # return error in fractional form
     ):
 
     use_epsilond = not epsilond is None
@@ -604,11 +626,15 @@ def validate_error_targets(
     #end for
 
     # return fractional error
-    diff = array(errs)/epsilon - 1.0
-    if get_cost:
-        return diff,cost
+    if fractional:
+        diff = array(errs)/epsilon - 1.0
+        if get_cost:
+            return diff,cost
+        else:
+            return diff
+        #end if
     else:
-        return diff
+        return array(errs)
     #end if
 #end def
 
@@ -660,7 +686,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
     print('  pts:            {}'.format(data.pts))
 
     if steps_times_error2 is None:
-        print('{:10s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window','noise','rel. cost (%)'))
+        print('{:10s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','noise (Ry)','rel. cost (%)'))
         for d in range(data.D):
             W        = data.windows[d]
             sigma    = data.noises[d]
@@ -669,7 +695,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
             print('{:<10d} {:<15f} {:<15f} {:<15f} {:<04.2f}'.format(d,epsilond,W,sigma,cost))
         #end for
     else:
-        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window','noise','rel. cost (%)','steps'))
+        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','noise (Ry)','rel. cost (%)','QMC steps'))
         max_steps = 0
         tot_steps = 0
         for d in range(data.D):
@@ -684,9 +710,21 @@ def error_scan_diagnostics(data, steps_times_error2=None):
         #end for
     #end if
 
+    try:
+        epsilonp = data.epsilonp
+        T        = data.T
+        params   = data.params
+        print('\nEstimated parameters and errors errors: (T={} Ry)'.format(T))
+        for p,epsilon in enumerate(epsilonp):
+            print('  p{}: {:<8f} +/- {:<8f}'.format(p,params[p],epsilon))
+        #end for
+    except:
+        pass
+    #end try
+
     print('\ntotal relative cost: {:e}'.format(cost_tot))
     if not steps_times_error2 is None:
-        print('Equivalent QMC errorbar: {:<15.2e}'.format( (steps_times_error2/tot_steps)**0.5 ))
+        print('Equivalent QMC errorbar: {:<5e} Ha'.format( (steps_times_error2/tot_steps)**0.5 ))
     #end if
 #end def
 
