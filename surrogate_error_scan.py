@@ -356,7 +356,7 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
 #end def
 
 
-def optimize_epsilond_thermal(data,temperature,fraction,generate):
+def get_epsilond_thermal(data,temperature):
     Lambda = data.Lambda
 
     epsilond = []
@@ -364,9 +364,25 @@ def optimize_epsilond_thermal(data,temperature,fraction,generate):
         epsilond.append( (temperature/k)**0.5 )
     #end for
     epsilond = array(epsilond)
-    epsilonp = validate_error_targets(data, None, fraction, generate, epsilond=epsilond, get_cost=True, fractional=False)
 
-    return epsilonp,epsilond
+    return epsilond
+#end def
+
+
+# get the highest temperature that does not break constraints
+def optimize_epsilond_thermal(data,epsilon,fraction,generate,T_step=0.00001,T_max=0.1):
+    T = 0
+    while T<T_max:
+        epsilond = get_epsilond_thermal(data,T)
+        T       += T_step
+        diff     = validate_error_targets(data, epsilon, fraction, generate, epsilond=epsilond)
+        if not all(array(diff)<0.0):
+            break
+        #end if
+        epsilond_opt = epsilond
+        print('Temperature: {:<f}, max_diff: {:<f}'.format(T,max(diff)))
+    #end while
+    return epsilond_opt
 #end def
 
 
@@ -637,7 +653,6 @@ def validate_error_targets(
         return array(errs)
     #end if
 #end def
-
 
 
 def get_search_distribution(
