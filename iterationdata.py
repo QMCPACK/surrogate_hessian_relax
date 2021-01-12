@@ -17,11 +17,12 @@ class IterationData():
         get_jobs      = None,               # function handle to get nexus jobs
         n             = 0,                  # iteration number
         path          = '../ls',            # directory
-        # hessian and mappings
-        pos           = None,               # starting positions
+        # parameters, hessian and mappings
+        params        = None,               # starting parameters (overrides pos if in conflict)
+        pos           = None,               # starting generalized positions
         hessian       = None,               # parameter hessian
-        F             = None,               # mapping from params to pos
-        Finv          = None,               # mapping from pos to params
+        params_to_pos = None,               # mapping from params to pos
+        pos_to_params = None,               # mapping from pos to params
         # line-search properties
         pfn           = 3,                  # polyfit degree
         pts           = 7,                  # points for fit
@@ -64,13 +65,19 @@ class IterationData():
         self.targets       = targets
         self.colors        = colors
 
-        self.eqm_path      = self.path+self.eqm_str
-        self.is_noisy      = ( type=='qmc' or add_noise>0 or not noises is None )
-        self.ready         = False
+        # initiate variables
+        self.eqm_path        = self.path+self.eqm_str
+        self.is_noisy        = ( type=='qmc' or add_noise>0 or not noises is None )
+        self.results_loaded  = False
+        self.mappings_loaded = False
+        self.hessian_loaded  = False
 
-        if not pos is None:
-            if not F is None and not Finv is None:
-                self.load_pos_F(pos, F, Finv)
+        # if provided, initiate params and mappings
+        if not params_to_pos is None and not pos_to_params is None:
+            if not params is None:
+                self.load_params_mappings(params, params_to_pos, pos_to_params)
+            elif not pos is None:
+                self.load_pos_mappings(pos, params_to_pos, pos_to_params)
             #end if
             if not hessian is None:
                 self.load_hessian(hessian)
@@ -78,13 +85,23 @@ class IterationData():
         #end if
     #end def
 
-    # load starting position and F/Finv mappings, produce starting parameters
-    def load_pos_F(self, pos, F, Finv):
-        self.pos           = pos
-        self.params        = Finv(pos)
-        self.P             = len(self.params)
-        self.F             = F
-        self.Finv          = Finv
+    # load starting params and mappings
+    def load_params_mappings(self, params, params_to_pos, pos_to_params):
+        self.params          = params
+        self.pos             = params_to_pos(params)
+        self.P               = len(self.params)
+        self.params_to_pos   = params_to_pos
+        self.pos_to_params   = pos_to_params
+        self.mappings_loaded = True
+        # backward compatibility
+        self.F    = params_to_pos
+        self.Finv = pos_to_params
+    #end def
+
+    # load starting pos and mappings
+    def load_pos_mappings(self, pos, params_to_pos, pos_to_params):
+        params = pos_to_params(pos)
+        self.load_params_mappings(params, params_to_pos, pos_to_params)
     #end def
 
     # load parameter Hessian
@@ -101,6 +118,7 @@ class IterationData():
         if self.noises is None:
             self.noises  = array(self.D*[self.add_noise])
         #end if
+        self.hessian_loaded = True
     #end def
 
     # creates geometries according to shifts in optimal directions
@@ -109,17 +127,21 @@ class IterationData():
             D_list = range(self.D) # by default, shift all
         #end if
         shift_data    = []
-        shifts_d      = []
+        shifts        = []
 
         sigma_min     = 1.0e99
-        for d in D_list:
-            shifts       = self._shift_parameter(d)
+        for d in range(self.D):
+            if not d in D_list:
+                shift_data.append([])
+                shifts.append([])
+            #end if
+            shifts_d     = self._shift_parameter(d)
             sigma        = self.noises[d]
-            minuss       = len(shifts[shifts<-1e-10])
+            minuss       = len(shifts_d[shifts_d<-1e-10])
             pluss        = 1
             shift_rows   = []
             # assume that shifts come in order
-            for s,shift in enumerate(shifts):
+            for s,shift in enumerate(shifts_d):
                 if abs(shift)<1e-10: #eqm
                     path = self.eqm_path
                 elif shift<0.0:
@@ -134,11 +156,11 @@ class IterationData():
                 shift_rows.append(row)
             #end for
             shift_data.append(shift_rows)
-            shifts_d.append(shifts)
+            shifts.append(shifts_d)
             sigma_min = min(sigma_min,sigma)
         #end for
         self.sigma_min  = sigma_min
-        self.shifts     = shifts_d
+        self.shifts     = shifts
         self.shift_data = shift_data # dimensions: P x S x (pos,path,sigma,shift)
     #end def
 
@@ -209,7 +231,7 @@ class IterationData():
         self._compute_next_params()
         self._compute_next_hessian()
         self._compute_next_pos()
-        self.ready = True
+        self.results_loaded = True
     #end def
 
     def write_to_file(self):
@@ -231,7 +253,7 @@ class IterationData():
         ls_settings    = dict(), # or nexus obj
         ):
 
-        if not self.ready:
+        if not self.results_loaded:
             print('New position not calculated. Returning None')
             return None
         #end if
@@ -271,12 +293,8 @@ class IterationData():
 
 
     def _shift_position(self,d,shift):
-        if self.F is None: # linear directions
-            dpos    = (self.delta @ self.U.T)[:,d]*shift
-        else: 
-            dparams = self.params.copy() + self.U.T[:,d]*shift
-            dpos    = self.F(dparams)-self.F(self.params)
-        #end if
+        dparams = self.params.copy() + self.U.T[:,d]*shift
+        dpos    = self.params_to_pos(dparams)-self.params_to_pos(self.params)
         return dpos
     #end def
 
@@ -381,11 +399,7 @@ class IterationData():
 
     
     def _compute_next_pos(self):
-        if self.F is None:
-            self.pos_next = self.pos.copy() + self.delta @ self.U.T @ self.Dmins
-        else:
-            self.pos_next = self.F(self.params_next)
-        #end if
+        self.pos_next = self.params_to_pos(self.params_next)
     #end def
 
 

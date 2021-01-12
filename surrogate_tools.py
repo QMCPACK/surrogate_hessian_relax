@@ -287,12 +287,87 @@ def get_fraction_error(data,fraction):
 #end def
 
 
-def compute_hessian_jax(hessian_real,params_to_pos,pos_to_params,pos_relax):
+def merge_pos_cell(pos,cell):
+    posc = array(list(pos.flatten())+list(cell.flatten())) # generalized position vector: pos + cell
+    return posc
+#end def
+
+# assume 3x3 
+def detach_pos_cell(posc,num_prt=None,dim=3,reshape=True):
+    posc = posc.reshape(-1,dim)
+    if num_prt is None:
+        pos  = posc[:-dim].flatten()
+        cell = posc[-dim:].flatten()
+    else:
+        pos  = posc[:num_prt].flatten()
+        cell = posc[num_prt:].flatten()
+    #end if
+    if reshape:
+        return pos.reshape(-1,3),cell.reshape(-1,3)
+    else:
+        return pos,cell
+    #end if
+#end def
+
+
+def get_relax_structure(
+    path,
+    suffix     = 'relax.in',
+    pos_units  = 'B',
+    relax_cell = False,
+    ):
+    relax_path = '{}/{}'.format(path,suffix)
+    try:
+        from nexus import PwscfAnalyzer
+        relax_analyzer = PwscfAnalyzer(relax_path)
+        relax_analyzer.analyze()
+    except:
+        print('No relax geometry available: run relaxation first!')
+    #end try
+
+    # get the last structure
+    eq_structure = relax_analyzer.structures[len(relax_analyzer.structures)-1]
+    pos_relax    = eq_structure.positions.reshape((-1,))
+    if relax_cell:
+        if 'celldm' in relax_analyzer.input.system: # this may not be foolproof yet
+            # convert from alat to other cell units
+            cell_relax = (eq_structure.axes*relax_analyzer.input.system.celldm[1]).flatten()
+        else:
+            cell_relax = eq_structure.axes.flatten()
+        #end if
+        # scale to crystal units (this only works with rectangular lattices, I think; needs testing)
+        if pos_units=='crystal':
+            pos_relax = (pos_relax.reshape(-1,dim)/cell_relax).reshape(-1)
+        #end if
+        pos_relax = array(list(pos_relax)+list(cell_relax)) # generalized position vector: pos + cell
+    #end if
+    return pos_relax
+#end def
+
+
+def compute_hessian(jax_hessian,eps=0.001,**kwargs):
+    if jax_hessian:
+        print('Computing parameter Hessian with JAX')
+        hessian_delta = compute_hessian_jax(**kwargs)
+    else:
+        print('Computing parameter Hessian with finite difference')
+        hessian_delta = compute_hessian_fdiff(eps=eps,**kwargs)
+    #end if
+    return hessian_delta
+#end def
+
+
+def compute_hessian_jax(
+    hessian_pos,
+    params_to_pos,
+    pos_to_params,
+    pos,
+    **kwargs
+    ):
     from jax import grad
-    print('Computing parameter Hessian with JAX')
-    p0 = pos_to_params(pos_relax)
+    p0 = pos_to_params(pos)
     gradfs = []
-    for i,r in enumerate(pos_relax):
+    for i,r in enumerate(pos):
         def pp(p):
             return params_to_pos(p)[i]
         #end def
@@ -300,34 +375,47 @@ def compute_hessian_jax(hessian_real,params_to_pos,pos_to_params,pos_relax):
         gradfs.append( gradf(p0) )
     #end for
     gradfs = array(gradfs)
-    hessian_delta = gradfs.T @ hessian_real @ gradfs
+    hessian_delta = gradfs.T @ hessian_pos @ gradfs
     savetxt('H_delta.dat',hessian_delta)
     return hessian_delta
 #end def
 
-def compute_hessian_fdiff(hessian_real,params_to_pos,pos_to_params,pos_relax):
-    # finite difference method for the gradient
-    print('Computing parameter Hessian with finite difference')
-    eps = 0.002
-    p0 = pos_to_params(pos_relax)
-    gradfs = []
-    for p in range(len(p0)):
-        p_this     = p0.copy()
+
+def compute_jacobian_fdiff(params_to_pos,params,eps=0.001):
+    jacobian = []
+    pos_orig = params_to_pos(params)
+    for p in range(len(params)):
+        p_this     = params.copy()
         p_this[p] += eps
-        posi       = params_to_pos(p_this)
-        gradfs.append( (posi-pos_relax)/eps )
+        pos_this   = params_to_pos(p_this)
+        jacobian.append( (pos_this-pos_orig)/eps )
     #end for
-    gradfs = array(gradfs).T
-    hessian_delta = gradfs.T @ hessian_real @ gradfs
-    savetxt('H_delta.dat',hessian_delta)
+    jacobian = array(jacobian).T
+    return jacobian
+#end def
+
+
+# finite difference method for the gradient
+def compute_hessian_fdiff(
+    hessian_pos,
+    params_to_pos,
+    pos_to_params,
+    pos,
+    eps  = 0.001,
+    **kwargs 
+    ):
+    params   = pos_to_params(pos)
+    jacobian = compute_jacobian_fdiff(params_to_pos,params=params,eps=eps)
+    hessian_delta = jacobian.T @ hessian_pos @ jacobian
     return hessian_delta
 #end try
+
 
 def print_hessian_delta(hessian_delta,U,Lambda,roundi=3):
     print('Parameters Hessian (H_Delta)')
     print(hessian_delta.round(roundi))
     print('')
-    print('Eigenvectors (U):')
+    print('Eigenvectors (U; params x directions):')
     print(U.round(roundi))
     print('')
     print('Eigenvalues (Lambda):')
@@ -335,15 +423,11 @@ def print_hessian_delta(hessian_delta,U,Lambda,roundi=3):
     print('')
 #end def
 
-def print_relax(elem,pos_relax,params_relax,cell_relax=None,dim=3):
+def print_relax(elem,pos_relax,params_relax,dim=3):
     print('Relaxed geometry (non-symmetrized):')
     print_qe_geometry(elem,pos_relax,dim)
     print('Parameter values (non-symmetrized):')
     for p,pval in enumerate(params_relax):
         print(' #{}: {}'.format(p,pval))
     #end for
-    if not cell_relax is None:
-        print('Relaxed cell:')
-        print(cell_relax.reshape((-1,dim)))
-    #end if
 #end def

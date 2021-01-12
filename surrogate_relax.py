@@ -320,3 +320,12 @@ def print_optimal_parameters(data_list):
         #end if
     #end for
 #end def
+
+# averages over estimated parameters
+def average_params(data_list,transient=0):
+    params = []
+    for data in data_list[transient:]:
+        params.append( data.params_next )
+    #end def
+    return mean(array(params),axis=0)
+#end def
