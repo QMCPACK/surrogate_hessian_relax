@@ -33,7 +33,21 @@ def print_with_error( value, error, limit=15 ):
 #end def
 
 
-def load_gamma_k(fname, num_prt, dim=3):
+# load force-constants
+def load_gamma_k(fname, num_prt, **kwargs):
+    if fname.endswith('.fc'): # QE
+        K = load_force_constants_qe(fname, num_prt, **kwargs)
+    elif fname.endswith('.hdf5'): # VASP
+        K = load_force_constants_vasp(fname, num_prt, **kwargs)
+    else:
+        print('Force-constant file not recognized (.fc and .hdf5 supported)')
+        K = None
+    #end if
+    return K
+#end def
+
+
+def load_force_constants_qe(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
     with open(fname) as f:
         line = f.readline()
@@ -54,6 +68,35 @@ def load_gamma_k(fname, num_prt, dim=3):
     #end with
     return K
 #end def
+
+def load_force_constants_vasp(fname, num_prt, dim=3):
+    import h5py
+    f = h5py.File(fname,mode='r')
+
+    K_raw = array(f['force_constants'])
+    p2s   = array(f['p2s_map'])
+
+    # this could probably be done more efficiently with array operations
+    K = zeros((dim*num_prt,dim*num_prt))
+    for prt1 in range(num_prt):
+        for prt2 in range(num_prt):
+           sprt2 = p2s[prt2]
+           for dim1 in range(dim):
+               for dim2 in range(dim):
+                   i = prt1*dim + dim1
+                   j = prt2*dim + dim2
+                   K[i,j] = K_raw[prt1,sprt2,dim1,dim2]
+               #end for
+            #end for
+        #end for
+    #end for    
+    f.close()
+
+    # assume eV/Angstrom**2
+    eV_A2 = 27.211399*0.529189379**-2
+    return K/eV_A2
+#end def
+
 
 
 def load_phonon_modes(fname,num_prt,drop_modes=0):

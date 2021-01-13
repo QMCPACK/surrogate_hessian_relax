@@ -41,8 +41,6 @@ def load_W_max(
         # try to correct numerical biases due to bad relaxation by subtracting bias near low-W limit
         B_in = interp1d(Ws,Bs-Bs[0],kind='cubic')
         Wmax = 0.0
-        epsilon_max = abs(data.U[d,:]*epsilon).max()
-        #epsilon_max = abs(data.U[d,:]*epsilon).max()
         for W in Ws:
             # break if bias gets too large for any parameter
             if any( abs(B_in(W)*data.U[d,:]) - epsilon > 0):
@@ -54,6 +52,7 @@ def load_W_max(
         if Wmax==0:
             print('Warning: Wmax not reached with direction {}'.format(d))
             Wmax = W_eff
+            print(print(d,Wmax,abs(B_in(Wmax)*data.U[d,:]) - epsilon))
         #end if
         Wmaxs.append(Wmax)
     #end for
@@ -372,16 +371,22 @@ def get_epsilond_thermal(data,temperature):
 # get the highest temperature that does not break constraints
 def optimize_epsilond_thermal(data,epsilon,fraction,generate,T_step=0.00001,T_max=0.1):
     T = 0
+    epsilond_opt = None
     while T<T_max:
         epsilond = get_epsilond_thermal(data,T)
         T       += T_step
         diff     = validate_error_targets(data, epsilon, fraction, generate, epsilond=epsilond)
         if not all(array(diff)<0.0):
+            print(diff)
             break
         #end if
         epsilond_opt = epsilond
         print('Temperature: {:<f}, max_diff: {:<f}'.format(T,max(diff)))
     #end while
+    if epsilond_opt is None:
+        print('Warning: thermal optimization failed! Lower starting temperature from {}. Latest diff:'.format())
+        print(diff)
+    #end if
     return epsilond_opt
 #end def
 
@@ -405,9 +410,7 @@ def optimize_window_sigma(
 
     if epsilond is None:
         if temperature > 0:
-            epsilonp,epsilond = optimize_epsilond_thermal(data,temperature,fraction,generate)
-            data.epsilonp     = epsilonp
-            data.T            = temperature
+            epsilond = get_epsilond_thermal(data,temperature)
         else:
             epsilond = optimizer(data,epsilon,fraction,generate)
         #end if
@@ -693,8 +696,9 @@ def get_search_distribution(
 
 def error_scan_diagnostics(data, steps_times_error2=None):
     # cost
-    cost_max = min(array(data.noises))**-2
-    cost_tot = (data.pts-1)*sum(array(data.noises)**-2)+cost_max
+    cost_max   = min(array(data.noises))**-2
+    cost_tot_d = sum(array(data.noises)**-2)
+    cost_tot   = (data.pts-1)*cost_tot_d+cost_max
 
     print('Error scan completed')
     print('  polyfit degree: {}'.format(data.pfn))
@@ -705,7 +709,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
         for d in range(data.D):
             W        = data.windows[d]
             sigma    = data.noises[d]
-            cost     = data.pts*sigma**-2/cost_tot*100
+            cost     = sigma**-2/cost_tot_d*100
             epsilond = data.epsilond[d]
             print('{:<10d} {:<15f} {:<15f} {:<15f} {:<04.2f}'.format(d,epsilond,W,sigma,cost))
         #end for
@@ -716,7 +720,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
         for d in range(data.D):
             W         = data.windows[d]
             sigma     = data.noises[d]
-            cost      = data.pts*sigma**-2/cost_tot*100
+            cost      = sigma**-2/cost_tot_d*100
             steps     = int(4*steps_times_error2*sigma**-2)+1 # 4x factor from unit conversion
             tot_steps+= steps
             max_steps = max(max_steps,steps)

@@ -167,7 +167,7 @@ class IterationData():
     # requires that nexus has been initiated
     def get_job_list(self):
         # eqm jobs
-        eqm_jobs = self.get_jobs(pos=self.pos,path=self.eqm_path,sigma=self.sigma_min)
+        eqm_jobs = self.get_jobs(self.pos,path=self.eqm_path,sigma=self.sigma_min)
         jobs     = eqm_jobs
         for d in range(self.D):
             for s in range(self.pts):
@@ -175,9 +175,9 @@ class IterationData():
                 if not path==self.eqm_path:
                     if self.type=='qmc':
                         jastrow_job = eqm_jobs[self.qmc_j_idx]
-                        jobs += self.get_jobs(pos=pos,path=path,sigma=sigma,jastrow=jastrow_job)
+                        jobs += self.get_jobs(pos,path=path,sigma=sigma,jastrow=jastrow_job)
                     else:
-                        jobs += self.get_jobs(pos=pos,path=path,sigma=sigma)
+                        jobs += self.get_jobs(pos,path=path,sigma=sigma)
                     #end if
                 #end if
             #end for
@@ -253,10 +253,15 @@ class IterationData():
         ls_settings    = dict(), # or nexus obj
         ):
 
-        if not self.results_loaded:
-            print('New position not calculated. Returning None')
-            return None
-        #end if
+        # backwards compatibility
+        try:
+            self.results_loaded = self.ready
+        except:
+            if not self.results_loaded:
+                print('New position not calculated. Returning None')
+                return None
+            #end if
+        #end try
         n = self.n+1 # advance iteration
 
         new_data = IterationData(n=n, pos=self.pos_next, hessian=self.hessian, **ls_settings)
