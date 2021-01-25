@@ -17,10 +17,14 @@ def load_W_max(
     epsilon,
     pfn,
     pts,
-    W_min = 1.0e-3,
+    W_min   = 1.0e-3,
+    verbose = False,
     ):
     if isscalar(epsilon):
         epsilon = data.D*[epsilon]
+    #end if
+    if isscalar(W_min):
+        W_min = data.D*[W_min]
     #end if
     Wmaxs = []
     for d in range(data.D):
@@ -29,7 +33,7 @@ def load_W_max(
         xy_in = interp1d(x_n,y_n,kind='cubic')
         H     = data.Lambda[d]
         W_eff = R_to_W(max(x_n),H)
-        Ws    = linspace(W_min, 0.999*W_eff,51)
+        Ws    = linspace(W_min[d], 0.9999*W_eff,51)
         Bs    = []
         for W in Ws:
             R        = W_to_R(W,H)
@@ -40,19 +44,24 @@ def load_W_max(
         #end for
         # try to correct numerical biases due to bad relaxation by subtracting bias near low-W limit
         B_in = interp1d(Ws,Bs-Bs[0],kind='cubic')
+        if verbose:
+            print('W        bias')
+            for W in Ws:
+                print('{} {}'.format(W,B_in(W)))
+            #end for
+        #end if
         Wmax = 0.0
         for W in Ws:
             # break if bias gets too large for any parameter
             if any( abs(B_in(W)*data.U[d,:]) - epsilon > 0):
                 Wmax = W
-                print(d,Wmax,abs(B_in(W)*data.U[d,:]) - epsilon)
                 break
             #end if
         #end for
         if Wmax==0:
             print('Warning: Wmax not reached with direction {}'.format(d))
-            Wmax = W_eff
-            print(print(d,Wmax,abs(B_in(Wmax)*data.U[d,:]) - epsilon))
+            Wmax = 0.99999*W_eff
+            print(d,Wmax,abs(B_in(Wmax)*data.U[d,:]) - epsilon)
         #end if
         Wmaxs.append(Wmax)
     #end for
@@ -311,6 +320,7 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
     if fraction is None:
         fraction = data.fraction
     #end if
+    epsilon = array(epsilon)
 
     def get_epsilond(A,sigma):
         if isscalar(sigma):
@@ -422,7 +432,7 @@ def optimize_window_sigma(
     bias_corrs = None # not for the moment
     for d in range(data.D):
         try:
-            W     = abs(polyval(data.W_of_epsilon[d],epsilon[d]))**0.5
+            W     = abs(polyval(data.W_of_epsilon[d],epsilond[d]))**0.5
             sigma = abs(polyval(data.sigma_of_epsilon[d],epsilond[d]))
         except:
             X = data.Xs[d]
@@ -583,11 +593,11 @@ def validate_error_targets(
     epsilon,     # target parameter accuracy
     fraction,    # statistical fraction
     generate,    # use old random data or create new
-    epsilond   = None,  # tolerances per searh direction
-    windows    = None,  # set of noises
-    noises     = None,  # set of windows
-    get_cost   = False, # estimate cost
-    fractional = True,  # return error in fractional form
+    epsilond    = None,  # tolerances per search direction
+    windows     = None,  # set of noises
+    noises      = None,  # set of windows
+    get_cost    = False, # estimate cost
+    fractional  = True,  # return error in fractional form
     ):
 
     use_epsilond = not epsilond is None
@@ -790,3 +800,15 @@ def surrogate_anharmonicity(data,pfn=None,output=False):
     return ans
 #end def
 
+
+
+def interpolate_grid(x_in,y_in,x_out,kind='cubic'):
+    xy_in = interp1d(x_in,y_in,kind='cubic')
+    try:
+        y_out = xy_in(x_out)
+    except:
+        print('Warning: interpolation failed, returning original grid')
+        x_out,y_out = x_in,y_in
+    #end try
+    return x_out,y_out
+#end def

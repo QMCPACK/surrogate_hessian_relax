@@ -65,6 +65,7 @@ def plot_parameter_convergence(
         linestyle = ':',
         uplims    = True,
         lolims    = True,
+        labels    = None,
         **kwargs
         ):
     ax.set_xlabel('iteration')
@@ -104,7 +105,11 @@ def plot_parameter_convergence(
         P_val   = P_vals[p]
         P_err   = P_errs[p]
         co      = colors[p]
-        P_label = 'p'+str(p)+' '+label
+        if labels is None:
+            P_label = 'p'+str(p)+' '+label
+        else:
+            P_label = labels[p]
+        #end if
         h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
             color     = co,
             marker    = marker,
@@ -116,6 +121,7 @@ def plot_parameter_convergence(
         c[0].set_marker('_')
         c[1].set_marker('_')
     #end for
+    ax.set_xticks(range(len(data_list)+1))
     ax.plot([0,len(data_list)],[0,0],'k-')
     ax.legend()
 #end def

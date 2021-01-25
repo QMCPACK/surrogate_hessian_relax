@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete
 from math import log10
 
 
@@ -92,8 +92,8 @@ def load_force_constants_vasp(fname, num_prt, dim=3):
     #end for    
     f.close()
 
-    # assume eV/Angstrom**2
-    eV_A2 = 27.211399*0.529189379**-2
+    # assume conversion from eV/Angstrom**2 to Ry/Bohr**2
+    eV_A2 = 27.211399/2*0.529189379**-2
     return K/eV_A2
 #end def
 
@@ -358,6 +358,7 @@ def get_relax_structure(
     suffix     = 'relax.in',
     pos_units  = 'B',
     relax_cell = False,
+    dim        = 3,
     ):
     relax_path = '{}/{}'.format(path,suffix)
     try:
@@ -370,18 +371,9 @@ def get_relax_structure(
 
     # get the last structure
     eq_structure = relax_analyzer.structures[len(relax_analyzer.structures)-1]
-    pos_relax    = eq_structure.positions.reshape((-1,))
+    pos_relax    = eq_structure.positions.flatten()
     if relax_cell:
-        if 'celldm' in relax_analyzer.input.system: # this may not be foolproof yet
-            # convert from alat to other cell units
-            cell_relax = (eq_structure.axes*relax_analyzer.input.system.celldm[1]).flatten()
-        else:
-            cell_relax = eq_structure.axes.flatten()
-        #end if
-        # scale to crystal units (this only works with rectangular lattices, I think; needs testing)
-        if pos_units=='crystal':
-            pos_relax = (pos_relax.reshape(-1,dim)/cell_relax).reshape(-1)
-        #end if
+        cell_relax = eq_structure.axes.flatten()
         pos_relax = array(list(pos_relax)+list(cell_relax)) # generalized position vector: pos + cell
     #end if
     return pos_relax
@@ -473,4 +465,81 @@ def print_relax(elem,pos_relax,params_relax,dim=3):
     for p,pval in enumerate(params_relax):
         print(' #{}: {}'.format(p,pval))
     #end for
+#end def
+
+
+
+def calculate_X_matrix(x_n,pfn):
+   X = []
+   for x in x_n:
+       row = []
+       for pf in range(pfn+1):
+           row.append(x**pf)
+       #end for
+       X.append(row)
+   #end for
+   X = array(X)
+   return X
+#end def
+
+def calculate_F_matrix(X):
+   F = linalg.inv(X.T @ X) @ X.T
+   return F
+#end def
+
+def model_statistical_bias(pf,x_n,sigma):
+    pfn = len(pf)-1
+    # opposite index convention 
+    p   = flipud(pf)
+
+    X = calculate_X_matrix(x_n,pfn)
+    F = calculate_F_matrix(X)
+    s2 = sigma**2*(F @ F.T)
+
+    if pfn==2:
+        bias = (s2[1,2]/p[2]**2 - s2[2,2]*p[1]/p[2]**3)/2
+    elif pfn==3:
+        z = (p[2]**2-3*p[1]*p[3])**0.5
+        b11 = s2[1,1]*(-3/4*p[3]*z**-3)/2
+        b22 = s2[2,2]*(1/3/p[3]/z-p[2]**2/3/p[3]/z**3)/2
+        b33 = s2[3,3]*(1/3/p[3])*(2/p[3]**2*(z-p[2]) + 3*p[1]/p[3]/z - 9/4*p[1]**2/z**3)/2
+        b12 = s2[1,2]*(p[2]/z**3)/2
+        b13 = s2[1,3]*(-3/2*p[1]/z**3)/2
+        b23 = s2[2,3]*(p[1]*p[2]/p[3]/z**3 - 2*(p[2]/z-1)/3/p[3]**2 )/2
+        bias = b11 + b22 + b33 + b12 + b13 + b23
+    else: # no correction known
+        bias = 0.0
+    #end if
+    return bias
+#end def
+
+
+def plot_U_heatmap(ax,U,sort=True,cmap='RdBu',labels=True):
+    U_cp  = U.copy()
+    D     = U.shape[0]
+    ticks = range(D)
+    if sort:
+        U_sorted    = []
+        yticklabels = []
+        rows        = list(range(D))
+        for d in range(D):
+            # find the largest abs value of d from the remaining rows
+            i = abs(U_cp[rows[d:],d]).argmax()
+            rows = rows[:d] + [rows.pop(d+i)] + rows[d:]
+        #end for
+        U_sorted = array(U_cp[rows])
+        yticklabels = rows
+    else:
+        U_sorted    = U_cp
+        yticklabels = [ str(d) for d in range(D) ]
+    #end if
+    cb = ax.imshow(U_sorted,cmap=cmap,vmin=-1.0,vmax=1.0,aspect='equal')
+    ax.set_yticks(ticks)
+    ax.set_xticks(ticks)
+    ax.set_yticklabels(yticklabels)
+    if labels:
+        ax.set_ylabel('Directions')
+        ax.set_xlabel('Parameters')
+    #end if
+    return cb
 #end def

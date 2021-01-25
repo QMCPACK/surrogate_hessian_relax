@@ -219,11 +219,11 @@ class IterationData():
                 PES_err_row.append(Err)
             #end for
             Dshifts.append(shifts)
-            PES.append(PES_row)
-            PES_err.append(PES_err_row)
+            PES.append(array(PES_row))
+            PES_err.append(array(PES_err_row))
         #end for
-        self.PES       = array(PES)
-        self.PES_err   = array(PES_err)
+        self.PES       = PES
+        self.PES_err   = PES_err
         self.Epred     = Epred
         self.Epred_err = Epred_err
         self.Dshifts   = Dshifts
@@ -305,21 +305,27 @@ class IterationData():
 
 
     def _load_energy_error(self,path,sigma):
-        if self.type=='qmc':
-            from nexus import QmcpackAnalyzer
-            AI    = QmcpackAnalyzer(path)
-            AI.analyze()
-            E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
-            Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
-            kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
-        else: # pwscf
-            from nexus import PwscfAnalyzer
-            AI    = PwscfAnalyzer(path)
-            AI.analyze()
-            E     = AI.E + sigma*random.randn(1)[0]
-            Err   = sigma
+        try: # can hard-code energy if needed
+            E,Err = loadtxt(path+'.E')
+            Err  += sigma
             kappa = 1.0
-        #end if
+        except:
+            if self.type=='qmc':
+                from nexus import QmcpackAnalyzer
+                AI    = QmcpackAnalyzer(path)
+                AI.analyze()
+                E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
+                Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+                kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
+            else: # pwscf
+                from nexus import PwscfAnalyzer
+                AI    = PwscfAnalyzer(path)
+                AI.analyze()
+                E     = AI.E + sigma*random.randn(1)[0]
+                Err   = sigma
+                kappa = 1.0
+            #end if
+        #end try
         return E,Err,kappa
     #end def
 
@@ -353,7 +359,7 @@ class IterationData():
                 PES_fit   = polyval(polyfit(shifts,PES,self.pfn),shifts)
                 for G in Gs:
                     PES_row = PES_fit + PES_err*G
-                    Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn)
+                    Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn,endpts=[1*min(shifts),1*max(shifts)])
                     Emins_blk.append(Emin)
                     Dmins_blk.append(Dmin)
                     pfs_blk.append(pf)
