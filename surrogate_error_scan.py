@@ -33,7 +33,7 @@ def load_W_max(
         xy_in = interp1d(x_n,y_n,kind='cubic')
         H     = data.Lambda[d]
         W_eff = R_to_W(max(x_n),H)
-        Ws    = linspace(W_min[d], 0.9999*W_eff,51)
+        Ws    = linspace(W_min[d], 0.99999*W_eff,51)
         Bs    = []
         for W in Ws:
             R        = W_to_R(W,H)
@@ -230,9 +230,12 @@ def scan_linesearch_error(
 
 
 # takes IterationData
-def load_of_epsilon(data,gridexp=4.0,show_plot=False):
+def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False):
     Wfuncs = []
     Sfuncs = []
+    Wdata  = []
+    Sdata  = []
+    Edata  = []
     for d in range(data.D):
         eps,Ws,sigmas = get_W_sigma_of_epsilon(
                             data.Xs[d],
@@ -243,6 +246,9 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False):
                             )
         pf_W2    = polyfit(eps,Ws**2,1)
         pf_sigma = polyfit(eps,sigmas,2)
+        Edata.append( eps )
+        Wdata.append( Ws )
+        Sdata.append( sigmas )
         Wfuncs.append( pf_W2 )
         Sfuncs.append( pf_sigma )
         if show_plot:
@@ -262,6 +268,9 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False):
     #end for
     data.W_of_epsilon     = Wfuncs
     data.sigma_of_epsilon = Sfuncs
+    if get_data:
+        return Edata,Wdata,Sdata
+    #end if
 #end def
 
 
@@ -754,6 +763,42 @@ def error_scan_diagnostics(data, steps_times_error2=None):
     print('\ntotal relative cost: {:e}'.format(cost_tot))
     if not steps_times_error2 is None:
         print('Equivalent QMC errorbar: {:<5e} Ha'.format( (steps_times_error2/tot_steps)**0.5 ))
+    #end if
+#end def
+
+
+def get_noises(data,epsilond):
+    noises = []
+    for d in range(data.D):
+        try:
+            sigma = abs(polyval(data.sigma_of_epsilon[d],epsilond[d]))
+        except:
+            X = data.Xs[d]
+            Y = data.Ys[d]
+            E = data.Es[d]
+            W,sigma,err = optimize_linesearch(X,Y,E,epsilon=epsilond[d],title='#%d' % d,show_plot=show_plot)
+        #end try
+        noises.append(sigma)
+    return noises
+#end if
+
+
+def cost_balance(data,noises=None,epsilond=None,get_norm=False):
+    if noises is None:
+        if epsilond is None:
+            noises = data.noises
+        else:
+            noises = get_noises(data,epsilond)
+        #end if
+    #end if
+    noises       = array(noises)
+    costs        = noises**-2
+    norm         = sum(costs)
+    cost_balance = costs/norm
+    if get_norm:
+        return cost_balance,norm
+    else:
+        return cost_balance
     #end if
 #end def
 

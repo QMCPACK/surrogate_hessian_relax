@@ -34,7 +34,7 @@ def print_with_error( value, error, limit=15 ):
 
 
 # load force-constants
-def load_gamma_k(fname, num_prt, **kwargs):
+def load_gamma_k(fname, num_prt, symmetrize=True, **kwargs):
     if fname.endswith('.fc'): # QE
         K = load_force_constants_qe(fname, num_prt, **kwargs)
     elif fname.endswith('.hdf5'): # VASP
@@ -42,6 +42,15 @@ def load_gamma_k(fname, num_prt, **kwargs):
     else:
         print('Force-constant file not recognized (.fc and .hdf5 supported)')
         K = None
+    #end if
+    if symmetrize and K is not None:
+        for k0 in range(K.shape[0]):
+            for k1 in range(k0+1,K.shape[1]):
+                val = (K[k0,k1] + K[k1,k0])/2
+                K[k0,k1] = val
+                K[k1,k0] = val
+            #end for
+        #end for
     #end if
     return K
 #end def
@@ -318,14 +327,18 @@ def R_to_W(R,H):
     return W
 #end def
 
-def get_fraction_error(data,fraction):
+def get_fraction_error(data,fraction,both=False):
     data   = array(data)
     data   = data[~isnan(data)]        # remove nan
     ave    = mean(data)
     data   = data[data.argsort()]-ave  # sort and center
     pleft  = abs(data[int(len(data)*fraction)])
     pright = abs(data[int(len(data)*(1-fraction))])
-    err    = max(pleft,pright)
+    if both:
+        err    = [pleft,pright]
+    else:
+        err    = max(pleft,pright)
+    #end if
     return ave,err
 #end def
 

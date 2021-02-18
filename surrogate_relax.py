@@ -58,6 +58,7 @@ def plot_energy_convergence(
 def plot_parameter_convergence(
         ax,
         data_list,
+        P_list    = None,
         colors    = None,
         targets   = None,
         label     = '',
@@ -66,6 +67,7 @@ def plot_parameter_convergence(
         uplims    = True,
         lolims    = True,
         labels    = None,
+        offset    = 0,
         **kwargs
         ):
     ax.set_xlabel('iteration')
@@ -73,6 +75,9 @@ def plot_parameter_convergence(
     ax.set_title('Parameters vs iteration')
 
     data0 = data_list[0]
+    if P_list is None:
+        P_list = range(data0.P)
+    #end if
     if not targets is None:
         targets = targets
     elif not data0.targets is None:
@@ -90,13 +95,13 @@ def plot_parameter_convergence(
     P_vals = []
     P_errs = []
     for p in range(data0.P):
-        P_vals.append([data0.params[p]-targets[p]])
+        P_vals.append([data0.params[p]-targets[p]+offset])
         P_errs.append([0.0])
     #end for
     # line search params
     for data in data_list:
-        for p in range(data.P):
-            P_vals[p].append(data.params_next[p]-targets[p])
+        for p in range(data0.P):
+            P_vals[p].append(data.params_next[p]-targets[p]+offset)
             P_errs[p].append(data.params_next_err[p])
         #end for
     #end for
@@ -110,19 +115,24 @@ def plot_parameter_convergence(
         else:
             P_label = labels[p]
         #end if
-        h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
-            color     = co,
-            marker    = marker,
-            linestyle = linestyle,
-            label     = P_label,
-            uplims    = uplims,
-            lolims    = lolims
-            )
-        c[0].set_marker('_')
-        c[1].set_marker('_')
+        if p in P_list:
+            h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
+                color     = co,
+                marker    = marker,
+                linestyle = linestyle,
+                label     = P_label,
+                uplims    = uplims,
+                lolims    = lolims,
+                **kwargs,
+                )
+            if uplims or lolims:
+                c[0].set_marker('_')
+                c[1].set_marker('_')
+            #end if
+        #end if
     #end for
     ax.set_xticks(range(len(data_list)+1))
-    ax.plot([0,len(data_list)],[0,0],'k-')
+    ax.plot([0,len(data_list)],2*[offset],'k-')
     ax.legend()
 #end def
 
