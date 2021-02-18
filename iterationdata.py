@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
+from os import makedirs
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder
 from copy import deepcopy
 from scipy.interpolate import interp1d
@@ -185,8 +186,32 @@ class IterationData():
         return jobs
     #end def
 
+    # write xsf structures
+    def write_structures(self,get_structure):
+        # eqm jobs
+        eqm_jobs = self._write_structure(get_structure,pos=self.pos,path=self.eqm_path)
+        for d in range(self.D):
+            for s in range(self.pts):
+                pos,path,sigma,shift = self.shift_data[d][s]
+                if not path==self.eqm_path:
+                    self._write_structure(get_structure,pos=pos,path=path)
+                #end if
+            #end for
+        #end for
+    #end def
+
+    def _write_structure(self,get_structure,pos,path):
+        try:
+            makedirs(path)
+        except:
+            pass
+        #end try
+        s = get_structure(pos)
+        s.write_xsf(path+'/structure.xsf')
+    #end def
+
     # load the result of parallel line-search: energies, shifted positions, etc
-    def load_results(self):
+    def load_results(self,**kwargs):
         # load eqm
         E,Err,kappa = self._load_energy_error(self.eqm_path+self.load_postfix,self.sigma_min)
         self.E     = E
@@ -228,7 +253,7 @@ class IterationData():
         self.Epred_err = Epred_err
         self.Dshifts   = Dshifts
 
-        self._compute_next_params()
+        self._compute_next_params(**kwargs)
         self._compute_next_hessian()
         self._compute_next_pos()
         self.results_loaded = True
@@ -340,7 +365,7 @@ class IterationData():
     #end def
      
 
-    def _compute_next_params(self):
+    def _compute_next_params(self,trust=0.0):
         if self.is_noisy:
             Emins     = []
             Emins_err = []
@@ -359,7 +384,11 @@ class IterationData():
                 PES_fit   = polyval(polyfit(shifts,PES,self.pfn),shifts)
                 for G in Gs:
                     PES_row = PES_fit + PES_err*G
-                    Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn,endpts=[1*min(shifts),1*max(shifts)])
+                    if trust>0:
+                        Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn,endpts=[trust*min(shifts),trust*max(shifts)])
+                    else:
+                        Emin,Dmin,pf = get_min_params(shifts,PES_row,self.pfn)
+                    #end if
                     Emins_blk.append(Emin)
                     Dmins_blk.append(Dmin)
                     pfs_blk.append(pf)
