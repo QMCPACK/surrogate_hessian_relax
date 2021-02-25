@@ -3,10 +3,11 @@
 # functions and methods related to surrogate error scan
 
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d,interp2d,pchip_interpolate
 from matplotlib import pyplot as plt
 from functools import partial
 from scipy.optimize import broyden1
+from scipy.ndimage import zoom
 
 from iterationdata import IterationData
 from surrogate_tools import W_to_R,R_to_W,get_min_params,get_fraction_error
@@ -230,7 +231,7 @@ def scan_linesearch_error(
 
 
 # takes IterationData
-def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False):
+def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=None):
     Wfuncs = []
     Sfuncs = []
     Wdata  = []
@@ -243,6 +244,7 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False):
                             data.Es[d],
                             gridexp   = gridexp,
                             show_plot = show_plot,
+                            epsilons  = epsilons,
                             )
         pf_W2    = polyfit(eps,Ws**2,1)
         pf_sigma = polyfit(eps,sigmas,2)
@@ -254,7 +256,7 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False):
         if show_plot:
             f,ax = plt.subplots()
             ax.plot(eps,Ws,'rx')
-            ax.plot(eps,polyval(pf_W2,eps)**0.5,'r-')
+            ax.plot(eps,abs(polyval(pf_W2,eps))**0.5,'r-')
             ax.set_ylabel('W_opt')
             ax.set_xlabel('epsilon')
             ax.set_title('linesearch #{}'.format(d))
@@ -275,13 +277,22 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False):
 
 
 def get_W_sigma_of_epsilon( 
-    X, # W     mesh
-    Y, # sigma mesh
-    E, # error mesh
+    X,               # W     mesh
+    Y,               # sigma mesh
+    E,               # error mesh
     gridexp   = 4.0, # polynomial grid spacing for better resolution at small error values
     show_plot = False,
+    epsilons  = None,
+    zoom_in   = 4.0,
     ):
-    epsilons = linspace( (amin(E[~isnan(E)])+1e-7)**(1.0/gridexp),0.99*amax(E[~isnan(E)])**(1.0/gridexp), 201)**gridexp
+
+    if epsilons is None:
+        epsilons = linspace( (amin(E[~isnan(E)])+1e-7)**(1.0/gridexp),0.99*amax(E[~isnan(E)])**(1.0/gridexp), 201)**gridexp
+    else:
+        epsilons = epsilons.copy()
+    #end if
+    Xi,Yi,Ei = interpolate_error_grid(X,Y,E,zoom_in)
+
     f,ax     = plt.subplots()
     Ws       = []
     sigmas   = []
@@ -289,9 +300,8 @@ def get_W_sigma_of_epsilon(
         W_opt     = 0.0
         sigma_opt = 0.0
         try:
-            ct1 = ax.contour( X,Y,E,[epsilon])
+            ct1 = ax.contour( Xi,Yi,Ei,[epsilon])
         except:
-            ct1 = ax.contour( X,Y,E,[epsilon])
             epsilons = epsilons[0:len(Ws)]
             break
         #end try
@@ -323,6 +333,45 @@ def get_W_sigma_of_epsilon(
     return epsilons,array(Ws),array(sigmas)
 #end def
 
+
+def interpolate_error_grid(X,Y,E,zoom_in=1):
+    if zoom_in==1:
+        return X,Y,E
+    #end if
+    x = X[0]
+    y = Y[:,0]
+    Xi = zoom(X,zoom_in)
+    Yi = zoom(Y,zoom_in)
+    xi = Xi[0]
+    yi = Yi[:,0]
+
+    # monotonicity more important along y, so interpolate that way with pchip first
+    Ey = []
+    for i,x_this in enumerate(x):
+        y_this  = Y[:,i]
+        E_this  = E[:,i]
+        yi_this = Yi[:,i]
+        Ey_this = pchip_interpolate(y_this,E_this,yi_this)
+        Ey.append(Ey_this)
+    #end for
+    Ey = array(Ey).T
+    # next, pchip interpolate along x
+    Ei = []
+    for i,y_this in enumerate(yi):
+        x_this  = X[0] # should all be the same
+        xi_this = Xi[i]
+        Ey_this = Ey[i]
+        Ei_this = pchip_interpolate(x_this,Ey_this,xi_this)
+        Ei.append( Ei_this )
+    #end for
+    Ei = array(Ei)
+
+    # consider making nan out of large values?
+    #E[E>0.2] *= 100
+    #E_in     = interp2d(x,y,E,kind='linear')
+    #Ei       = E_in(xi,yi)
+    return Xi,Yi,Ei
+#end def
 
 
 def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
@@ -382,6 +431,7 @@ def get_epsilond_thermal(data,temperature):
         epsilond.append( (temperature/k)**0.5 )
     #end for
     epsilond = array(epsilond)
+    data.temperature = temperature
 
     return epsilond
 #end def
@@ -452,6 +502,7 @@ def optimize_window_sigma(
         windows.append(W)
         noises.append(sigma)
     #end for
+    data.params_next_err = validate_error_targets(data, None, fraction, generate, epsilond, fractional=False)
     data.bias_corrs = bias_corrs
     data.epsilond   = epsilond
     data.noises     = noises
@@ -719,34 +770,57 @@ def error_scan_diagnostics(data, steps_times_error2=None):
     cost_tot_d = sum(array(data.noises)**-2)
     cost_tot   = (data.pts-1)*cost_tot_d+cost_max
 
-    print('Error scan completed')
+    print('Error scan diagnostics')
     print('  polyfit degree: {}'.format(data.pfn))
     print('  pts:            {}'.format(data.pts))
+    try:
+        print('  temperature:    {} Ry'.format(data.temperature))
+    except:
+        epsilon = data.epsilon
+    #end try
+    print('')
 
+    # line-search parameters
     if steps_times_error2 is None:
-        print('{:10s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','noise (Ry)','rel. cost (%)'))
+        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','R (p-unit)','noise (Ry)','rel. cost (%)'))
         for d in range(data.D):
-            W        = data.windows[d]
-            sigma    = data.noises[d]
-            cost     = sigma**-2/cost_tot_d*100
-            epsilond = data.epsilond[d]
-            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<04.2f}'.format(d,epsilond,W,sigma,cost))
+            W         = data.windows[d]
+            H         = data.Lambda[d]
+            R         = W_to_R(W,H)
+            sigma     = data.noises[d]
+            cost      = sigma**-2/cost_tot_d*100
+            epsilond  = data.epsilond[d]
+            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<15f} {:<04.2f}'.format(d,epsilond,W,R,sigma,cost))
         #end for
     else:
-        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','noise (Ry)','rel. cost (%)','QMC steps'))
+        print('{:10s} {:15s} {:15s} {:15s} {:15s} {:15s} {:15s}'.format('direction','target','window (Ry)','R (p-unit)','noise (Ry)','rel. cost (%)','QMC steps'))
         max_steps = 0
         tot_steps = 0
         for d in range(data.D):
             W         = data.windows[d]
+            H         = data.Lambda[d]
+            R         = W_to_R(W,H)
             sigma     = data.noises[d]
             cost      = sigma**-2/cost_tot_d*100
             steps     = int(4*steps_times_error2*sigma**-2)+1 # 4x factor from unit conversion
-            tot_steps+= steps
+            tot_steps+= steps*(data.pts-1)
             max_steps = max(max_steps,steps)
             epsilond  = data.epsilond[d]
-            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<15.2f} {:<15d}'.format(d,epsilond,W,sigma,cost,steps))
+            print('{:<10d} {:<15f} {:<15f} {:<15f} {:<15f} {:<15.2f} {:<15d}'.format(d,epsilond,W,R,sigma,cost,steps))
         #end for
+        tot_steps += max_steps
     #end if
+    
+    # estimated parameter errors
+    try:
+        param_errs = data.params_next_err
+        print('\nParameter  error')
+        for p in range(data.P):
+            print('{:<10d} {:<15f}'.format(p,param_errs[p]))
+        #end for
+    except:
+        print('\nParameter error estimates not available.')
+    #end try
 
     try:
         epsilonp = data.epsilonp

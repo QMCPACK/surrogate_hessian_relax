@@ -365,7 +365,7 @@ class IterationData():
     #end def
      
 
-    def _compute_next_params(self,trust=0.0):
+    def _compute_next_params(self,trust=0.0,**kwargs):
         if self.is_noisy:
             Emins     = []
             Emins_err = []
@@ -377,10 +377,20 @@ class IterationData():
                 Emins_blk = []
                 Dmins_blk = []
                 pfs_blk   = []
-                Gs        = random.randn(self.generate,self.pts)
                 PES       = self.PES[d]
                 PES_err   = self.PES_err[d]
                 shifts    = self.Dshifts[d]
+                # compute actual shifts
+                if trust>0:
+                    Emin,Dmin,pf = get_min_params(shifts,PES,self.pfn,endpts=[trust*min(shifts),trust*max(shifts)])
+                else:
+                    Emin,Dmin,pf = get_min_params(shifts,PES,self.pfn)
+                #end if
+                Emins.append(Emin)
+                Dmins.append(Dmin)
+                pfs.append(pf)
+                # simulate error
+                Gs        = random.randn(self.generate,self.pts)
                 PES_fit   = polyval(polyfit(shifts,PES,self.pfn),shifts)
                 for G in Gs:
                     PES_row = PES_fit + PES_err*G
@@ -393,14 +403,10 @@ class IterationData():
                     Dmins_blk.append(Dmin)
                     pfs_blk.append(pf)
                 #end for
-                pf_ave        = mean(pfs_blk,axis=0)
                 Emin,Emin_err = get_fraction_error(Emins_blk, self.fraction)
                 Dmin,Dmin_err = get_fraction_error(Dmins_blk, self.fraction)
-                Dmins.append(Dmin)
                 Dmins_err.append(Dmin_err)
-                Emins.append(Emin)
                 Emins_err.append(Emin_err)
-                pfs.append(pf_ave)
                 Ds.append(Dmins_blk)
             #end for
 
@@ -413,7 +419,7 @@ class IterationData():
                 P_aves.append( Ps ) 
                 P_errs.append( P_err ) 
             #end for
-            self.params_next     = Ps[0]
+            self.params_next     = self.params + self.U.T @ Dmins
             self.params_next_err = array(P_errs)
         else:
             Emins = []

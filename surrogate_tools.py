@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete,median
 from math import log10
 
 
@@ -302,9 +302,16 @@ def get_min_params(shifts,PES,n=2,endpts=[]):
     pf     = polyfit(shifts,PES,n)
     r      = roots(polyder(pf))
     Pmins  = list(r[r.imag==0].real)
-    for pt in endpts:
-        Pmins.append(pt)
-    #end for
+    if len(endpts)>0:
+        for Pmin in Pmins:
+            if Pmin<min(endpts) or Pmin>max(endpts):
+                Pmins.remove(Pmin)
+            #end if
+        #end for
+        for pt in endpts:
+            Pmins.append(pt)
+        #end for
+    #end if
     Emins = polyval(pf,array(Pmins))
     try:
         imin = argmin(Emins)
@@ -330,7 +337,8 @@ def R_to_W(R,H):
 def get_fraction_error(data,fraction,both=False):
     data   = array(data)
     data   = data[~isnan(data)]        # remove nan
-    ave    = mean(data)
+    #ave    = mean(data)
+    ave    = median(data)
     data   = data[data.argsort()]-ave  # sort and center
     pleft  = abs(data[int(len(data)*fraction)])
     pright = abs(data[int(len(data)*(1-fraction))])
