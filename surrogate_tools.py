@@ -535,7 +535,7 @@ def model_statistical_bias(pf,x_n,sigma):
 #end def
 
 
-def plot_U_heatmap(ax,U,sort=True,cmap='RdBu',labels=True):
+def plot_U_heatmap(ax,U,sort=True,cmap='RdBu',labels=True,reorder=False):
     U_cp  = U.copy()
     D     = U.shape[0]
     ticks = range(D)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,sum
 from matplotlib import pyplot as plt
 
-from surrogate_tools import print_with_error
+from surrogate_tools import print_with_error,model_statistical_bias
 from iterationdata import IterationData,W_to_R,R_to_W
 
 
@@ -62,6 +62,7 @@ def plot_parameter_convergence(
         colors    = None,
         targets   = None,
         label     = '',
+        markers   = None,
         marker    = 'x',
         linestyle = ':',
         uplims    = True,
@@ -90,6 +91,9 @@ def plot_parameter_convergence(
     else:
         colors = colors
     #end if
+    if markers is None:
+        markers = data0.P*[marker]
+    #end if
 
     # init values
     P_vals = []
@@ -110,6 +114,7 @@ def plot_parameter_convergence(
         P_val   = P_vals[p]
         P_err   = P_errs[p]
         co      = colors[p]
+        mk      = markers[p]
         if labels is None:
             P_label = 'p'+str(p)+' '+label
         else:
@@ -118,7 +123,7 @@ def plot_parameter_convergence(
         if p in P_list:
             h,c,f   = ax.errorbar(list(range(len(data_list)+1)),P_val,P_err,
                 color     = co,
-                marker    = marker,
+                marker    = mk,
                 linestyle = linestyle,
                 label     = P_label,
                 uplims    = uplims,
@@ -133,7 +138,7 @@ def plot_parameter_convergence(
     #end for
     ax.set_xticks(range(len(data_list)+1))
     ax.plot([0,len(data_list)],2*[offset],'k-')
-    ax.legend()
+    #ax.legend()
 #end def
 
 
@@ -340,8 +345,28 @@ def print_optimal_parameters(data_list):
 # averages over estimated parameters
 def average_params(data_list,transient=0):
     params = []
+    errs   = []
     for data in data_list[transient:]:
         params.append( data.params_next )
+        errs.append(   data.params_next_err )
     #end def
-    return mean(array(params),axis=0)
+    params_ave = mean(array(params),axis=0)
+    errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
+
+    return params_ave,errs_ave
+    #end if
+#end def
+
+# calculate statistical biases
+def statistical_biases(data):
+    S_biases = []
+    for d in range(data.D):
+        pf    = data.pfs[d]
+        sigma = data.noises[d]
+        x_n   = data.shifts[d]
+        sbias = model_statistical_bias(pf,x_n,sigma)
+        print(sbias)
+        S_biases.append(sbias)
+    #end for
+    return array(S_biases)
 #end def

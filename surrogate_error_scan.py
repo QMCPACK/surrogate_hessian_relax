@@ -776,7 +776,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
     try:
         print('  temperature:    {} Ry'.format(data.temperature))
     except:
-        epsilon = data.epsilon
+        pass
     #end try
     print('')
 
@@ -877,48 +877,24 @@ def cost_balance(data,noises=None,epsilond=None,get_norm=False):
 #end def
 
 
-# obsolete
-def surrogate_anharmonicity(data,pfn=None,output=False):
-    if pfn is None:
-        pfn = data.pfn
-    #end if
-    W      = data.W
-    pfnp1s = []
-    ans    = []
-    for p in range(data.P):
-        shift = data.Dshifts[p]
-        PES   = data.PES[p]
-        H     = data.hessian_e[p]
-        pf    = polyfit(shift,PES,pfn)
-        pfnp1 = polyfit(shift,PES,pfn+1)
-        dpf   = pfnp1[1:]-pf
-        if pfn==2:
-            an = -pfnp1[0]*H**-2*3/2
-        elif pfn==3:
-            #an = pfnp1[0]**1.5*H**-3.5 + dpf[1]/W
-            an = pfnp1[0]**1.5*H**-3.5
-        else: # n==4
-            #an = 5/4*pfnp1[0]*H**-3
-            an = 5/4*pfnp1[0]*H**-3
-        #end if
-        ans.append(an)
-        if output:
-            print('parameter #'+str(p)+', poly'+str(pfn)+', W='+str(W))
-            print('pfn - pfnp1: '+str(dpf.round(4)))
-            print('pfnp1[0]   : '+str(pfnp1[0].round(6)))
-        #end if
+def surrogate_parameter_biases(data):
+    D_biases = []
+    for d in range(data.D):
+        Ws     = data.Xs[d][0]
+        Bs     = data.Bs[d]
+        B_in   = interp1d(Ws,Bs)
+        window = data.windows[d]
+        try:
+            bias = B_in(window)
+        except:
+            print('Warning: max window exceeded in d{}: {} > {}'.format(d, window, Ws[-1]))
+            bias = Bs[-1]
+        #end try
+        D_biases.append(bias)
     #end for
-    ans        = array(ans)
-    targets    = data.targets
-    params     = data.params_next
-    print('D model    : '+str(ans*W**2))
-    print('D bias     : '+str(data.Dmins))
-    #print('P model    : '+str(data.M @ ans *W**2))
-    print('P bias     : '+str(params-targets))
-    print('anharm.    : '+str(ans))
-    return ans
+    P_biases = D_biases @ data.U
+    return array(P_biases)
 #end def
-
 
 
 def interpolate_grid(x_in,y_in,x_out,kind='cubic'):
