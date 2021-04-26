@@ -343,16 +343,39 @@ def print_optimal_parameters(data_list):
 #end def
 
 # averages over estimated parameters
-def average_params(data_list,transient=0):
+# in future, set bias_correction=True by default. For now, set false to maintain integrity
+def average_params_old(data_list,transient=0,bias_correction=False):
     params = []
     errs   = []
     for data in data_list[transient:]:
-        params.append( data.params_next )
-        errs.append(   data.params_next_err )
+        param     = data.params_next.copy()
+        param_err = data.params_next_err.copy()
+        if bias_correction and data.is_noisy:
+            param -= statistical_biases(data)
+        #end if
+        params.append(param)
+        errs.append(param_err)
     #end def
     params_ave = mean(array(params),axis=0)
     errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
+    return params_ave,errs_ave
+    #end if
+#end def
 
+def average_params(data_list,transient=0,bias_correction=False):
+    params = []
+    errs   = []
+    for data in data_list[transient:]:
+        param     = data.params_next.copy()
+        param_err = data.params_next_err.copy()
+        if bias_correction and data.is_noisy:
+            param -= statistical_biases(data) @ data.U
+        #end if
+        params.append(param)
+        errs.append(param_err)
+    #end def
+    params_ave = mean(array(params),axis=0)
+    errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
     return params_ave,errs_ave
     #end if
 #end def
@@ -365,7 +388,6 @@ def statistical_biases(data):
         sigma = data.noises[d]
         x_n   = data.shifts[d]
         sbias = model_statistical_bias(pf,x_n,sigma)
-        print(sbias)
         S_biases.append(sbias)
     #end for
     return array(S_biases)

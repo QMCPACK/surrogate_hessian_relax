@@ -10,7 +10,7 @@ from scipy.optimize import broyden1
 from scipy.ndimage import zoom
 
 from iterationdata import IterationData
-from surrogate_tools import W_to_R,R_to_W,get_min_params,get_fraction_error
+from surrogate_tools import W_to_R,R_to_W,get_min_params,get_fraction_error,model_statistical_bias
 
 
 def load_W_max(
@@ -217,7 +217,8 @@ def scan_linesearch_error(
                 xdata.append(x_min)
             #end for
             Aave,Aerr = get_fraction_error(array(xdata)-B,fraction=fraction)
-            E = Aerr + abs(B-B0) # exact bias instead of Aave
+            m = model_statistical_bias(p,x_r,sigma)
+            E = Aerr + abs(B-B0) + m # exact systematic bias, model statistical bias instead of Aave
             E_w.append( E )
         #end for
         Es.append( E_w )
