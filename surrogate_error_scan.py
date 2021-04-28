@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# functions and methods related to surrogate error scan
+# Functions and methods related to surrogate error scan
 
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder
 from scipy.interpolate import interp1d,interp2d,pchip_interpolate
@@ -13,6 +13,10 @@ from iterationdata import IterationData
 from surrogate_tools import W_to_R,R_to_W,get_min_params,get_fraction_error,model_statistical_bias
 
 
+# Function to scan for maximum fitting biases in all directions to approximately stay within maximum tolerances epsilon.
+# The W_max will guide in choosing grids for the surrogate PES runs with the caveat that larger errors than epsilon may be left outside of the grid.
+# Therefore maximum realistically tolerated epsilon should be used to load_W_max
+#   epsilon can be a scalar or an array adjusted for each direction
 def load_W_max(
     data,
     epsilon,
@@ -31,7 +35,6 @@ def load_W_max(
     for d in range(data.D):
         x_n   = data.shifts[d]
         y_n   = data.PES[d]
-        xy_in = interp1d(x_n,y_n,kind='cubic')
         H     = data.Lambda[d]
         W_eff = R_to_W(max(x_n),H)
         Ws    = linspace(W_min[d], 0.99999*W_eff,51)
@@ -39,7 +42,7 @@ def load_W_max(
         for W in Ws:
             R        = W_to_R(W,H)
             x_r      = linspace(-R,R,pts)
-            y_r      = xy_in(x_r)
+            x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
             y,x,p    = get_min_params(x_r,y_r,pfn)
             Bs.append(x)
         #end for
@@ -70,7 +73,14 @@ def load_W_max(
 #end def
 
 
-
+# Function to scan line-search in all directions using correlated resampling over the surrogate PES data
+# Operates on regular grids based on energy window W and input noise sigma that can be adjusted in the input
+# It is somewhat critical to set the W-sigma grid properly (trial & error before this gets heuristically automated): 
+#   W grid should span values from small (to assess zero bias) to as large as relevant (load_W_max helps here)
+#      if W_max is too low (compared to sigma_max), the grid is poorly focused
+#   sigma grid should span values from small (zero noise) to as large as relevant (this can be hard to guess)
+#      if sigma_max is too low, it underestimates the optimal noise (contour caps at the sigma_max limit)
+#      if sigma_max is too high, most error values on the grid are saturated (poorly focused) and the modeling sigma_opt(epsilon) is unreliable or impossible
 def scan_error_data(
     data,
     pfn,
@@ -81,7 +91,7 @@ def scan_error_data(
     W_num     = 11,
     sigma_num = 11,
     generate  = 1000,
-    relative  = True, # obsolete
+    relative  = True, # obsolete, here for compatibility
     fraction  = None,
     ):
 
@@ -200,7 +210,7 @@ def scan_linesearch_error(
     for w,W in enumerate(Ws):
         R        = W_to_R(W,H)
         x_r      = linspace(-R,R,pts)
-        y_r      = xy_in(x_r)
+        x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
         y,x,p    = get_min_params(x_r,y_r,pfn)#,endpts=endpts)
         B        = x # systematic bias
         if first:
@@ -216,7 +226,7 @@ def scan_linesearch_error(
                 y_min,x_min,pf = get_min_params(x_r,y_r+sigma*Gs[n],pfn,endpts=endpts)
                 xdata.append(x_min)
             #end for
-            Aave,Aerr = get_fraction_error(array(xdata)-B,fraction=fraction)
+            Aave,Aerr = get_fraction_error(array(xdata)-B+B0,fraction=fraction)
             m = model_statistical_bias(p,x_r,sigma)
             E = Aerr + abs(B-B0) + m # exact systematic bias, model statistical bias instead of Aave
             E_w.append( E )
@@ -231,7 +241,13 @@ def scan_linesearch_error(
 
 
 
-# takes IterationData
+# Functions to read pre-scanned line-search error grids from an IterationData object and fit a simple regression model the optimal parameters
+# The optimal parameter for W and sigma are based on the max-sigma point on an error isocontour on the W-sigma grid
+#   It is assumed that
+# The fit is based on evaluating the optimum points on an irregular grid of tolerance values (epsilon) and then fitting to assumed scaling models
+#   optimal window scales: W_opt(epsilon)**2  ~ epsilon     <- fitted linearly
+#   optimal noise scales:  sigma_opt(epsilon) ~ epsilon**2  <- fitted harmonically
+# The point of fitting to simple models is fast evaluation (contouring is slow) in later parts, where the optimal points are explored to find the optimal ensemble among all directions
 def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=None):
     Wfuncs = []
     Sfuncs = []
@@ -276,7 +292,6 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=Non
     #end if
 #end def
 
-
 def get_W_sigma_of_epsilon( 
     X,               # W     mesh
     Y,               # sigma mesh
@@ -284,7 +299,7 @@ def get_W_sigma_of_epsilon(
     gridexp   = 4.0, # polynomial grid spacing for better resolution at small error values
     show_plot = False,
     epsilons  = None,
-    zoom_in   = 4.0,
+    zoom_in   = 1.0,
     ):
 
     if epsilons is None:
@@ -334,7 +349,8 @@ def get_W_sigma_of_epsilon(
     return epsilons,array(Ws),array(sigmas)
 #end def
 
-
+# Function to interpolate the W-sigma error data
+#   Can be sensitive near saturation boundaries, and requires more testing to be reliable
 def interpolate_error_grid(X,Y,E,zoom_in=1):
     if zoom_in==1:
         return X,Y,E
@@ -367,15 +383,23 @@ def interpolate_error_grid(X,Y,E,zoom_in=1):
     #end for
     Ei = array(Ei)
 
-    # consider making nan out of large values?
-    #E[E>0.2] *= 100
-    #E_in     = interp2d(x,y,E,kind='linear')
-    #Ei       = E_in(xi,yi)
     return Xi,Yi,Ei
 #end def
 
-
-def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
+# Heuristic method to find the cost-optimized epsilond (an array of direction tolerances)
+# Overview:
+#   scan variations of epsilond
+#     scale up epsilond until any parameter error hits the tolerance, estimate cost
+#   choose the (re-scaled) epsilond with the lowest cost (~the one which can be scaled up the most)
+def optimize_epsilond_heuristic_cost(
+    data,
+    epsilon,
+    fraction,
+    generate = 1000,
+    A_min    =-0.2, # compatibility; more natural choice is -1.0
+    A_max    = 0.2, # compatibility; more natural choice is 1.0
+    A_num    = 11,  # compatibility; higher number probably beneficial, if scanning [-1,1]
+    ):
     if fraction is None:
         fraction = data.fraction
     #end if
@@ -387,21 +411,22 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
         else:
             epsilonp = sigma
         #end if
-        return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
-        #return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp)
+        #return abs( (A*data.U + (1-A)*data.U**2) @ epsilonp)
+        return abs( (A*data.U + (1-abs(A))*data.U**2) @ epsilonp)
+        # this would be formally correct, but leads in practice to pathologies (inevitably small epsilond in some directions)
+        #return abs( (A*data.U + (1-A)*linalg.inv(data.U.T**2)) @ epsilonp) 
     #end def
 
-    #As = linspace(0.0,1.0,11)
-    As = linspace(-0.2,0.2,11)
+    As = linspace(A_min,A_max,A_num)
     cost_opt = 1.0e99
     cost = 0.0
 
-    # optimize epsilond ab fraction that evens out parameter errors
+    # optimize epsilond a fraction that evens out parameter errors
     delta    = 0.1
     epsilond = None
     for A in As:
         coeff    = 0.0
-        for n in range(100): # increase in finite steps
+        for n in range(100): # increase noise in finite steps (needs better heuristics)
             coeff         += delta
             epsilond_this  = get_epsilond(A,coeff*epsilon)
             diff,cost_this = validate_error_targets(data, epsilon, fraction, generate, epsilond=epsilond_this, get_cost=True)
@@ -424,6 +449,7 @@ def optimize_epsilond_heuristic_cost(data,epsilon,fraction,generate):
 #end def
 
 
+# Function to return epsilond based on thermal equipartition
 def get_epsilond_thermal(data,temperature):
     Lambda = data.Lambda
 
@@ -438,7 +464,8 @@ def get_epsilond_thermal(data,temperature):
 #end def
 
 
-# get the highest temperature that does not break constraints
+# Function to optimize thermal epsilond to meet tolerances epsilon by gradually increasing temperature
+#   Considers all parameters, but a way to enforce only a subset of parameter tolerances is to set the rest of them high
 def optimize_epsilond_thermal(data,epsilon,fraction,generate,T_step=0.00001,T_max=0.1):
     T = 0
     epsilond_opt = None
@@ -461,7 +488,9 @@ def optimize_epsilond_thermal(data,epsilon,fraction,generate,T_step=0.00001,T_ma
 #end def
 
 
-
+# A wrapper function to optimize the line-search parameters (W,sigma) of a given instance of IterationData
+#   Important parameters: epsilon (parameter tolerances) or temperature, optimizer
+# Computes and stores predicted parameter errors in data.params_next_err
 def optimize_window_sigma(
     data,
     epsilon     = 0.01,
@@ -512,7 +541,7 @@ def optimize_window_sigma(
     data.is_noisy   = True
 #end def
 
-
+# If regression models for W and sigma are unavailable (load_of_epsilon not successfully done), fall back to using the contour approach
 def optimize_linesearch(
     X,
     Y,
@@ -584,7 +613,7 @@ def optimize_linesearch(
 #end def
 
 
-
+# Function to optimize epsilond using Brouden's method (currently instable and untested)
 def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
     if fraction is None:
         fraction = data.fraction
@@ -596,6 +625,7 @@ def optimize_epsilond_broyden1(data,epsilon,fraction,generate,verbose=False):
 #end def
 
 
+# Obsolete: Function to heuristically optimize epsilond based on deviation from target values
 def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
     if fraction is None:
         fraction = data.fraction
@@ -647,8 +677,8 @@ def optimize_epsilond_heuristic(data,epsilon,fraction,generate):
 #end def
 
 
-
-# validation function
+# Function to simulate mixing of parameter errors from the line-search ensemble epsilond.
+# Return the observed parameter errors in absolute (actual errors) or fractional units (easy to monitor; negative value means below tolerance)
 def validate_error_targets(
     data,        # Iteration data
     epsilon,     # target parameter accuracy
@@ -728,7 +758,8 @@ def validate_error_targets(
     #end if
 #end def
 
-
+# Returns a resampled distribution of line-search results for error analysis.
+# The line-search is set up based on interpolated quantities
 def get_search_distribution(
     x_n,
     y_n,
@@ -764,7 +795,7 @@ def get_search_distribution(
 #end def
 
 
-
+# Function to analyze and print out some basic information about the error scan results
 def error_scan_diagnostics(data, steps_times_error2=None):
     # cost
     cost_max   = min(array(data.noises))**-2
@@ -842,6 +873,7 @@ def error_scan_diagnostics(data, steps_times_error2=None):
 #end def
 
 
+# Evaluate the array of noises for a given epsilond
 def get_noises(data,epsilond):
     noises = []
     for d in range(data.D):
@@ -858,6 +890,7 @@ def get_noises(data,epsilond):
 #end if
 
 
+# Returns the relative balance of costs across search directions, normalized to 1
 def cost_balance(data,noises=None,epsilond=None,get_norm=False):
     if noises is None:
         if epsilond is None:
@@ -878,6 +911,7 @@ def cost_balance(data,noises=None,epsilond=None,get_norm=False):
 #end def
 
 
+# Function to return parameter biases (based on surrogate PES) with the given set of windows
 def surrogate_parameter_biases(data):
     D_biases = []
     for d in range(data.D):
@@ -897,9 +931,9 @@ def surrogate_parameter_biases(data):
     return array(P_biases)
 #end def
 
-
+# Centralized function for PES ion
 def interpolate_grid(x_in,y_in,x_out,kind='cubic'):
-    xy_in = interp1d(x_in,y_in,kind='cubic')
+    xy_in = interp1d(x_in,y_in,kind=kind)
     try:
         y_out = xy_in(x_out)
     except:

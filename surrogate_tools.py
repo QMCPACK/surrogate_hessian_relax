@@ -3,7 +3,7 @@
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete,median
 from math import log10
 
-
+# Utility for printing value with uncertainty in parentheses
 def print_with_error( value, error, limit=15 ):
 
     if error==0.0 or isnan(error):
@@ -33,7 +33,7 @@ def print_with_error( value, error, limit=15 ):
 #end def
 
 
-# load force-constants
+# Wrapper for loading force-constant matrices from QE or VASP
 def load_gamma_k(fname, num_prt, symmetrize=True, **kwargs):
     if fname.endswith('.fc'): # QE
         K = load_force_constants_qe(fname, num_prt, **kwargs)
@@ -55,7 +55,7 @@ def load_gamma_k(fname, num_prt, symmetrize=True, **kwargs):
     return K
 #end def
 
-
+# Load FC matrix in QE format
 def load_force_constants_qe(fname, num_prt, dim=3):
     K = zeros((dim*num_prt,dim*num_prt))
     with open(fname) as f:
@@ -78,6 +78,8 @@ def load_force_constants_qe(fname, num_prt, dim=3):
     return K
 #end def
 
+# load FC matrix in VASP format
+#   will need better unit conversion
 def load_force_constants_vasp(fname, num_prt, dim=3):
     import h5py
     f = h5py.File(fname,mode='r')
@@ -106,8 +108,7 @@ def load_force_constants_vasp(fname, num_prt, dim=3):
     return K/eV_A2
 #end def
 
-
-
+# Load phonon modes from QE output
 def load_phonon_modes(fname,num_prt,drop_modes=0):
     ws    = []
     vects = []
@@ -143,7 +144,7 @@ def load_phonon_modes(fname,num_prt,drop_modes=0):
 #end def
 
 
-# read geometry from qe format to row format
+# read geometry in QE format to row format
 def read_geometry(geometry_string):
     lines = geometry_string.split('\n')
     R = []
@@ -160,7 +161,7 @@ def read_geometry(geometry_string):
     return array(R),names
 #end def
 
-# positions are given as a vector
+# Print geometry in QE format
 def print_qe_geometry(atoms, positions,dim=3):
     for a,atom in enumerate(atoms):
         coords = ''
@@ -170,7 +171,7 @@ def print_qe_geometry(atoms, positions,dim=3):
     #end for
 #end def
 
-
+# Print the diagonal of a force-constant matrix
 def print_fc_matrix(fc, num_prt, diagonals_only=True, title=None):
     if not title==None:
         print('Force-constant matrix: '+title)
@@ -188,6 +189,7 @@ def print_fc_matrix(fc, num_prt, diagonals_only=True, title=None):
     #end for
     print('')
 #end def
+
 
 # w must be 1-d array of frequencies in cm-1
 # vects must be 2-d array: num_freq x num_prt*dim
@@ -298,8 +300,10 @@ def get_2d_sli(p0,p1,slicing):
     return tuple(sli)
 #end def
 
-def get_min_params(shifts,PES,n=2,endpts=[]):
-    pf     = polyfit(shifts,PES,n)
+# Important function to resolve the local minimum of a curve
+#   If endpts are given, search minima from them, too
+def get_min_params(x_n,y_n,pfn=2,endpts=[]):
+    pf     = polyfit(x_n,y_n,pfn)
     r      = roots(polyder(pf))
     Pmins  = list(r[r.imag==0].real)
     if len(endpts)>0:
@@ -323,21 +327,22 @@ def get_min_params(shifts,PES,n=2,endpts=[]):
     return Emin,Pmin,pf
 #end def
 
-
+# Map W to R, given H
 def W_to_R(W,H):
     R = (2*W/H)**0.5
     return R
 #end def
 
+# Map R to W, given H
 def R_to_W(R,H):
     W = 0.5*H*R**2
     return W
 #end def
 
+# Estimate conservative (maximum) uncertainty from a distribution based on a percentile fraction
 def get_fraction_error(data,fraction,both=False):
     data   = array(data)
     data   = data[~isnan(data)]        # remove nan
-    #ave    = mean(data)
     ave    = median(data)
     data   = data[data.argsort()]-ave  # sort and center
     pleft  = abs(data[int(len(data)*fraction)])
@@ -350,7 +355,7 @@ def get_fraction_error(data,fraction,both=False):
     return ave,err
 #end def
 
-
+# Parameter mapping utility for merging pos and cell arrays
 def merge_pos_cell(pos,cell):
     posc = array(list(pos.flatten())+list(cell.flatten())) # generalized position vector: pos + cell
     return posc
@@ -374,6 +379,7 @@ def detach_pos_cell(posc,num_prt=None,dim=3,reshape=True):
 #end def
 
 
+# Read relaxed structure from SCF with Nexus PwscfAnalyzer
 def get_relax_structure(
     path,
     suffix     = 'relax.in',
@@ -401,6 +407,7 @@ def get_relax_structure(
 #end def
 
 
+# Compute parameter Hessian by using either JAX or finite difference
 def compute_hessian(jax_hessian,eps=0.001,**kwargs):
     if jax_hessian:
         print('Computing parameter Hessian with JAX')
@@ -412,7 +419,7 @@ def compute_hessian(jax_hessian,eps=0.001,**kwargs):
     return hessian_delta
 #end def
 
-
+# Compute parameter Hessian using JAX
 def compute_hessian_jax(
     hessian_pos,
     params_to_pos,
@@ -436,7 +443,7 @@ def compute_hessian_jax(
     return hessian_delta
 #end def
 
-
+# Compute parameter Jacobian using finite difference
 def compute_jacobian_fdiff(params_to_pos,params,eps=0.001):
     jacobian = []
     pos_orig = params_to_pos(params)
@@ -451,7 +458,7 @@ def compute_jacobian_fdiff(params_to_pos,params,eps=0.001):
 #end def
 
 
-# finite difference method for the gradient
+# Compute Parameter Hessian based on finite-differnce Jacobian
 def compute_hessian_fdiff(
     hessian_pos,
     params_to_pos,
@@ -467,6 +474,7 @@ def compute_hessian_fdiff(
 #end try
 
 
+# Centralized printing utility for the parameter Hessian
 def print_hessian_delta(hessian_delta,U,Lambda,roundi=3):
     print('Parameters Hessian (H_Delta)')
     print(hessian_delta.round(roundi))
@@ -479,6 +487,7 @@ def print_hessian_delta(hessian_delta,U,Lambda,roundi=3):
     print('')
 #end def
 
+# Centralized printing utility for the relaxed structure
 def print_relax(elem,pos_relax,params_relax,dim=3):
     print('Relaxed geometry (non-symmetrized):')
     print_qe_geometry(elem,pos_relax,dim)
@@ -489,6 +498,7 @@ def print_relax(elem,pos_relax,params_relax,dim=3):
 #end def
 
 
+# Matrix utilities for modeling polyfit errors
 
 def calculate_X_matrix(x_n,pfn):
    X = []
@@ -508,6 +518,7 @@ def calculate_F_matrix(X):
    return F
 #end def
 
+# Model statistical bias of 2 or 3 degree polyfits, accurate to O(sigma**4)
 def model_statistical_bias(pf,x_n,sigma):
     pfn = len(pf)-1
     # opposite index convention 
@@ -534,7 +545,7 @@ def model_statistical_bias(pf,x_n,sigma):
     return bias
 #end def
 
-
+# Plotting utility for producing parameter coupling heatmaps
 def plot_U_heatmap(ax,U,sort=True,cmap='RdBu',labels=True,reorder=False):
     U_cp  = U.copy()
     D     = U.shape[0]

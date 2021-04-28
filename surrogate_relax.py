@@ -7,6 +7,7 @@ from surrogate_tools import print_with_error,model_statistical_bias
 from iterationdata import IterationData,W_to_R,R_to_W
 
 
+# Utility for plotting energy convergence (needs update)
 def plot_energy_convergence(
         ax,
         data_list,
@@ -54,7 +55,7 @@ def plot_energy_convergence(
     ax.set_ylabel('energy')
 #end def
 
-
+# Utility for plotting parameter convergence
 def plot_parameter_convergence(
         ax,
         data_list,
@@ -141,7 +142,7 @@ def plot_parameter_convergence(
     #ax.legend()
 #end def
 
-
+# Deprecated
 def plot_linesearches(ax,data_list):
     n         = len(data_list)
     data0     = data_list[0]
@@ -184,7 +185,7 @@ def plot_linesearches(ax,data_list):
     ax.set_ylabel('energy')
 #end def
 
-
+# Plot parameter errors and accumulated cost (deprecated)
 def plot_error_cost(
         ax,
         data_list,
@@ -246,7 +247,7 @@ def plot_error_cost(
     #end if
 #end for
 
-
+# Plot the PES of each line-search in a parallel iteration
 def plot_PES_fits(
         ax,
         data,
@@ -285,7 +286,7 @@ def plot_PES_fits(
     ax.legend(fontsize=8)
 #end def
 
-
+# Centralized set of actions to run as diagnostics
 def surrogate_diagnostics(data_list):
     # print standard stuff
     #print_structure_shift(data.R,data.R_next)
@@ -304,7 +305,7 @@ def surrogate_diagnostics(data_list):
     plt.show()
 #end def
 
-
+# Print energies and result parameters (could use a face-lift)
 def print_optimal_parameters(data_list):
     data0 = data_list[0]
     if data0.targets is None:
@@ -342,26 +343,9 @@ def print_optimal_parameters(data_list):
     #end for
 #end def
 
-# averages over estimated parameters
+# Estimate average parameters and errors based on series of line-searches
+#   transient=0 means all iterations from the first step forward will be included
 # in future, set bias_correction=True by default. For now, set false to maintain integrity
-def average_params_old(data_list,transient=0,bias_correction=False):
-    params = []
-    errs   = []
-    for data in data_list[transient:]:
-        param     = data.params_next.copy()
-        param_err = data.params_next_err.copy()
-        if bias_correction and data.is_noisy:
-            param -= statistical_biases(data)
-        #end if
-        params.append(param)
-        errs.append(param_err)
-    #end def
-    params_ave = mean(array(params),axis=0)
-    errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
-    return params_ave,errs_ave
-    #end if
-#end def
-
 def average_params(data_list,transient=0,bias_correction=False):
     params = []
     errs   = []
@@ -377,10 +361,9 @@ def average_params(data_list,transient=0,bias_correction=False):
     params_ave = mean(array(params),axis=0)
     errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
     return params_ave,errs_ave
-    #end if
 #end def
 
-# calculate statistical biases
+# Calculate statistical biases per direction based on model
 def statistical_biases(data):
     S_biases = []
     for d in range(data.D):

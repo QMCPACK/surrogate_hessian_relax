@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# Various default variable values for use in functions and templates
 dim              = 3
 relax_dir        = '../relax/'
 phonon_dir       = '../phonon/'

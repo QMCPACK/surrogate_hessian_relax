@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from surrogate_tools import W_to_R,R_to_W,get_min_params,get_fraction_error
 
 
-# class for line-search iteration
+# Class for line-search iteration
 
 class IterationData():
 
@@ -34,7 +34,7 @@ class IterationData():
         generate      = 1000,               # how many samples to generate for error analysis
         fraction      = 0.025,              # fraction for error analysis
         # calculation method specifics
-        type          = 'qmc',              # job type: qmc/scf
+        type          = 'qmc',              # job type: qmc/scf/dummy
         qmc_idx       = 1,                  #   qmc: which qmc to analyze
         qmc_j_idx     = 2,                  #   qmc: which qmc job has jastrow
         load_postfix  = '/dmc/dmc.in.xml',  #   qmc: point the input file
@@ -259,13 +259,13 @@ class IterationData():
         self.results_loaded = True
     #end def
 
-    def write_to_file(self):
-        pickle.dump(self,open(self.path+'data.p',mode='wb'))
+    def write_to_file(self,fname='data.p'):
+        pickle.dump(self,open(self.path+fname,mode='wb'))
     #end def
 
-    def load_from_file(self):
+    def load_from_file(self,fname='data.p'):
         try:
-            data = pickle.load(open(self.path+'data.p',mode='rb'))
+            data = pickle.load(open(self.path+fname,mode='rb'))
             return data
         except:
             return None
@@ -300,7 +300,7 @@ class IterationData():
         self.pfn      = data.pfn
         self.pts      = data.pts
         # TODO: make this more robust
-        if data.type=='scf' and self.type=='qmc':
+        if data.type=='scf' and (self.type=='qmc' or self.type=='dummy'):
             self.noises   = array(data.noises)/2 # from Ry to Ha
             self.windows  = data.windows
         else:
@@ -330,27 +330,30 @@ class IterationData():
 
 
     def _load_energy_error(self,path,sigma):
-        try: # can hard-code energy if needed
-            E,Err = loadtxt(path+'.E')
-            Err  += sigma
+        if self.type=='qmc':
+            from nexus import QmcpackAnalyzer
+            AI    = QmcpackAnalyzer(path)
+            AI.analyze()
+            E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
+            Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
+            kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
+        elif self.type=='scf': # pwscf
+            from nexus import PwscfAnalyzer
+            AI    = PwscfAnalyzer(path)
+            AI.analyze()
+            E     = AI.E + sigma*random.randn(1)[0]
+            Err   = sigma
             kappa = 1.0
-        except:
-            if self.type=='qmc':
-                from nexus import QmcpackAnalyzer
-                AI    = QmcpackAnalyzer(path)
-                AI.analyze()
-                E     = AI.qmc[self.qmc_idx].scalars.LocalEnergy.mean
-                Err   = AI.qmc[self.qmc_idx].scalars.LocalEnergy.error
-                kappa = AI.qmc[self.qmc_idx].scalars.LocalEnergy.kappa
-            else: # pwscf
-                from nexus import PwscfAnalyzer
-                AI    = PwscfAnalyzer(path)
-                AI.analyze()
-                E     = AI.E + sigma*random.randn(1)[0]
-                Err   = sigma
-                kappa = 1.0
+        else: # dummy
+            E_load = loadtxt(path)
+            if len(E_load)==1:
+                E   = E_load
+                Err = sigma
+            else:
+                E,Err = E_load[0],E_load[1]
             #end if
-        #end try
+            kappa = 1.0
+        #end if
         return E,Err,kappa
     #end def
 
