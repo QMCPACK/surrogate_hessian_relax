@@ -1,5 +1,14 @@
 #! /usr/bin/env python3
 
+# Coronene (6 parameters)
+#
+# This is an example of configuring the structural mappings and computing jobs based on the original publication
+# The file is not (yet) fully curated for pedagogical purposes, and may not reflect the latest good practices of composing the parameter file.
+# However, it serves to demonstrate that the implementation in parameters.py can be done in any almost any style, as long as it defines
+#   Starting structure (pos_init as 1D array)
+#   Consistent parameter mappings: (pos_to_params, params_to_pos)
+#   Functions returning Nexus workflows (get_relax_job,get_scf_pes_job,,get_dmc_jobs)
+
 from numpy import array,diag,linalg,sin,cos,pi,arcsin,arccos
 from nexus import generate_pwscf,generate_pw2qmcpack,generate_qmcpack,job,obj,Structure,generate_physical_system
 
@@ -147,36 +156,25 @@ def params_to_pos(p):
     return pos
 #end def
 
-# jobs
+# Pseudos
 valences       = obj(C=4,H=1)
 relaxpseudos   = ['C.pbe_v1.2.uspp.F.UPF', 'H.pbe_v1.4.uspp.F.UPF']
 qmcpseudos     = ['C.ccECP.xml','H.ccECP.xml']
 scfpseudos     = ['C.upf','H.upf']
-steps_times_error2 = 0.0003 # (steps-1)* error**2
 
-# setting for the surrogate job
+# Setting for the nexus jobs based on file layout and computing environment
 pseudo_dir = '../pseudos'
-nx_account = 'qmc'
-nx_machine = 'cades'
-cores      = 36
-presub = '''
-export OMP_NUM_THREADS=1
-module purge
-module load python/3.6.3
-module load PE-intel/3.0
-module load intel/18.0.0
-module load gcc/6.3.0
-module load hdf5_parallel/1.8.17
-module load fftw/3.3.5
-module load cmake
-module load boost/1.67.0
-module load libxml2/2.9.9
-'''
-qmcapp = '/home/49t/git/qmcpack/latest/build_cades_cpu_real_skylake/bin/qmcpack'
-scfjob = obj(app='pw.x',cores=cores,ppn=cores,presub=presub,hours=2,queue='burst')
-optjob = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
-dmcjob = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
-p2qjob = obj(app='pw2qmcpack.x',cores=1,ppn=1,presub=presub,minutes=5,queue='burst')
+nx_machine = 'ws8'
+cores      = 8
+presub     = ''
+qmcapp     = '/path/to/qmcpack'
+qeapp      = '/path/to/pw.x'
+p2qapp     = '/path/to/pw2qmcpack.x'
+scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub,hours=2)
+optjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
+dmcjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
+p2qjob     = obj(app=p2qapp,cores=1,ppn=1,presub=presub,minutes=5)
+
 
 scf_common = obj(
     input_dft   = 'pbe',
@@ -296,6 +294,7 @@ def get_scf_pes_job(pos,path,**kwargs):
 #end def
 
 # DMC line search
+steps_times_error2 = 0.0003 # (steps-1)* error**2
 def get_dmc_jobs(pos,path,sigma,jastrow=None,**kwargs):
     system   = get_system(pos)
     dmcsteps = int(steps_times_error2/sigma**2)+1
