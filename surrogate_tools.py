@@ -232,10 +232,9 @@ def bipolynomials(X,Y,nx,ny):
 # courtesy of Jaron Krogel
 def bipolyfit(X,Y,Z,nx,ny):
     XYp = bipolynomials(X,Y,nx,ny)
-    p,r,rank,s = linalg.lstsq(array(XYp).T,Z.flatten())
+    p,r,rank,s = linalg.lstsq(array(XYp).T,Z.flatten(),rcond=None)
     return p
 #end def bipolyfit
-
 
 # courtesy of Jaron Krogel
 def bipolyval(p,X,Y,nx,ny):

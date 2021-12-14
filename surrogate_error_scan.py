@@ -33,11 +33,12 @@ def load_W_max(
     #end if
     Wmaxs = []
     for d in range(data.D):
-        x_n   = data.shifts[d]
+        x_n   = data.Dshifts[d]
+        Rmax  = min(max(x_n),-min(x_n))
         y_n   = data.PES[d]
         H     = data.Lambda[d]
-        W_eff = R_to_W(max(x_n),H)
-        Ws    = linspace(W_min[d], 0.99999*W_eff,51)
+        W_eff = R_to_W(Rmax,H)
+        Ws    = linspace(min(W_min[d],0.01*W_eff), 0.99999*W_eff,51)
         Bs    = []
         for W in Ws:
             R        = W_to_R(W,H)
@@ -63,8 +64,9 @@ def load_W_max(
             #end if
         #end for
         if Wmax==0:
-            print('Warning: Wmax not reached with direction {}'.format(d))
             Wmax = 0.99999*W_eff
+            Bmax = round(max(abs(B_in(Wmax)*data.U[d,:])/epsilon)*100,0)
+            print('Warning: Bias in direction {} is only {}% at W_max {}'.format(d,Bmax,Wmax))
             print(d,Wmax,abs(B_in(Wmax)*data.U[d,:]) - epsilon)
         #end if
         Wmaxs.append(Wmax)
@@ -105,7 +107,7 @@ def scan_error_data(
         W_max = data.windows
     #end if
 
-    if isscalar(sigma_max): # if None, increase incrementally
+    if isscalar(sigma_max) or sigma_max is None: # if None, increase incrementally
         sigma_max = data.D*[sigma_max]
     #end if
 
@@ -115,7 +117,7 @@ def scan_error_data(
     Bs  = []
     Gs  = []
     for d in range(data.P):
-        x_n      = data.shifts[d]
+        x_n      = data.Dshifts[d]
         y_n      = data.PES[d]
         H        = data.Lambda[d]
         X,Y,E,B,G = scan_linesearch_error(
@@ -175,7 +177,8 @@ def scan_linesearch_error(
     fraction  = 0.159,
     ):
 
-    W_eff = R_to_W(max(abs(x_n)),H)
+    Rmax  = min(max(x_n),-min(x_n))
+    W_eff = R_to_W(Rmax,H)
 
     if sigma_max is None:
         sigma_max = W_eff/16 # max fluctuation set to 1/16 of effective W
@@ -185,7 +188,7 @@ def scan_linesearch_error(
     if W_max is None:
         W_max = W_eff
     #end if
-    if W_min is None:
+    if W_min is None or W_min>W_max:
         W_min = W_max/W_num
     #end if
     Ws   = linspace(W_min, W_max, W_num)
@@ -228,7 +231,8 @@ def scan_linesearch_error(
             #end for
             Aave,Aerr = get_fraction_error(array(xdata)-B+B0,fraction=fraction)
             m = model_statistical_bias(p,x_r,sigma)
-            E = Aerr + abs(B-B0) + m # exact systematic bias, model statistical bias instead of Aave
+            #E = Aerr + abs(B-B0) + m # exact systematic bias, model statistical bias instead of Aave
+            E = Aerr + abs(B-B0+m) # exact systematic bias, model statistical bias instead of Aave
             E_w.append( E )
         #end for
         Es.append( E_w )
@@ -291,6 +295,120 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=Non
         return Edata,Wdata,Sdata
     #end if
 #end def
+
+# WIP
+def bias_of_R(
+        data,
+        Ds   = None,
+        Rmin = 1e-5,
+        ):
+    pfn      = data.pfn
+    pts      = data.pts
+    fraction = data.fraction
+    if Ds is None:
+        Ds = range(data.D)
+    #end if
+
+    biases = []
+    for d in Ds:
+        x_n      = data.shifts[d]
+        y_n      = data.PES[d]
+        Rmax     = min(max(-x_n[x_n<0]),max(x_n))
+        R        = Rmin
+        B_old    = 0
+        Bs       = []
+        Rs       = []
+        first    = True
+        while R < Rmax:
+            x_r      = linspace(-R,R,pts)
+            x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+            y,x,p    = get_min_params(x_r,y_r,pfn)
+            if first:
+                B0 = x # systematic bias
+                first = False
+                B = 0
+            else:
+                B = x-B0
+            #end if
+            if abs(B_old-B)<0:
+                print(B,B_old,'strange')
+            #end if
+            Bs.append(B)
+            Rs.append(R)
+            R += min(Rmax/100,0.1)
+        #end while
+        biases.append((Bs,Rs))
+    #end for
+    data.BR = biases
+    return biases
+#end def
+
+# WIP
+def R_sigma_mesh(
+    data,
+    Ds         = None,
+    Rmin       = 1e-5,
+    generate   = 1000,
+    num_sigma  = 11,
+    num_R      = 11,
+    ):
+
+    pfn      = data.pfn
+    pts      = data.pts
+    fraction = data.fraction
+    if Ds is None:
+        Ds = range(data.D)
+    #end if
+
+    Xs = []
+    Ys = []
+    Es = []
+    for d in Ds:
+        try:
+            B,R = data.BR[d]
+        except:
+            B,R = bias_of_R(data,Ds=[d])[0]
+        #end try
+        B_in      = interp1d(R,B)
+        G         = random.randn(generate,pts)
+        Lambda    = data.Lambda[d]
+        x_n       = data.shifts[d]
+        y_n       = data.PES[d]
+        Rmax      = max(R)
+        R         = Rmax
+        Rs        = []
+        sigma_min = 0
+        sigma_max = 0.5*Lambda*Rmax**2
+        sigmas    = linspace(sigma_min,sigma_max,num_sigma)
+        Err_mesh  = []
+        while R > Rmin:
+            bias = B_in(0.99999*R)
+            Err_sigma = []
+            for sigma in sigmas:
+                x_r      = linspace(-R,R,pts)
+                x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+                xdata    = []
+                for g in G:
+                    y,x,p = get_min_params(x_r,y_r+sigma*g,pfn)
+                    xdata.append(x)
+                #end for
+                Aave,Aerr = get_fraction_error(array(xdata)-bias,fraction=fraction)
+                Err = Aerr + abs(bias)
+                Err_sigma.append(Err)
+            #end for
+            Rs.append(R)
+            R -= Rmax/num_R
+            Err_mesh.append(Err_sigma)
+        #end while
+        X,Y = meshgrid(Rs,sigmas)
+        Xs.append(X)
+        Ys.append(Y)
+        Es.append(Err_mesh)
+    #end for
+    return Xs,Ys,Es
+#end def
+
+
 
 def get_W_sigma_of_epsilon( 
     X,               # W     mesh
@@ -449,6 +567,18 @@ def optimize_epsilond_heuristic_cost(
 #end def
 
 
+# Function to return epsilon based on thermal equipartition
+def get_epsilon_thermal(data,temperature):
+    Lambda = data.hessian.diagonal()
+    epsilon = []
+    for k in Lambda:
+        epsilon.append( (temperature/k)**0.5 )
+    #end for
+    epsilon = array(epsilon)
+    return epsilon
+#end def
+
+
 # Function to return epsilond based on thermal equipartition
 def get_epsilond_thermal(data,temperature):
     Lambda = data.Lambda
@@ -462,6 +592,7 @@ def get_epsilond_thermal(data,temperature):
 
     return epsilond
 #end def
+
 
 
 # Function to optimize thermal epsilond to meet tolerances epsilon by gradually increasing temperature
@@ -724,7 +855,7 @@ def validate_error_targets(
         #end if
         B0 = data.Bs[d][0]
         D = get_search_distribution(
-            x_n       = data.shifts[d],
+            x_n       = data.Dshifts[d],
             y_n       = data.PES[d],
             H         = data.Lambda[d],
             W_opt     = W_opt,
