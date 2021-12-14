@@ -31,6 +31,7 @@ class IterationData():
         W             = 0.01,               #   alternative: constant energy window
         noises        = None,               # list of target noises for each direction
         add_noise     = 0.0,                #   additionally: constant artificial noise
+        displacements = None,               # list of displacements along each direction
         generate      = 1000,               # how many samples to generate for error analysis
         fraction      = 0.025,              # fraction for error analysis
         # calculation method specifics
@@ -54,6 +55,7 @@ class IterationData():
         self.W             = W
         self.noises        = noises
         self.add_noise     = add_noise
+        self.displacements = displacements
         self.generate      = generate
         self.fraction      = fraction
 
@@ -141,16 +143,24 @@ class IterationData():
             minuss       = len(shifts_d[shifts_d<-1e-10])
             pluss        = 1
             shift_rows   = []
-            # assume that shifts come in order
             for s,shift in enumerate(shifts_d):
-                if abs(shift)<1e-10: #eqm
-                    path = self.eqm_path
-                elif shift<0.0:
-                    path = self.path+'d'+str(d)+'_m'+str(minuss)
-                    minuss -= 1
+                if self.displacements is None:
+                    # assume that shifts come in order
+                    if abs(shift)<1e-10: #eqm
+                        path = self.eqm_path
+                    elif shift<0.0:
+                        path = self.path+'d'+str(d)+'_m'+str(minuss)
+                        minuss -= 1
+                    else:
+                        path = self.path+'d'+str(d)+'_p'+str(pluss)
+                        pluss += 1
+                    #end if
                 else:
-                    path = self.path+'d'+str(d)+'_p'+str(pluss)
-                    pluss += 1
+                    if abs(shift)<1e-10: #eqm
+                        path = self.eqm_path
+                    else:
+                        path = self.path+'d'+str(d)+'_'+str(round(shift,4))
+                    #end if
                 #end if
                 pos = self.pos.copy() + self._shift_position(d,shift)
                 row = pos,path,sigma,shift
@@ -171,7 +181,7 @@ class IterationData():
         eqm_jobs = self.get_jobs(self.pos,path=self.eqm_path,sigma=self.sigma_min)
         jobs     = eqm_jobs
         for d in range(self.D):
-            for s in range(self.pts):
+            for s in range(len(self.shift_data[d])):
                 pos,path,sigma,shift = self.shift_data[d][s]
                 if not path==self.eqm_path:
                     if self.type=='qmc':
@@ -227,7 +237,7 @@ class IterationData():
             PES_row     = []
             PES_err_row = []
             shifts      = []
-            for s in range(self.pts):
+            for s in range(len(self.shift_data[d])):
                 pos,path,sigma,shift = self.shift_data[d][s]
                 if path==self.eqm_path:
                     E    = self.E
@@ -239,9 +249,13 @@ class IterationData():
                     Epred     = E
                     Epred_err = Err
                 #end if
-                shifts.append(shift)
-                PES_row.append(E)
-                PES_err_row.append(Err)
+                if abs(E)<1e-10:
+                    print('Warning: invalid energy {} from {}'.format(E,path))
+                else:
+                    shifts.append(shift)
+                    PES_row.append(E)
+                    PES_err_row.append(Err)
+                #end if
             #end for
             Dshifts.append(shifts)
             PES.append(array(PES_row))
@@ -312,12 +326,20 @@ class IterationData():
 
 
     def _shift_parameter(self,d):
-        pfn    = self.pfn
-        pts    = self.pts
-        H      = self.Lambda[d]
-        W      = self.windows[d]
-        R      = W_to_R(W,H)
-        shifts = linspace(-R,R,pts)
+        if self.displacements is None:
+            pfn    = self.pfn
+            pts    = self.pts
+            H      = self.Lambda[d]
+            W      = self.windows[d]
+            R      = W_to_R(W,H)
+            shifts = linspace(-R,R,pts)
+        else:
+            shifts = [0.0]
+            for disp in self.displacements[d]:
+                shifts += [-disp,disp]
+            #end for
+            shifts = array(shifts)
+        #end if
         return shifts
     #end def
 
