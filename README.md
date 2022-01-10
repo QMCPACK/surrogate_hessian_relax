@@ -39,7 +39,7 @@ statistical noise, such as Quantum Monte Carlo (QMC).
 
 An overview of the algorithm is presented below in a simplified graph:
 
-![Overview](/docs/overview.png)
+![Overview](docs/overview.png)
 
 The structural relaxation is indeed done in five steps:
 1. Surrogate: Relaxation
@@ -48,8 +48,8 @@ The structural relaxation is indeed done in five steps:
 1. Stochastic: Line-search
 1. Stochastic: Finding new minimum
 
-Background and instructions for setting up each of the steps is given in
-[the main Documentation](/docs/README) (work-in-progress).
+Background and instructions for setting up each of the steps is given in the
+main [Documentation](docs/) (work-in-progress).
 
 
 ## INSTALLATION
