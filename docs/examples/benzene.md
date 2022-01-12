@@ -1,3 +1,0 @@
-# Benzene: example
-
-TODO

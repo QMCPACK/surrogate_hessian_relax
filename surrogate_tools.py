@@ -408,7 +408,7 @@ def get_relax_structure(
 
 
 # Compute parameter Hessian by using either JAX or finite difference
-def compute_hessian(jax_hessian,eps=0.001,**kwargs):
+def compute_hessian(jax_hessian=False,eps=0.001,**kwargs):
     if jax_hessian:
         print('Computing parameter Hessian with JAX')
         hessian_delta = compute_hessian_jax(**kwargs)

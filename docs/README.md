@@ -71,7 +71,7 @@ a non-linear solver.
 
 ## LINE-SEARCH
 
-The line-search algoritm has the following five steps:
+The line-search algorithm has the following five steps:
 1. Surrogate: Relaxation
 1. Surrogate: Parameter Hessian
 1. Surrogate: Line-search optimization
