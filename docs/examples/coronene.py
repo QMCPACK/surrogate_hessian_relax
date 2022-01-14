@@ -1,75 +1,102 @@
 #!/usr/bin/env python3
 
-# Benzene: line-search example
-#   2-parameter problem: CC/CH bond lengths
-#   DMC with DFT (PBE) as the surrogate
+# Coronene: line-search example
+#   6-parameter problem: various CC, CH and HH bond lengths
+#   Surrogate theory: DFT (PBE)
+#   Stochastic theory: DFT (PBE) + simulated noise
 
-from numpy import mean,array,sin,pi,cos,diag,linalg
+from numpy import mean,array,sin,pi,cos,diag,linalg,arccos,arcsin
 
 # Parametric mappings
-#   p0: C-C distance
-#   p1: C-H distance
+#   p0: innermost C-C distance
+#   p1: second innermost C-C distance
+#   p2: second outermost C-C distance
+#   p3: third C-C distance
+#   p4: C-H distance
+#   p5: half of H-H distance
 
 # Forward mapping: produce parameter values from an array of atomic positions
 def pos_to_params(pos):
     pos = pos.reshape(-1,3) # make sure of the shape
-    # for easier comprehension, list particular atoms
-    C0 = pos[0]
-    C1 = pos[1]
-    C2 = pos[2]
-    C3 = pos[3]
-    C4 = pos[4]
-    C5 = pos[5]
-    H0 = pos[6]
-    H1 = pos[7]
-    H2 = pos[8]
-    H3 = pos[9]
-    H4 = pos[10]
-    H5 = pos[11]
     def distance(r1,r2):
         return sum((r1-r2)**2)**0.5
     #end def
     # for redundancy, calculate mean bond lengths
     # 0) from neighboring C-atoms
-    r_CC = mean([distance(C0,C1),
-                 distance(C1,C2),
-                 distance(C2,C3),
-                 distance(C3,C4),
-                 distance(C4,C5),
-                 distance(C5,C0)])
-    # 1) from corresponding H-atoms
-    r_CH = mean([distance(C0,H0),
-                 distance(C1,H1),
-                 distance(C2,H2),
-                 distance(C3,H3),
-                 distance(C4,H4),
-                 distance(C5,H5)])
-    params = array([r_CC,r_CH])
+    params = array(6*[.0])
+    for i in range(6):
+        # list positions within one hexagon slice
+        C0 = pos[6*i+0]
+        C1 = pos[6*i+1]
+        C2 = pos[6*i+2]
+        C3 = pos[6*i+3]
+        H4 = pos[6*i+4]
+        H5 = pos[6*i+5]
+        # get positions of neighboring slices, where necessary
+        ip = 6*(i+1) % (6*6)
+        im = 6*(i-1) % (6*6)
+        C0ip = pos[ip+0]
+        C2ip = pos[ip+2]
+        C3im = pos[im+3]
+        H4ip = pos[ip+4]
+        # calculate parameters 
+        p0 = distance(C0,C0ip)
+        p1 = distance(C0,C1)
+        p2 = (distance(C1,C2)+distance(C1,C3))/2
+        p3 = (distance(C2ip,C3)+distance(C2,C3im))/2
+        p4 = (distance(C2,H4)+distance(C3,H5))/2
+        p5 = distance(H4ip,H5)/2
+        params += array([p0,p1,p2,p3,p4,p5])/6
+    #end for
     return params
 #end def
 
 # Backward mapping: produce array of atomic positions from parameters
-axes = array([20,20,10]) # simulate in vacuum
+axes = array([30,30,10]) # simulate in vacuum
 def params_to_pos(params):
-    r_CC = params[0]
-    r_CH = params[1]
-    # place atoms on a hexagon in the xy-directions
-    hex_xy = array([[cos( 3*pi/6), sin( 3*pi/6), 0.],
-                    [cos( 5*pi/6), sin( 5*pi/6), 0.],
-                    [cos( 7*pi/6), sin( 7*pi/6), 0.],
-                    [cos( 9*pi/6), sin( 9*pi/6), 0.],
-                    [cos(11*pi/6), sin(11*pi/6), 0.],
-                    [cos(13*pi/6), sin(13*pi/6), 0.]])
-    pos_C = axes/2+hex_xy*r_CC # C-atoms are one C-C length apart from origin
-    pos_H = axes/2+hex_xy*(r_CC+r_CH) # H-atoms one C-H length apart from C-atoms
-    pos = array([pos_C,pos_H]).flatten()
+    p0,p1,p2,p3,p4,p5 = tuple(params)
+
+    # define 2D rotation matrix in the xy plane
+    def rotate_xy(angle):
+        return array([[cos(angle),-sin(angle),0.0],
+                      [sin(angle), cos(angle),0.0],
+                      [0.0       , 0.0       ,1.0]])
+    #end def
+
+    # auxiliary geometrical variables
+    y1    = sin(pi/6)*(p0+p1)-p3/2
+    alpha = arccos(y1/p2)
+    x1    = (p0+p1)*cos(pi/6)+p2*sin(alpha)
+    beta  = arcsin((p5-p3/2)/p4)
+    x2    = x1+p4*cos(beta)
+
+    # closed forms for the atomic positions with the aux variables
+    C0 = array([p0,0.,0.])      @ rotate_xy(-pi/6)
+    C1 = array([(p0+p1),0.,0.]) @ rotate_xy(-pi/6)
+    C2 = array([x1, p3/2, 0.0])
+    C3 = array([x1,-p3/2, 0.0]) @ rotate_xy(-pi/3) 
+    H4 = array([x2, p5, 0.0])
+    H5 = array([x2,-p5, 0.0])   @ rotate_xy(-pi/3) 
+
+    pos = []
+    for i in range(6):
+        ang = i*pi/3
+        pos.append( rotate_xy(ang) @ C0 )
+        pos.append( rotate_xy(ang) @ C1 )
+        pos.append( rotate_xy(ang) @ C2 )
+        pos.append( rotate_xy(ang) @ C3 )
+        pos.append( rotate_xy(ang) @ H4 )
+        pos.append( rotate_xy(ang) @ H5 )
+    #end for
+
+    pos = (axes/2 + array(pos)).flatten()
     return pos
 #end def
 
 # Guess initial parameter values
-p_init = array([2.651,2.055])
+p_init = array([2.69,2.69, 2.69, 2.60, 2.07, 2.34])
 pos_init = params_to_pos(p_init)
-elem = 6*['C']+6*['H']
+elem = 6*(4*['C']+2*['H'])
 
 # Check consistency of the mappings
 if any(abs(pos_to_params(params_to_pos(p_init))-p_init)>1e-10):
@@ -89,14 +116,12 @@ scfpseudos     = ['C.upf','H.upf']
 # Setting for the nexus jobs based on file layout and computing environment
 # These settings must be changed accordingly by the user
 cores      = 4
-presub     = ''
+presub     = '''
+module purgee
+module load gcc intel-mpi fftw boost hdf5/1.10.4-mpi cmake intel-mkl
+'''
 qeapp      = '/path/to/pw.x'
-p2qapp     = '/path/to/pw2qmcpack.x'
-qmcapp     = '/path/to/qmcpack'
 scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub,hours=2)
-p2qjob     = obj(app=p2qapp,cores=1,ppn=1,presub=presub,minutes=5)
-optjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
-dmcjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
 nx_settings = obj(
     sleep         = 3,
     pseudo_dir    = 'pseudos',
@@ -138,54 +163,6 @@ scf_pes_inputs = obj(
     ecutrho     = 300,
     disk_io     = 'none',
     )
-# SCF settings for QMC: different pseudopotential and higher ecut
-scf_qmc_inputs = obj(
-    input_dft   = 'pbe',
-    occupations = None,
-    nosym       = False,
-    conv_thr    = 1e-9,
-    mixing_beta = .7,
-    identifier  = 'scf',
-    input_type  = 'scf',
-    pseudos     = scfpseudos,
-    ecut        = 300,
-    ecutrho     = 600,
-    )
-# Inputs for QMC optimizer
-opt_inputs = obj(
-    identifier   = 'opt',
-    qmc          = 'opt',
-    input_type   = 'basic',
-    pseudos      = qmcpseudos,
-    bconds       = 'nnn',
-    J2           = True,
-    J1_size      = 6,
-    J1_rcut      = 6.0,
-    J2_size      = 8,
-    J2_rcut      = 8.0,
-    minmethod    = 'oneshift',
-    blocks       = 200,
-    substeps     = 2,
-    steps        = 1,
-    samples      = 100000,
-    minwalkers   = 0.1,
-    nonlocalpp   = True,
-    use_nonlocalpp_deriv = False,
-    )
-# Inputs for DMC
-dmc_inputs = obj(
-    identifier   = 'dmc',
-    qmc          = 'dmc',
-    input_type   = 'basic',
-    pseudos      = qmcpseudos,
-    bconds       = 'nnn',
-    jastrows     = [],
-    vmc_samples  = 1000,
-    blocks       = 200,
-    timestep     = 0.01,
-    nonlocalmoves= True,
-    ntimesteps   = 1,
-    )
 
 # construct Nexus system based on position
 valences = obj(C=4,H=1) # pseudo-valences
@@ -218,7 +195,7 @@ def get_relax_job(pos,path,**kwargs):
 # Since the phonon calculations are not standard in Nexus, we are providing the 
 # inputs manually by using GenericSimulation and input_template classes
 from simulation import GenericSimulation,input_template
-phjob    = obj(app_command='ph.x -in phonon.in', cores=cores,ppn=cores,presub=presub,hours=2)
+phjob    = obj(app_command='ph.x -in phonon.in', cores=cores,ppn=cores,presub=presub,hours=2,mem=380)
 q2rjob   = obj(app_command='q2r.x -in q2r.in', cores=cores,ppn=cores,presub=presub,hours=2)
 ph_input = input_template('''
 phonons at gamma
@@ -275,75 +252,6 @@ def get_scf_pes_job(pos,path,**kwargs):
     return [scf]
 #end def
 
-# return a 1-item list of Nexus jobs: single-point SCF for QMC
-def get_scf_qmc_job(pos,path,**kwargs):
-    scf = generate_pwscf(
-        system     = get_system(pos),
-        job        = job(**scfjob),
-        path       = path,
-        **scf_qmc_inputs,
-        )
-    return [scf]
-#end def
-
-# Return a 4-item list of Nexus jobs:
-#  1) scf: orbitals
-#  2) p2q: conversion for QMCPACK
-#  3) opt: Jastrow optimization
-#  4) dmc: DMC calculation
-#
-# sigma parameter needed for target accuracy
-# if jastrow job is provided, use as a starting point
-steps_times_error2 = 1.2e-04 # (steps-1)* error**2
-def get_dmc_jobs(pos,path,sigma,jastrow=None,**kwargs):
-    system   = get_system(pos)
-    # Estimate the number of steps necessary to produce the desired accuracy
-    dmcsteps = int(steps_times_error2/sigma**2)+1
-
-    scf = generate_pwscf(
-        system     = system,
-        job        = job(**scfjob),
-        path       = path+'/scf',
-        **scf_qmc_inputs,
-        )
-
-    p2q = generate_pw2qmcpack(
-        identifier   = 'p2q',
-        path         = path+'/scf',
-        job          = job(**p2qjob),
-        dependencies = [(scf,'orbitals')],
-        )
-
-    system.bconds = 'nnn'
-    if jastrow is None:
-        opt_cycles = 6
-    else:
-        opt_cycles = 3
-    #end if
-    opt = generate_qmcpack(
-        system       = system,
-        path         = path+'/opt',
-        job          = job(**optjob),
-        dependencies = [(p2q,'orbitals')],
-        cycles       = opt_cycles,
-        **opt_inputs
-        )
-    if not jastrow is None:
-        opt.depends((jastrow,'jastrow'))
-    #end if
-
-    dmc = generate_qmcpack(
-        system       = system,
-        path         = path+'/dmc',
-        job          = job(**dmcjob),
-        dependencies = [(p2q,'orbitals'),(opt,'jastrow') ],
-        steps        = dmcsteps,
-        **dmc_inputs
-        )
-    return [scf,p2q,opt,dmc]
-#end def
-
-
 # LINE-SEARCH
 
 # 1) Surrogate: relaxation
@@ -385,13 +293,13 @@ print_hessian_delta(hessian,directions,Lambda) # print output
 # 3) Surrogate: Optimize line-search
 
 from matplotlib import pyplot as plt
-from surrogate_error_scan import IterationData,error_scan_diagnostics,load_W_max,scan_error_data,load_of_epsilon,optimize_window_sigma,optimize_epsilond_heuristic_cost
+from surrogate_error_scan import IterationData,error_scan_diagnostics,load_W_max,scan_error_data,load_of_epsilon,optimize_window_sigma,optimize_epsilond_thermal
 
 scan_dir = 'scan_error'
 scan_windows = Lambda/4
 pfn = 3
 pts = 7
-epsilon = [0.01,0.01]
+epsilon = 6*[0.01]
 
 # Generate line-search object (IterationData) to manage the displacements and data
 scan_data = IterationData(
@@ -403,11 +311,11 @@ scan_data = IterationData(
         params_to_pos = params_to_pos,
         windows       = scan_windows,
         fraction      = 0.025,
-        pts           = 21,
+        pts           = 15,
         path          = scan_dir,
         type          = 'scf',
         load_postfix  = '/scf.in',
-        colors        = ['r','b'],
+        colors        = ['r','b','c','g','m','k'],
         targets       = params_relax,
         )
 # For later convenience: try loading the object from the disk.
@@ -433,7 +341,7 @@ if data_load is None:
             W_num     = 16,
             W_max     = W_max, # constrain the maximum window
             sigma_num = 16,
-            sigma_max = 0.1,
+            sigma_max = 0.05,
             )
     # based on the 2D-mesh of fitting errors, load the cost-optimal values for a range of epsilon-targets
     #   then store the trends in simple polynomial fits
@@ -441,7 +349,7 @@ if data_load is None:
     # optimize the mixing of line-search errors to produce the lowest overall cost
     optimize_window_sigma(
             scan_data,
-            optimizer = optimize_epsilond_heuristic_cost,
+            optimizer = optimize_epsilond_thermal,
             epsilon   = epsilon,
             show_plot=True)
     # finally freeze the result by writing to file
@@ -452,7 +360,7 @@ else:
 #end if
 
 # print output
-error_scan_diagnostics(scan_data,steps_times_error2)
+error_scan_diagnostics(scan_data)
 
 
 # 4-5) Stochastic: Line-search
@@ -462,26 +370,27 @@ n_max = 3 # number of iterations
 
 # store common line-search settings
 ls_settings = obj(
-    get_jobs      = get_dmc_jobs,
+    get_jobs      = get_scf_pes_job,
     pos_to_params = pos_to_params,
     params_to_pos = params_to_pos,
-    type          = 'qmc',
-    load_postfix  = '/dmc/dmc.in.xml',
-    qmc_idx       = 1,
-    qmc_j_idx     = 2,
-    path          = 'dmc/',
+    type          = 'scf',
+    load_postfix  = '/scf.in',
+    path          = 'scf+noise/',
     pfn           = scan_data.pfn,
     pts           = scan_data.pts,
     windows       = scan_data.windows,
-    noises        = array(scan_data.noises)/2, # from Ry to Ha
-    colors        = ['r','b'],
+    noises        = scan_data.noises,
+    colors        = ['r','b','c','g','m','k'],
+    targets       = params_relax,
     )
 
 # first iteration
+params_init = params_relax + array([0.05,-0.05,0.05,-0.05,0.05,-0.05])
+pos_init = params_to_pos(params_init)
 data = IterationData( 
         n       = 0, 
         hessian = hessian,
-        pos     = pos_relax, # start from SCF relaxed position
+        pos     = pos_init,
         **ls_settings,
         )
 
@@ -512,12 +421,12 @@ for n in range(1,n_max):
     data_ls.append(data)
 #end for
 
+
 params_final, p_errs_final = average_params(
         data_ls, # input list of line-searches
-        transient = 1, # take average from all steps beyond the first
+        transient = 0, # take average from all steps beyond the first
         )
 
-data_ls[0].targets = params_final
 print('Final parameters:')
 for p,err in zip(params_final,p_errs_final):
     print('{} +/- {}'.format(p,err))
