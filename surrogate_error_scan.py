@@ -1064,12 +1064,16 @@ def surrogate_parameter_biases(data):
 
 # Centralized function for PES ion
 def interpolate_grid(x_in,y_in,x_out,kind='cubic'):
-    xy_in = interp1d(x_in,y_in,kind=kind)
-    try:
-        y_out = xy_in(x_out)
-    except:
-        print('Warning: interpolation failed, returning original grid')
-        x_out,y_out = x_in,y_in
-    #end try
+    if kind=='pchip':
+        x_out = pchip_interpolate(x_in,y_in,y_out)
+    else:
+        xy_in = interp1d(x_in,y_in,kind=kind)
+        try:
+            y_out = xy_in(x_out)
+        except:
+            print('Warning: interpolation failed, returning original grid')
+            x_out,y_out = x_in,y_in
+        #end try
+    #end if
     return x_out,y_out
 #end def

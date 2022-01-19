@@ -287,7 +287,7 @@ def plot_PES_fits(
 #end def
 
 # Centralized set of actions to run as diagnostics
-def surrogate_diagnostics(data_list):
+def surrogate_diagnostics(data_list,**kwargs):
     # print standard stuff
     #print_structure_shift(data.R,data.R_next)
     print_optimal_parameters(data_list)
@@ -296,7 +296,7 @@ def surrogate_diagnostics(data_list):
 #    plot_energy_convergence(ax,data_list)
     # plot parameter convergence
     f,ax = plt.subplots()
-    plot_parameter_convergence(ax,data_list)
+    plot_parameter_convergence(ax,data_list,**kwargs)
     # plot line searches
     for data in data_list:
         f,ax = plt.subplots()
@@ -346,7 +346,7 @@ def print_optimal_parameters(data_list):
 # Estimate average parameters and errors based on series of line-searches
 #   transient=0 means all iterations from the first step forward will be included
 # in future, set bias_correction=True by default. For now, set false to maintain integrity
-def average_params(data_list,transient=0,bias_correction=False):
+def average_params(data_list,transient=0,bias_correction=False,means=True):
     params = []
     errs   = []
     for data in data_list[transient:]:
@@ -359,7 +359,11 @@ def average_params(data_list,transient=0,bias_correction=False):
         errs.append(param_err)
     #end def
     params_ave = mean(array(params),axis=0)
-    errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
+    if means:
+        errs_ave   = sum(array(errs)**2,axis=0)**0.5/len(data_list[transient:])
+    else:
+        errs_ave = mean(array(errs),axis=0)
+    #end if
     return params_ave,errs_ave
 #end def
 
