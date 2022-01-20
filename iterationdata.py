@@ -473,6 +473,4 @@ class IterationData():
         self.pos_next = self.params_to_pos(self.params_next)
     #end def
 
-
 #end class
-

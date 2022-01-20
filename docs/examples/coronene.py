@@ -4,16 +4,47 @@
 #   6-parameter problem: various CC, CH and HH bond lengths
 #   Surrogate theory: DFT (PBE)
 #   Stochastic theory: DFT (PBE) + simulated noise
+#
+# This example executes a standard line-search minimization workflow for the 
+# ground state of the coronene molecule, using DFT (PBE) as the surrogate
+# method and DFT plus artificial noise to emulate a stochastic method.
+#
+# Computing task: Suitable for institutional clusters
 
-from numpy import mean,array,sin,pi,cos,diag,linalg,arccos,arcsin
+# First, the user must set up Nexus according to their computing environment.
 
-# Parametric mappings
+from nexus import generate_pwscf, generate_qmcpack, job, obj, Structure, run_project
+from nexus import generate_pw2qmcpack, generate_physical_system, settings
+
+# Modify the below variables as needed
+cores      = 24
+presub     = ''
+qeapp      = '/path/to/pw.x'
+scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub,hours=2)
+nx_settings = obj(
+    sleep         = 3,
+    pseudo_dir    = 'pseudos',
+    runs          = '',
+    results       = '',
+    status_only   = 0,
+    generate_only = 0,
+    machine       = 'ws24',
+    )
+settings(**nx_settings) # initiate nexus
+
+# Pseudos (execute download_pseudos.sh in the working directory)
+relaxpseudos   = ['C.pbe_v1.2.uspp.F.upf', 'H.pbe_v1.4.uspp.F.upf']
+
+
+# Implement the following parametric mappings
 #   p0: innermost C-C distance
 #   p1: second innermost C-C distance
 #   p2: second outermost C-C distance
 #   p3: third C-C distance
 #   p4: C-H distance
 #   p5: half of H-H distance
+
+from numpy import mean,array,sin,pi,cos,diag,linalg,arccos,arcsin
 
 # Forward mapping: produce parameter values from an array of atomic positions
 def pos_to_params(pos):
@@ -23,7 +54,7 @@ def pos_to_params(pos):
     #end def
     # for redundancy, calculate mean bond lengths
     # 0) from neighboring C-atoms
-    params = array(6*[.0])
+    params = array(6*[0.])
     for i in range(6):
         # list positions within one hexagon slice
         C0 = pos[6*i+0]
@@ -99,39 +130,10 @@ pos_init = params_to_pos(p_init)
 elem = 6*(4*['C']+2*['H'])
 
 # Check consistency of the mappings
-if any(abs(pos_to_params(params_to_pos(p_init))-p_init)>1e-10):
-    print('Trouble with consistency!')
+from surrogate_tools import check_mapping_consistency
+if check_mapping_consistency(p_init,pos_to_params,params_to_pos):
+    print('Parameter mappings are consistent at the equilibrium!')
 #end if
-
-# Define inputs for Nexus, including job-producing functions and pseudopotentials
-
-from nexus import generate_pwscf, generate_qmcpack, job, obj, Structure, run_project
-from nexus import generate_pw2qmcpack, generate_physical_system, settings
-
-# Pseudos
-relaxpseudos   = ['C.pbe_v1.2.uspp.F.UPF', 'H.pbe_v1.4.uspp.F.UPF']
-qmcpseudos     = ['C.ccECP.xml','H.ccECP.xml']
-scfpseudos     = ['C.upf','H.upf']
-
-# Setting for the nexus jobs based on file layout and computing environment
-# These settings must be changed accordingly by the user
-cores      = 4
-presub     = '''
-module purgee
-module load gcc intel-mpi fftw boost hdf5/1.10.4-mpi cmake intel-mkl
-'''
-qeapp      = '/path/to/pw.x'
-scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub,hours=2)
-nx_settings = obj(
-    sleep         = 3,
-    pseudo_dir    = 'pseudos',
-    runs          = '',
-    results       = '',
-    status_only   = 0,
-    generate_only = 0,
-    machine       = 'ws4',
-    )
-settings(**nx_settings) # initiate nexus
 
 # The following data structures provide simulation inputs for each theory
 
@@ -217,18 +219,19 @@ q2r_input = input_template('''
 ''')
 def get_phonon_jobs(pos,path,**kwargs):
     scf = generate_pwscf(
-        system = get_system(pos),
-        job    = job(**scfjob),
-        path   = path,
-        **scf_pes_inputs
-        )
-    scf.input.control.disk_io = 'low' # write orbitals
-    phonon = GenericSimulation(
         system     = get_system(pos),
-        job        = job(**phjob),
+        job        = job(**scfjob),
         path       = path,
-        input      = ph_input,
-        identifier = 'phonon',
+        **scf_pes_inputs,
+        )
+    scf.input.control.disk_io = 'low' # write charge density
+    phonon = GenericSimulation(
+        system       = get_system(pos),
+        job          = job(**phjob),
+        path         = path,
+        input        = ph_input,
+        identifier   = 'phonon',
+        dependencies = (scf,'other'),
         )
     q2r = GenericSimulation(
         system     = get_system(pos),
@@ -236,8 +239,8 @@ def get_phonon_jobs(pos,path,**kwargs):
         path       = path,
         input      = q2r_input,
         identifier = 'q2r',
+        dependencies = (phonon,'other'),
         )
-    # nexus automatically executes the jobs subsequently
     return [scf,phonon,q2r]
 #end def
 
@@ -274,7 +277,7 @@ print_relax(elem,pos_relax,params_relax) # print output
 from surrogate_tools import load_gamma_k,compute_hessian,print_hessian_delta
 
 phonon_dir = 'phonon'
-run_project(get_phonon_jobs(pos_relax,path=phonon_dir)) # run phonon jobs with Nexus
+run_project(get_phonon_jobs(pos_relax,path=phonon_dir)) # next, run phonon job
 
 # load the real-space Hessian from the phonon calculation output
 hessian_real  = load_gamma_k(phonon_dir+'/FC.fc',len(elem))
@@ -366,7 +369,6 @@ error_scan_diagnostics(scan_data)
 # 4-5) Stochastic: Line-search
 
 from surrogate_relax import surrogate_diagnostics,average_params
-n_max = 3 # number of iterations
 
 # store common line-search settings
 ls_settings = obj(
@@ -381,10 +383,10 @@ ls_settings = obj(
     windows       = scan_data.windows,
     noises        = scan_data.noises,
     colors        = ['r','b','c','g','m','k'],
-    targets       = params_relax,
+    targets       = params_relax, # real targets are known
     )
 
-# first iteration
+# Start from a displaced position and converge back to equilibrium
 params_init = params_relax + array([0.05,-0.05,0.05,-0.05,0.05,-0.05])
 pos_init = params_to_pos(params_init)
 data = IterationData( 
@@ -394,33 +396,10 @@ data = IterationData(
         **ls_settings,
         )
 
-# for convenience, try loading first, then execute
-data_load = data.load_from_file()
-if data_load is None:
-    data.shift_positions()
-    run_project(data.get_job_list())
-    data.load_results()
-    data.write_to_file()
-else:
-    data = data_load
-#end if
-data_ls = [data] # starts a list of line-search objects
-
-# repeat to n_max iterations
-for n in range(1,n_max):
-    data = data.iterate(ls_settings=ls_settings)
-    data_load = data.load_from_file()
-    if data_load is None:
-        data.shift_positions()
-        run_project(data.get_job_list())
-        data.load_results()
-        data.write_to_file()
-    else:
-        data = data_load
-    #end if
-    data_ls.append(data)
-#end for
-
+# Run line-search up to n_max iterations, return list of line-search objects
+#   run_linesearch function implements standard steps of the stochastic
+#   line-search, including saving and loading restart files
+data_ls = run_linesearch(data,n_max=4,ls_settings=ls_settings)
 
 params_final, p_errs_final = average_params(
         data_ls, # input list of line-searches
@@ -432,5 +411,6 @@ for p,err in zip(params_final,p_errs_final):
     print('{} +/- {}'.format(p,err))
 #end for
 
+# print and plot standard output of the iteration
 surrogate_diagnostics(data_ls)
 plt.show()

@@ -3,8 +3,8 @@
 from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,sum
 from matplotlib import pyplot as plt
 
-from surrogate_tools import print_with_error,model_statistical_bias
-from iterationdata import IterationData,W_to_R,R_to_W
+from iterationdata import IterationData
+from surrogate_tools import print_with_error,model_statistical_bias,W_to_R,R_to_W
 
 
 # Utility for plotting energy convergence (needs update)
@@ -378,4 +378,51 @@ def statistical_biases(data):
         S_biases.append(sbias)
     #end for
     return array(S_biases)
+#end def
+
+from nexus import run_project,settings
+
+# Run one iteration of line-search
+def run_iteration(
+        data,
+        nx_settings = None,
+        write       = True,
+        restart     = True,
+        fname       = 'data.p',
+        ):
+    # allow to initiate nexus here
+    if not nx_settings is None:
+        settings(**nx_settings)
+    #end if
+    data_load = data.load_from_file(fname) if restart else None
+    if data_load is None:
+        data.shift_positions()
+        jobs = data.get_job_list()
+        run_project(jobs)
+        data.load_results()
+        if write:
+            data.write_to_file(fname)
+        #end if
+    else:
+        data = data_load
+    #end if
+    return data
+#end def
+
+# run the full line-search
+def run_linesearch(
+        data,
+        n_max       = 1,
+        ls_settings = None,
+        **kwargs,
+        ):
+    # first iteration
+    data = run_iteration(data,**kwargs)
+    data_ls = [data]
+    for n in range(1,n_max):
+        data = data.iterate(ls_settings=ls_settings)
+        data = run_iteration(data,**kwargs)
+        data_ls.append(data)
+    #end if
+    return data_ls
 #end def

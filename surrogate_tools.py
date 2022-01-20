@@ -574,3 +574,18 @@ def plot_U_heatmap(ax,U,sort=True,cmap='RdBu',labels=True,reorder=False):
     #end if
     return cb
 #end def
+
+# Check consistency of parameter mappings
+def check_mapping_consistency(
+        p_init,
+        pos_to_params,
+        params_to_pos,
+        tol = 1e-10,
+        ):
+    if any(abs(pos_to_params(params_to_pos(p_init))-p_init)>tol):
+        print('Trouble with consistency!')
+        return False
+    else:
+        return True
+    #end if
+#end def
