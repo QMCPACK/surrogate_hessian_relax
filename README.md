@@ -17,7 +17,7 @@ Upon publishing results based on the method, we kindly ask you to cite
 
 > Juha Tiihonen, Paul R. C. Kent, and Jaron T. Krogel \
 The Journal of Chemical Physics \
-X, X, X (2022)
+156, 054104 (2022)
 
 
 ## OVERVIEW
@@ -85,7 +85,7 @@ direct Nexus support (will be documented).
 
 List of scientific works demonstrating the The Surrogate Hessian Accelerated Parallel
 Line-search method:
-* [J. Chem. Phys, X, X (2022)](https://doi.org/10.1063/5.0079046) Surrogate Hessian Accelerated Structural Optimization for Stochastic Electronic Structure Theories
+* [J. Chem. Phys, 156, 054104 (2022)](https://doi.org/10.1063/5.0079046) Surrogate Hessian Accelerated Structural Optimization for Stochastic Electronic Structure Theories
 * [J. Chem. Phys. 156, 014707 (2022)](https://aip.scitation.org/doi/10.1063/5.0074848) A combined first principles study of the structural, magnetic, and phonon properties of monolayer CrI3
 * [Phys. Rev. Materials 5, 024002 (2021)](https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.5.024002) Optimized structure and electronic band gap of monolayer GeSe from quantum Monte Carlo methods
 
