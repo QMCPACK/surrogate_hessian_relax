@@ -2,7 +2,7 @@
 
 # Functions and methods related to surrogate error scan
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder
+from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,argsort
 from scipy.interpolate import interp1d,interp2d,pchip_interpolate
 from matplotlib import pyplot as plt
 from functools import partial
@@ -32,6 +32,7 @@ def load_W_max(
         W_min = data.D*[W_min]
     #end if
     Wmaxs = []
+    y0    = data.PES[0].min()
     for d in range(data.D):
         x_n   = data.Dshifts[d]
         Rmax  = min(max(x_n),-min(x_n))
@@ -39,35 +40,40 @@ def load_W_max(
         H     = data.Lambda[d]
         W_eff = R_to_W(Rmax,H)
         Ws    = linspace(min(W_min[d],0.01*W_eff), 0.99999*W_eff,51)
-        Bs    = []
+        xBs   = []
+        yBs   = []
         for W in Ws:
             R        = W_to_R(W,H)
             x_r      = linspace(-R,R,pts)
-            x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+            x_r,y_r  = interpolate_grid(x_n,y_n,x_r)
             y,x,p    = get_min_params(x_r,y_r,pfn)
-            Bs.append(x)
+            x_B      = x
+            y_B      = (y-y0)
+            xBs.append(x_B)
+            yBs.append(y_B)
         #end for
         # try to correct numerical biases due to bad relaxation by subtracting bias near low-W limit
-        B_in = interp1d(Ws,Bs-Bs[0],kind='cubic')
+        xB_in = interp1d(Ws,xBs-xBs[0],kind='cubic')
+        yB_in = interp1d(Ws,yBs-yBs[0],kind='cubic')
         if verbose:
-            print('W        bias')
+            print('W        bias      energy bias')
             for W in Ws:
-                print('{} {}'.format(W,B_in(W)))
+                print('{:10f} {:10f} {:10f}'.format(W,xB_in(W),yB_in(W)))
             #end for
         #end if
         Wmax = 0.0
         for W in Ws:
             # break if bias gets too large for any parameter
-            if any( abs(B_in(W)*data.U[d,:]) - epsilon > 0):
+            if any( abs(xB_in(W)*data.U[d,:]) - epsilon > 0):
                 Wmax = W
                 break
             #end if
         #end for
         if Wmax==0:
             Wmax = 0.99999*W_eff
-            Bmax = round(max(abs(B_in(Wmax)*data.U[d,:])/epsilon)*100,0)
+            Bmax = round(max(abs(xB_in(Wmax)*data.U[d,:])/epsilon)*100,0)
             print('Warning: Bias in direction {} is only {}% at W_max {}'.format(d,Bmax,Wmax))
-            print(d,Wmax,abs(B_in(Wmax)*data.U[d,:]) - epsilon)
+            print(d,Wmax,abs(xB_in(Wmax)*data.U[d,:]) - epsilon)
         #end if
         Wmaxs.append(Wmax)
     #end for
@@ -213,13 +219,15 @@ def scan_linesearch_error(
     for w,W in enumerate(Ws):
         R        = W_to_R(W,H)
         x_r      = linspace(-R,R,pts)
-        x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+        x_r,y_r  = interpolate_grid(x_n,y_n,x_r)
         y,x,p    = get_min_params(x_r,y_r,pfn)#,endpts=endpts)
-        B        = x # systematic bias
         if first:
             B0    = x # try to compensate for bias due to relaxation errors
+            y0    = y
             first = False
         #end if
+        B        = x # systematic bias
+        #B        = x + (y-y0)/H**0.5
         Bs.append(B)
 
         E_w = []
@@ -244,6 +252,10 @@ def scan_linesearch_error(
 #end def
 
 
+def calculate_R2(y,y_res):
+    return 1-sum(array(y_res)**2)/var(array(y))
+#end def
+
 
 # Functions to read pre-scanned line-search error grids from an IterationData object and fit a simple regression model the optimal parameters
 # The optimal parameter for W and sigma are based on the max-sigma point on an error isocontour on the W-sigma grid
@@ -252,7 +264,14 @@ def scan_linesearch_error(
 #   optimal window scales: W_opt(epsilon)**2  ~ epsilon     <- fitted linearly
 #   optimal noise scales:  sigma_opt(epsilon) ~ epsilon**2  <- fitted harmonically
 # The point of fitting to simple models is fast evaluation (contouring is slow) in later parts, where the optimal points are explored to find the optimal ensemble among all directions
-def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=None):
+def load_of_epsilon(
+        data,
+        gridexp   = 4.0,
+        show_plot = False,
+        get_data  = False,
+        epsilons  = None,
+        R2thrs    = 0.0
+        ):
     Wfuncs = []
     Sfuncs = []
     Wdata  = []
@@ -267,23 +286,40 @@ def load_of_epsilon(data,gridexp=4.0,show_plot=False,get_data=False,epsilons=Non
                             show_plot = show_plot,
                             epsilons  = epsilons,
                             )
-        pf_W2    = polyfit(eps,Ws**2,1)
-        pf_sigma = polyfit(eps,sigmas,2)
         Edata.append( eps )
         Wdata.append( Ws )
         Sdata.append( sigmas )
-        Wfuncs.append( pf_W2 )
-        Sfuncs.append( pf_sigma )
+        # try fitting
+        pf_W2    = polyfit(eps,Ws**2,1,full=True)
+        pf_sigma = polyfit(eps,sigmas,2,full=True)
+        R2_W2    = calculate_R2(Ws**2,pf_W2[1])
+        R2_sigma = calculate_R2(sigmas,pf_sigma[1])
+        if R2_W2 > R2thrs:
+            print('Accepted direction #{} W-fit with R2={}'.format(d,R2_W2))
+            Wfunc = pf_W2[0]
+        else:
+            print('Rejected direction #{} W-fit with R2={}'.format(d,R2_W2))
+            Wfunc = None
+        #end if
+        if R2_sigma > R2thrs:
+            print('Accepted direction #{} sigma-fit with R2={}'.format(d,R2_W2))
+            Sfunc = pf_sigma[0]
+        else:
+            print('Rejected direction #{} sigma-fit with R2={}'.format(d,R2_sigma))
+            Sfunc = None
+        #end if
+        Wfuncs.append(Wfunc)
+        Sfuncs.append(Sfunc)
         if show_plot:
             f,ax = plt.subplots()
             ax.plot(eps,Ws,'rx')
-            ax.plot(eps,abs(polyval(pf_W2,eps))**0.5,'r-')
+            ax.plot(eps,abs(polyval(pf_W2[0],eps))**0.5,'r-')
             ax.set_ylabel('W_opt')
             ax.set_xlabel('epsilon')
             ax.set_title('linesearch #{}'.format(d))
             f,ax = plt.subplots()
             ax.plot(eps,sigmas,'bx')
-            ax.plot(eps,polyval(pf_sigma,eps),'b-')
+            ax.plot(eps,polyval(pf_sigma[0],eps),'b-')
             ax.set_ylabel('sigma_opt')
             ax.set_xlabel('epsilon')
             ax.set_title('linesearch #{}'.format(d))
@@ -321,7 +357,7 @@ def bias_of_R(
         first    = True
         while R < Rmax:
             x_r      = linspace(-R,R,pts)
-            x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+            x_r,y_r  = interpolate_grid(x_n,y_n,x_r)
             y,x,p    = get_min_params(x_r,y_r,pfn)
             if first:
                 B0 = x # systematic bias
@@ -386,7 +422,7 @@ def R_sigma_mesh(
             Err_sigma = []
             for sigma in sigmas:
                 x_r      = linspace(-R,R,pts)
-                x_r,y_r  = interpolate_grid(x_n,y_n,x_r,kind='cubic')
+                x_r,y_r  = interpolate_grid(x_n,y_n,x_r)
                 xdata    = []
                 for g in G:
                     y,x,p = get_min_params(x_r,y_r+sigma*g,pfn)
@@ -1063,16 +1099,20 @@ def surrogate_parameter_biases(data):
 #end def
 
 # Centralized function for PES ion
-def interpolate_grid(x_in,y_in,x_out,kind='cubic'):
+def interpolate_grid(x_in,y_in,x_out,kind='pchip'):
     if kind=='pchip':
-        x_out = pchip_interpolate(x_in,y_in,y_out)
+        # move this elsewhere
+        s = argsort(array(x_in))
+        y_out = pchip_interpolate(array(x_in)[s],array(y_in)[s],x_out)
     else:
         xy_in = interp1d(x_in,y_in,kind=kind)
         try:
             y_out = xy_in(x_out)
         except:
             print('Warning: interpolation failed, returning original grid')
-            x_out,y_out = x_in,y_in
+            x_max = min([-min(x_in),max(x_in)])
+            x_out = lispace(-x_max,x_max,len(x_out))
+            y_out = xy_in(x_out)
         #end try
     #end if
     return x_out,y_out
