@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from numpy import array,loadtxt,zeros,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete,median
+from numpy import array,loadtxt,zeros,ones,dot,diag,transpose,sqrt,repeat,linalg,reshape,meshgrid,poly1d,polyfit,polyval,argmin,linspace,random,ceil,diagonal,amax,argmax,pi,isnan,nan,mean,var,amin,isscalar,roots,polyder,savetxt,flipud,delete,median,arccos
 from math import log10
+from nexus import PwscfAnalyzer
 
 # Utility for printing value with uncertainty in parentheses
 def print_with_error( value, error, limit=15 ):
@@ -340,12 +341,15 @@ def R_to_W(R,H):
 
 # Estimate conservative (maximum) uncertainty from a distribution based on a percentile fraction
 def get_fraction_error(data,fraction,both=False):
+    if fraction<0.0 or fraction>0.5:
+        raise ValueError('Invalid fraction')
+    #end if
     data   = array(data)
     data   = data[~isnan(data)]        # remove nan
     ave    = median(data)
     data   = data[data.argsort()]-ave  # sort and center
-    pleft  = abs(data[int(len(data)*fraction)])
-    pright = abs(data[int(len(data)*(1-fraction))])
+    pleft  = abs(data[int((len(data)-1)*fraction)])
+    pright = abs(data[int((len(data)-1)*(1-fraction))])
     if both:
         err    = [pleft,pright]
     else:
@@ -385,6 +389,7 @@ def get_relax_structure(
     pos_units  = 'B',
     relax_cell = False,
     dim        = 3,
+    celldm1    = 1.0, # multiply cell by constant (in B)
     ):
     relax_path = '{}/{}'.format(path,suffix)
     try:
@@ -399,8 +404,11 @@ def get_relax_structure(
     eq_structure = relax_analyzer.structures[len(relax_analyzer.structures)-1]
     pos_relax    = eq_structure.positions.flatten()
     if relax_cell:
-        cell_relax = eq_structure.axes.flatten()
+        cell_relax = eq_structure.axes.flatten()*celldm1
         pos_relax = array(list(pos_relax)+list(cell_relax)) # generalized position vector: pos + cell
+    #end if
+    if pos_units=='A':
+        pos_relax *= 0.5291772105638411
     #end if
     return pos_relax
 #end def
@@ -496,6 +504,16 @@ def print_relax(elem,pos_relax,params_relax,dim=3):
     #end for
 #end def
 
+def relax_diagnostics(p_vals,p_labels=None):
+    print('Relaxed parameters:')
+    if p_labels is None:
+        p_labels = [ '#{}'.format(i) for i in range(len(p_vals)) ]
+    #end if
+    for p_val,p_label in zip(p_vals,p_labels):
+        print('  {}: {}'.format(p_label,p_val))
+    #end for
+#end def
+
 
 # Matrix utilities for modeling polyfit errors
 
@@ -588,4 +606,174 @@ def check_mapping_consistency(
     else:
         return True
     #end if
+#end def
+
+# geometry tools
+
+# distance between two atomic coordinates
+def distance(r0,r1):
+    r = linalg.norm(r0-r1)
+    return r
+#end def
+
+# bond angle between r0-rc and r1-rc bonds
+def bond_angle(r0,rc,r1,units='ang'):
+    v1 = r0-rc
+    v2 = r1-rc
+    cosang = dot(v1,v2)/linalg.norm(v1)/linalg.norm(v2)
+    ang = arccos(cosang)*180/pi if units =='ang' else arccos(cosang)
+    return ang
+#end def
+
+def mean_distances(pairs):
+    rs = []
+    for pair in pairs:
+        rs.append(distance(pair[0],pair[1]))
+    #end for
+    return array(rs).mean()
+#end def
+
+# propagate errors of params to nparams based on mapping Jacobian obtained
+# from finite differences
+def params_to_nparams_error(
+        params,
+        param_errs,
+        params_to_pos,
+        pos_to_nparams,
+        fdiff = 0.001,
+        ):
+    np_errs = []
+    nparams = pos_to_nparams(params_to_pos(params))
+    for p,param in enumerate(params):
+        fparams     = params.copy()
+        fparams[p] += fdiff
+        dnparams     = (pos_to_nparams(params_to_pos(fparams))-nparams)/fdiff
+        np_errs.append(dnparams*param_errs[p])
+    #end for
+    np_errs2 = (array(emap))**2
+    np_errs = np_errs2.sum(axis=0)**0.5
+    return nparams,np_errs
+#end def
+
+# generate finite-difference
+def generate_fdiff_jobs(
+        params,
+        params_to_pos,
+        pos_to_params,
+        get_job,
+        dp   = 0.01,
+        path = 'fdiff/'
+        ):
+    # eqm
+    pos_eqm = params_to_pos(params)
+    eqm_job = get_job(pos_eqm,path=path+'scf')
+    jobs = eqm_job
+    diffs = [len(params)*[0.]]
+    if isscalar(dp):
+        dp = len(params)*[dp]
+    #end if
+
+    def shift_params(p_ids,dps):
+        nparams = params.copy()
+        string = 'scf'
+        for p,dp in zip(p_ids,dps):
+            nparams[p] += dp
+            string += '_p{}'.format(p)
+            if dp>0: string += '+'
+            string += '{}'.format(dp)
+        #end def
+        return get_job(params_to_pos(nparams),path=path+string),list(nparams-params)
+    #end def
+
+    for p0,param0 in enumerate(params):
+        job,dparams = shift_params([p0],[+dp[p0]])
+        jobs += job
+        diffs += [dparams]
+        job,dparams = shift_params([p0],[-dp[p0]])
+        jobs += job
+        diffs += [dparams]
+        for p1,param1 in enumerate(params):
+            if p1<=p0: continue
+            job,dparams = shift_params([p0,p1],[+dp[p0],+dp[p1]])
+            jobs += job
+            diffs += [dparams]
+            job,dparams = shift_params([p0,p1],[+dp[p0],-dp[p1]])
+            jobs += job
+            diffs += [dparams]
+            job,dparams = shift_params([p0,p1],[-dp[p0],+dp[p1]])
+            jobs += job
+            diffs += [dparams]
+            job,dparams = shift_params([p0,p1],[-dp[p0],-dp[p1]])
+            jobs += job
+            diffs += [dparams]
+        #end for
+    #end for
+    return array(diffs),jobs
+#end def
+
+# analyze finite-difference
+def analyze_fdiff_jobs(
+        diffs,
+        params,
+        energies = None,
+        jobs = None,
+        ):
+    if energies is None:
+        Es = []
+        for job in jobs:
+            a = job.locdir+'/'+job.infile
+            pa = PwscfAnalyzer(a)
+            pa.analyze()
+            Es.append(pa.E)
+        #end for
+        energies = Es
+    #end if
+    P = len(params)
+    if P==1: # for 1-dimensional problems
+        pf = polyfit(diffs[:,0],energies,2)
+        hessian = array([[pf[0]]])
+    else:
+        hessian = zeros((P,P))
+        pfs = P*[[]]
+        for p0,param0 in enumerate(params):
+            for p1,param1 in enumerate(params):
+                if p1<=p0: continue
+                # filter out the values where other parameters were altered
+                ids = ones(len(diffs),dtype=bool)
+                for p in range(P):
+                     if p==p0 or p==p1: continue
+                     ids = ids & (abs(diffs[:,p])<1e-10)
+                #end for
+                XY = diffs[ids]
+                E = energies[ids]
+                X = XY[:,0]
+                Y = XY[:,1]
+                pf = bipolyfit(X,Y,E,2,2)
+                hessian[p0,p1] = pf[4]
+                hessian[p1,p0] = pf[4]
+                pfs[p0].append(2*pf[2])
+                pfs[p1].append(2*pf[6])
+            #end for
+        #end for
+        for p0 in range(P):
+            hessian[p0,p0] = mean(pfs[p0])
+        #end for
+    #end if
+    return hessian
+#end def
+
+
+# get displaced parameter sets
+def fetch_parameters(data):
+    eqm = data.params
+    params = []
+    for d in range(data.D):
+        params_d = []
+        for s in data.shifts[d]:
+            p_this = eqm.copy() + data.U[d]*s
+            params_d.append(p_this)
+        #end for
+        params.append(params_d)
+    #end for
+    return params
 #end def
