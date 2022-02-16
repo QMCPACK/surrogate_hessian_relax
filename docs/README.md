@@ -401,6 +401,7 @@ cascade of dependencies that are met in the order presented:
 1. `run_phonon.py`
 1. `run_error_scan_py`
 1. `run_ls.py`
+
 Ideally, if the templates are set up appropriately and the runs finish fluently,
 it is possible for the user to only execute the last step, and the cascade or
 prerequisite steps is executed accordingly. In practice it is likely necessary
@@ -453,5 +454,5 @@ jobs can run are in parallel. The completion can take many hours on a regular
 laptop.
 
 List of available examples:
-* [Benzene](/examples/benzene.py)
-* [Coronene](/examples/coronene.py)
+* [Benzene](docs/examples/benzene.py)
+* [Coronene](docs/examples/coronene.py)
