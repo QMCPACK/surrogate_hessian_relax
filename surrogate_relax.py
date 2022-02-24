@@ -4,6 +4,7 @@ from numpy import array, polyval, linspace, mean, sum
 from matplotlib import pyplot as plt
 from nexus import run_project, settings
 
+from iterationdata import IterationData
 from surrogate_tools import print_with_error, model_statistical_bias
 
 

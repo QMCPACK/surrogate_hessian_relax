@@ -10,6 +10,7 @@ from functools import partial
 from scipy.optimize import broyden1
 from scipy.ndimage import zoom
 
+from iterationdata import IterationData
 from surrogate_tools import W_to_R, R_to_W, get_min_params, get_fraction_error, model_statistical_bias
 
 
@@ -289,7 +290,7 @@ def load_of_epsilon(
             print('Accepted direction #{} W-fit with R2={}'.format(d, R2_W2))
             Wfunc = pf_W2[0]
         else:
-            print('Rejected direction #{} W-fit with R2={}'.format(d, R2_W2))
+            print('Rejected direction #{} W-fit with R2={}'.format(d, R2_sigma))
             Wfunc = None
         #end if
         if R2_sigma > R2thrs:

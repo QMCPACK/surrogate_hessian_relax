@@ -729,7 +729,7 @@ def analyze_fdiff_jobs(
         hessian = array([[pf[0]]])
     else:
         hessian = zeros((P, P))
-        pfs = P * [[]]
+        pfs = [[] for p in range(P)]
         for p0, param0 in enumerate(params):
             for p1, param1 in enumerate(params):
                 if p1 <= p0:

@@ -291,7 +291,7 @@ class IterationData():
         # backwards compatibility
         try:
             self.results_loaded = self.ready
-        except NameError:
+        except AttributeError:
             if not self.results_loaded:
                 print('New position not calculated. Returning None')
                 return None
