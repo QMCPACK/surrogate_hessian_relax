@@ -325,7 +325,7 @@ def get_fraction_error(data, fraction, both = False):
     if fraction < 0.0 or fraction > 0.5:
         raise ValueError('Invalid fraction')
     #end if
-    data   = array(data)
+    data   = array(data, dtype = float)
     data   = data[~isnan(data)]        # remove nan
     ave    = median(data)
     data   = data[data.argsort()] - ave  # sort and center

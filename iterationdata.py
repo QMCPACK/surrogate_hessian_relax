@@ -9,7 +9,7 @@ from surrogate_tools import W_to_R, get_min_params
 from surrogate_tools import get_fraction_error
 
 
-# Class for line-search iteration
+# Class for line-search iteration (LEGACY)
 
 class IterationData():
 
