@@ -3,6 +3,7 @@
 
 from numpy import array, sin, cos, pi, exp
 
+from surrogate_classes import ParameterStructure, ParameterHessian
 from surrogate_tools import mean_distances, bond_angle, distance
 
 harmonic_a = lambda p,a: p[1]*(a-p[0])**2
@@ -37,6 +38,12 @@ def alt_pes_H2(params):  # inaccurate; for testing
     V += morse([1.35, 1.17, 0.6, 0.0], r)
     return V
 #end def
+def get_structure_H2():
+    return ParameterStructure(forward = forward_H2, backward = backward_H2, pos = pos_H2, elem = elem_H2)
+#end def
+def get_hessian_H2():
+    return ParameterHessian(hessian = hessian_H2)
+#end def
 
 
 # test H2O molecule
@@ -67,6 +74,12 @@ def pes_H2O(params):
     V += morse([0.95789707, 0.5, 0.5, 0.0], r)
     V += harmonic_a([104.119, 0.5], a)
     return V
+#end def
+def get_structure_H2O():
+    return ParameterStructure(forward = forward_H2O, backward = backward_H2O, pos = pos_H2O, elem = elem_H2O)
+#end def
+def get_hessian_H2O():
+    return ParameterHessian(hessian = hessian_H2O)
 #end def
 
 

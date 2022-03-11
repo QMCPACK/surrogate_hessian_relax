@@ -26,7 +26,7 @@ def match_to_tol(val1, val2, tol = 1e-10):
     return True
 #end def
 
-
+# TODO: currently not used
 class StructuralParameter():
     kind = None
     value = None
@@ -45,11 +45,15 @@ class StructuralParameter():
         self.label = label
         self.unit = unit
     #end def
+
+    def __repr__(self):
+        return '{:>10s}: {:<10f} {:6s} ({})'.format(self.label, self.value, self.unit, self.kind)
+    #end def
 #end class
 
 
-# Class for structural parameter mappings
-class ParameterMapping():
+# Base class for structural parameter mappings
+class ParameterStructureBase():
 
     forward_func = None  # mapping function from pos to params
     backward_func = None  # mapping function from params to pos
@@ -59,6 +63,7 @@ class ParameterMapping():
     params_err = None  # store parameter uncertainties
     dim = None  # dimensionality
     elem = None  # list of elements
+    unit = None  # position units
     value = None  # energy value
     error = None  # errorbar
     label = None  # label for identification
@@ -81,7 +86,9 @@ class ParameterMapping():
         dim = 3,
         value = None,
         error = None,
-        label = '',
+        label = None,
+        unit = None,
+        **kwargs,
     ):
         self.dim = dim
         self.periodic = periodic
@@ -112,7 +119,7 @@ class ParameterMapping():
     def set_forward(self, forward):
         self.forward_func = forward
         if self.pos is not None:
-            self.set_pos(self.pos)  # rerun for forward mapping
+            self._set_pos(self.pos)  # rerun for forward mapping
         #end if
         self.check_consistency()
     #end def
@@ -128,12 +135,16 @@ class ParameterMapping():
     def set_pos(self, pos):
         pos = array(pos)
         assert pos.size % self.dim == 0, 'Position vector inconsistent with {} dimensions!'.format(self.dim)
-        self.pos = pos.reshape(-1, self.dim)
+        self._set_pos(pos)
         if self.forward_func is not None:
-            self.params = self.forward(self.pos)
+            self.params = self.forward()
         #end if
         self.unset_value()
         self.check_consistency()
+    #end def
+
+    def _set_pos(self, pos):
+        self.pos = array(pos).reshape(-1, self.dim)
     #end def
 
     def set_axes(self, axes):
@@ -148,11 +159,15 @@ class ParameterMapping():
         self.check_consistency()
     #end def
 
+    def set_elem(self, elem):
+        self.elem = elem
+    #end def    
+
     def set_params(self, params, params_err = None):
         self.params = array(params).flatten()
         self.params_err = params_err
         if self.backward_func is not None:
-            self.pos = self.backward(self.params)
+            self._set_pos(self.backward(self.params))
         #end if
         self.unset_value()
         self.check_consistency()
@@ -191,7 +206,7 @@ class ParameterMapping():
         #end if
         if self.periodic:
             pos, axes = self.backward_func(array(params))
-            return array(pos), array(axes)
+            return array(pos).reshape(-1, 3), array(axes).reshape(-1, 3)
         else:
             return array(self.backward_func(array(params)))
         #end if
@@ -220,13 +235,13 @@ class ParameterMapping():
                 if self.periodic:
                     pos, axes = self.backward()
                     if self._check_pos_consistency(pos, axes):
-                        self.pos = pos
+                        self._set_pos(pos)
                         self.consistent = True
                     #end if
                 else:
                     pos = self.backward()
                     if self._check_pos_consistency(pos):
-                        self.pos = pos
+                        self._set_pos(pos)
                         self.consistent = True
                     #end if
                 #end if
@@ -313,17 +328,84 @@ class ParameterMapping():
         self,
         params = None,
         label = None,
+        pos = None,
+        axes = None,
         **kwargs,
     ):
         structure = deepcopy(self)
         if params is not None:
-            structure.unset_value()
             structure.set_params(params)
+        #end if
+        if pos is not None:
+            structure.set_pos(pos)
+        #end if
+        if axes is not None:
+            structure.set_axes(axes)
         #end if
         if label is not None:
             structure.label = label
         #end if
         return structure
+    #end def
+
+    def pos_difference(self, pos_ref):
+        # TODO: assertions
+        dpos = pos_ref.reshape(-1, 3) - self.pos
+        return dpos
+    #end def
+
+    def jacobian(self, dp = 0.001):
+        assert self.consistent, 'The mapping must be consistent'
+        jacobian = []
+        for p in range(len(self.params)):
+            params_this = self.params.copy()
+            params_this[p] += dp
+            dpos = self.pos_difference(self.backward(params_this))
+            jacobian.append(dpos.flatten() / dp)
+        #end for
+        return array(jacobian).T
+    #end def
+
+    def __repr__(self):
+        string = self.__class__.__name__
+        if self.label is not None:
+            string += ' ({})'.format(self.label)
+        #end if
+        if self.forward_func is None:
+            string += '\n  forward mapping: not set'
+        else:
+            string += '\n  forward mapping: {}'.format(self.forward_func)
+        #end if
+        if self.backward_func is None:
+            string += '\n  backward mapping: not set'
+        else:
+            string += '\n  backward mapping: {}'.format(self.backward_func)
+        #end if
+        if self.consistent:
+            string += '\n  consistent: yes'
+        else:
+            string += '\n  consistent: no'
+        #end if
+        # params
+        if self.params is None:
+            string += '\n  params: not set'
+        else:
+            string += '\n  params:'
+            for param in self.params:
+                string += '\n    {:<10f}'.format(param)  # TODO: StructuralParameter
+            #end for
+        #end if
+        # pos
+        if self.pos is None:
+            string += '\n  pos: not set'
+        else:
+            string += '\n  pos ({:d} atoms)'.format(len(self.pos))
+            for elem, pos in zip(self.elem, self.pos):
+                string += '\n    {:2s} {:<6f} {:<6f} {:<6f}'.format(elem, pos[0], pos[1], pos[2])
+            #end for
+        #end if
+        # TODO: periodicity, cell
+        return string
     #end def
 
 #end class
@@ -333,18 +415,59 @@ class ParameterMapping():
 try:
     from structure import Structure
 
-    class LineSearchStructure(ParameterMapping, Structure):
+    class ParameterStructure(ParameterStructureBase, Structure):
         kind = 'nexus'
+
+        def __init__(
+            self,
+            forward = None,
+            backward = None,
+            params = None,
+            **kwargs
+        ):
+            ParameterStructureBase.__init__(
+                self,
+                forward = forward,
+                backward = backward,
+                params = params,
+                **kwargs,
+            )
+            self.to_nexus_structure(**kwargs)
+        #end def
+
+        def to_nexus_structure(
+            self,
+            kshift = (0, 0, 0),
+            kgrid = (1, 1, 1),
+            units = 'A',
+            **kwargs
+        ):
+            
+            s_args = {
+                'elem': self.elem,
+                'pos': self.pos,
+                'units': units,
+            }
+            if self.axes is not None:
+                s_args.append({
+                    'axes': self.axes,
+                    'kshift': kshift,
+                    'kgrid': kgrid,
+                })
+            #end if
+            Structure.__init__(self, **s_args)
+        #end def
+
     #end class
 except ModuleNotFoundError:  # plain implementation if nexus not present
-    class LineSearchStructure(ParameterMapping):
-        kind = 'regular'
+    class ParameterStructure(ParameterStructureBase):
+        kind = 'plain'
     #end class
 #end try
 
 
-# Class for Hessian matrix
-class LineSearchHessian():
+# Class for parameter Hessian matrix
+class ParameterHessian():
     hessian = None  # always stored in (Ry/A)**2
     Lambda = None
     U = None
@@ -357,6 +480,7 @@ class LineSearchHessian():
     def __init__(
         self,
         hessian = None,
+        hessian_real = None,
         structure = None,
         x_unit = 'A',
         E_unit = 'Ry',
@@ -366,7 +490,11 @@ class LineSearchHessian():
         self.x_unit = x_unit
         self.E_unit = E_unit
         if structure is not None:
-            self.init_hessian_structure(structure)
+            if hessian_real is not None:
+                self.init_hessian_real(structure, hessian_real)
+            else:
+                self.init_hessian_structure(structure)
+            #end if
         #end if
         if hessian is not None:
             self.init_hessian_array(hessian)
@@ -374,28 +502,22 @@ class LineSearchHessian():
     #end def
 
     def init_hessian_structure(self, structure):
-        assert structure.isinstance(LineSearchStructure), 'Provided argument is not LineSearchStructure'
-        assert structure.check_consistency(), 'Provided LineSearchStructure is incomplete or inconsistent'
+        assert structure.isinstance(ParameterStructure), 'Provided argument is not ParameterStructure'
+        assert structure.check_consistency(), 'Provided ParameterStructure is incomplete or inconsistent'
         hessian = diag(len(structure.params) * [1.0])
-        Lambda, U = linalg.eig(hessian)
-        self.P, self.D = self.hessian.shape
-        self.Lambda, self.U = Lambda, U
-        self.hessian_set = False
+        self._set_hessian(hessian)
+        self.hessian_set = False  # this is not an appropriate hessian
+    #end def
+
+    def init_hessian_real(self, structure, hessian_real):
+        jacobian = structure.jacobian()
+        hessian = jacobian.T @ hessian_real @ jacobian
+        self._set_hessian(hessian)
     #end def
 
     def init_hessian_array(self, hessian):
-        self.hessian = self._convert_hessian(array(hessian))
-        if len(self.hessian) == 1:
-            Lambda = array(self.hessian[0])
-            U = array([1.0])
-            self.P, self.D = 1, 1
-        else:
-            Lambda, U = linalg.eig(self.hessian)
-            self.P, self.D = self.hessian.shape
-        #end if
-        # TODO: various tests
-        self.Lambda, self.U = Lambda, U
-        self.hessian_set = True
+        hessian = self._convert_hessian(array(hessian))
+        self._set_hessian(hessian)
     #end def
 
     def update_hessian_array(
@@ -418,8 +540,20 @@ class LineSearchHessian():
         Lambda, U = linalg.eig(hessian)
         assert P == self.P, 'Parameter count P={} does not match initial {}'.format(P, self.P)
         assert D == self.D, 'Direction count D={} does not match initial {}'.format(D, self.D)
-        # TODO: tests
-        self.hessian = hessian
+        self._set_hessian(hessian)        
+    #end def
+
+    def _set_hessian(self, hessian):
+        # TODO: assertions
+        if len(hessian) == 1:
+            Lambda = array(hessian[0])
+            U = array([1.0])
+            P, D = 1, 1
+        else:
+            Lambda, U = linalg.eig(hessian)
+            P, D = hessian.shape
+        #end if
+        self.hessian = array(hessian)
         self.P, self.D = P, D
         self.Lambda, self.U = Lambda, U
         self.hessian_set = True
@@ -472,6 +606,10 @@ class LineSearchHessian():
         return self._convert_hessian(self.hessian, x_unit = x_unit, E_unit = E_unit)
     #end def
 
+    def __repr__(self):
+        return str(self.hessian)  # TODO
+    #end def
+
 #end class
 
 
@@ -479,9 +617,9 @@ class LineSearchHessian():
 class AbstractLineSearch():
 
     fit_kind = None
-    pfn = None
-    errorbar = None
+    fraction = None
     func = None
+    func_p = None
     grid = None
     values = None
     errors = None
@@ -496,29 +634,36 @@ class AbstractLineSearch():
         grid = None,
         values = None,
         errors = None,
-        fit_kind = 'pf3',
-        pfn = 3,
-        errorbar = 0.025,
+        fraction = 0.025,
         **kwargs,
     ):
-        if 'pf' in fit_kind:
-            self.func = self._pf_search
-            try:
-                self.pfn = int(fit_kind[2:])
-            except ValueError:
-                self.pfn = pfn
-            #end try
-        else:
-            raise('Fit kind {} not recognized'.format(fit_kind))
-        #end if
-        self.fit_kind = fit_kind
-        self.errorbar = errorbar
+        self.fraction = fraction
+        self.set_func(**kwargs)
         if grid is not None:
             self.set_grid(grid)
         #end if
         if values is not None:
-            self.set_values(values, errors, also_search = (self.grid is not None), **kwargs)
+            self.set_values(values, errors, also_search = (self.grid is not None))
         #end if
+    #end def
+
+    def set_func(
+        self,
+        fit_kind = 'pf3',
+        **kwargs
+    ):
+        self.func, self.func_p = self._get_func(fit_kind)
+        self.fit_kind = fit_kind
+    #end def
+
+    def _get_func(self, fit_kind):
+        if 'pf' in fit_kind:
+            func = self._pf_search
+            func_p = int(fit_kind[2:])
+        else:
+            raise('Fit kind {} not recognized'.format(fit_kind))
+        #end if
+        return func, func_p
     #end def
 
     def set_data(self, grid, values, errors = None, also_search = True):
@@ -545,7 +690,7 @@ class AbstractLineSearch():
 
     def search(self, **kwargs):
         assert self.grid is not None and self.values is not None
-        res = self._search(self.grid, self.values, self.errors, **kwargs)
+        res = self._search(self.grid, self.values, self.errors, fraction = self.fraction, **kwargs)
         self.x0 = res[0]
         self.y0 = res[2]
         self.x0_err = res[1]
@@ -558,17 +703,24 @@ class AbstractLineSearch():
         grid,
         values,
         errors,
-        **kwargs
+        fraction = 0.025,
+        fit_kind = None,
+        **kwargs,
     ):
-        res0 = self.func(grid, values, **kwargs)
+        if fit_kind is None:
+            func, func_p = self.func, self.func_p
+        else:
+            func, func_p = self._get_func(fit_kind)
+        #end if
+        res0 = func(grid, values, func_p, **kwargs)
         y0 = res0[0]
         x0 = res0[1]
         fit = res0[2]
         # resample for errorbars
         if errors is not None:
-            x0s, y0s = self.get_distribution(grid, values, errors, **kwargs)
-            x0_err = get_fraction_error(x0s, fraction = self.errorbar)
-            y0_err = get_fraction_error(y0s, fraction = self.errorbar)
+            x0s, y0s = self._get_distribution(grid, values, errors, **kwargs)
+            x0_err = get_fraction_error(x0s - x0, fraction = self.fraction)
+            y0_err = get_fraction_error(y0s - y0, fraction = self.fraction)
         else:
             x0_err, y0_err = 0.0, 0.0
         #end if
@@ -578,14 +730,11 @@ class AbstractLineSearch():
     def _pf_search(
         self,
         shifts,
-        energies,
-        pfn = None,
+        values,
+        pfn,
         **kwargs,
     ):
-        if pfn is None:
-            pfn = self.pfn
-        #end if
-        return get_min_params(shifts, energies, pfn, **kwargs)
+        return get_min_params(shifts, values, pfn, **kwargs)
     #end def
 
     def get_x0(self, err = True):
@@ -642,6 +791,37 @@ class AbstractLineSearch():
         return array(x0s, dtype = float), array(y0s, dtype = float)
     #end def
 
+    def __repr__(self):
+        string = self.__class__.__name__
+        if self.fit_kind is None:
+            string += '\n  fit_kind: {:s}'.format(self.fit_kind)
+        #end if
+        if self.grid is None:
+            string += '\n  data: no grid'
+        else:
+            string += '\n  data:'
+            values = self.values if self.values is not None else self.M * ['-']
+            errors = self.errors if self.errors is not None else self.M * ['-']
+            string += '\n    {:9s} {:9s} {:9s}'.format('grid', 'value', 'error')
+            for g, v, e in zip(self.grid, values, errors):
+                string += '\n    {: 8f} {:9s} {:9s}'.format(g, str(v), str(e))
+            #end for
+        #end if
+        if self.x0 is None:
+            string += '\n  x0: not set'
+        else:
+            x0_err = '' if self.x0_err is None else ' +/- {: <8f}'.format(self.x0_err)
+            string += '\n  x0: {: <8f} {:s}'.format(self.x0, x0_err)
+        #end if
+        if self.y0 is None:
+            string += '\n  y0: not set'
+        else:
+            y0_err = '' if self.y0_err is None else ' +/- {: <8f}'.format(self.y0_err)
+            string += '\n  y0: {: <8f} {:s}'.format(self.y0, y0_err)
+        #end if
+        return string
+    #end def
+
 #end class
 
 
@@ -662,7 +842,6 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         target_y0 = None,
         target_x0 = 0.0,
         bias_mix = 0.0,
-        interpolate_kind = 'pchip',
         **kwargs,
     ):
         AbstractLineSearch.__init__(self, **kwargs)
@@ -670,7 +849,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         self.target_y0 = target_y0
         self.bias_mix = bias_mix
         if target_grid is not None and target_values is not None:
-            self.set_target(target_grid, target_values, interpolate_kind = interpolate_kind)
+            self.set_target(target_grid, target_values, **kwargs)
         #end if
     #end def
 
@@ -678,7 +857,8 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         self,
         grid,
         values,
-        interpolate_kind = 'pchip',
+        interpolate_kind = 'cubic',
+        **kwargs,
     ):
         sidx = argsort(grid)
         self.target_grid = array(grid)[sidx]
@@ -699,13 +879,57 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         return self.target_in(grid)
     #end def
 
-    def evaluate_bias(self, grid, values, **kwargs):
-        x0, x0_err, y0, y0_err, fit = self._search(grid, values, None)
+    def compute_bias(self, grid = None, bias_mix = None, **kwargs):
+        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
+        grid = 0.9999999999*grid if grid is not None else self.target_grid
+        return self._compute_bias(grid, bias_mix)
+    #end def
+
+    def _compute_xy_bias(self, grid, **kwargs):
+        values = self.evaluate_target(grid)
+        x0, x0_err, y0, y0_err, fit = self._search(grid, values, None, **kwargs)
         bias_x = x0 - self.target_x0
         bias_y = y0 - self.target_y0
-        bias_tot = abs(bias_x) + self.bias_mix * abs(bias_y)
+        return bias_x, bias_y
+    #end def
+
+    def _compute_bias(self, grid, bias_mix, **kwargs):
+        bias_x, bias_y = self._compute_xy_bias(grid, **kwargs)
+        bias_tot = abs(bias_x) + bias_mix * abs(bias_y)
         return bias_x, bias_y, bias_tot
     #end def
+
+    def compute_errorbar(
+        self,
+        grid = None,
+        errors = None,
+        **kwargs
+    ):
+        grid = grid if grid is not None else self.grid
+        errors = errors if errors is not None else self.errors
+        errorbar_x, errorbar_y = self._compute_errorbar(grid, errors, **kwargs)
+    #end def
+
+    # dvalues is an array of value fluctuations: 'errors * Gs' or 'noise * Gs'
+    def _compute_errorbar(self, grid, errors, **kwargs):
+        values = self.evaluate_target(grid)
+        x0, x0_err, y0, y0_err, fit = self._search(grid, values, errors, **kwargs)
+        return x0_err, y0_err
+    #end def
+    
+    def compute_error(
+        self,
+        grid = None,
+        errors = None,
+        **kwargs
+    ):
+        bias_x, bias_y, bias_tot = self.compute_bias(grid, errors, **kwargs)
+        errorbar_x, errorbar_y = self.compute_errorbar(grid, errors, **kwargs)
+        error = bias_tot + errorbar_x
+        return error
+    #end def
+
+    # TODO: def __repr__(self):
 
 #end class
 
@@ -732,23 +956,20 @@ class LineSearch(AbstractLineSearch):
         structure,
         hessian,
         d,
-        M = 7,
-        W = None,  # characteristic window
-        R = None,  # max displacement
-        shifts = None,  # manual set of shifts
         sigma = 0.0,
+        grid = None,
         **kwargs,
     ):
         self.sigma = sigma
         self.set_structure(structure)
         self.set_hessian(hessian, d)
-        self.figure_out_grid(M = M, W = W, R = R, shifts = shifts)
+        self.figure_out_grid(grid = grid, **kwargs)
         AbstractLineSearch.__init__(self, grid = self.grid, **kwargs)
         self.shift_structures()
     #end def
 
     def set_structure(self, structure):
-        assert isinstance(structure, LineSearchStructure), 'provided structure is not a LineSearchStructure object'
+        assert isinstance(structure, ParameterStructure), 'provided structure is not a ParameterStructure object'
         assert structure.check_consistency(), 'Provided structure is not a consistent mapping'
         self.structure = structure
     #end def
@@ -760,10 +981,13 @@ class LineSearch(AbstractLineSearch):
         self.d = d
     #end def
 
-    def figure_out_grid(self, M = 7, W = None, R = None, shifts = None):
-        if shifts is not None:
-            grid = shifts
-            self.M = len(shifts)
+    def figure_out_grid(self, **kwargs):
+        self.grid, self.M = self._figure_out_grid(**kwargs)
+    #end def
+
+    def _figure_out_grid(self, M = 7, W = None, R = None, grid = None, **kwargs):
+        if grid is not None:
+            self.M = len(grid)
         elif R is not None:
             grid = self._make_grid_R(R, M = M)
             self.R = R
@@ -773,8 +997,7 @@ class LineSearch(AbstractLineSearch):
         else:
             raise AssertionError('Must characterize grid')
         #end if
-        self.grid = grid
-        self.M = M
+        return grid, M
     #end def
 
     def _make_grid_R(self, R, M):
@@ -842,10 +1065,10 @@ class LineSearch(AbstractLineSearch):
     #end def
 
     def _make_job_path(self, path, label):
-        return '{}{}'.format(path, label)
+        return '{}/{}'.format(path, label)
     #end def
 
-    # job_func must accept 0: position, 1: path, 2: sigma
+    # job_func must accept 0: structure, 1: path, 2: sigma
     def _generate_jobs(
         self,
         job_func,
@@ -855,9 +1078,8 @@ class LineSearch(AbstractLineSearch):
         **kwargs,
     ):
         sigma = sigma if sigma is not None else self.sigma
-        pos = structure.pos
         path = self._make_job_path(path, structure.label)
-        return job_func(pos, path, sigma, **kwargs)
+        return job_func(structure, path = path, sigma = sigma, **kwargs)
     #end def
 
     # analyzer fuctions must accept 0: path
@@ -894,11 +1116,18 @@ class LineSearch(AbstractLineSearch):
         return True
     #end def
 
+    def get_shifted_params(self):
+        return array([structure.params for structure in self.structure_list])
+    #end def
+
 #end class
 
 
 # Class for error scan line-search
 class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
+
+    R_max = None
+    W_max = None
 
     def __init__(
         self,
@@ -908,10 +1137,9 @@ class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
         M = 7,
         W = None,  # characteristic window
         R = None,  # max displacement
-        shifts = None,  # manual set of shifts
+        grid = None,  # manual set of shifts
         **kwargs,
     ):
-        AbstractTargetLineSearch.__init__(self, **kwargs)
         LineSearch.__init__(
             self,
             structure,
@@ -920,41 +1148,88 @@ class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
             M = M,
             W = W,
             R = R,
-            shifts = shifts,
+            grid = grid,
         )
+        AbstractTargetLineSearch.__init__(self, **kwargs)
     #end def
 
-    def compute_bias_R(
+    def compute_bias(self, bias_mix = None, **kwargs):
+        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
+        grid, M = self._figure_out_grid(**kwargs)
+        return self._compute_bias(grid = grid, bias_mix = bias_mix, **kwargs)
+    #end def
+
+    def compute_errorbar(self, sigma = None, errors = None, **kwargs):
+        sigma = sigma if not sigma is None else self.sigma
+        grid, M = self._figure_out_grid(**kwargs)
+        errors = errors if not errors is None else array(M * [sigma])
+        return self._compute_errorbar(grid = grid, errors = errors, **kwargs)
+    #end def
+
+    def compute_bias_of(
         self,
-        Rs,
+        R = None,
+        W = None,
         verbose = False,
-        M = 7,
         **kwargs
     ):
-        if isscalar(Rs):
-            Rs = array([Rs])
-        #end if
         biases_x, biases_y, biases_tot = [], [], []
         if verbose:
             print((4 * '{:<10s} ').format('R', 'bias_x', 'bias_y', 'bias_tot'))
         #end if
-        for R in Rs:
-            grid = self._make_grid_R(R, M = M)
-            values = self.evaluate_target(grid)
-            bias_x, bias_y, bias_tot = self.evaluate_bias(grid, values)
-            biases_x.append(bias_x)
-            biases_y.append(bias_y)
-            biases_tot.append(bias_tot)
+        if R is not None:
+            Rs = array([R]) if isscalar(R) else R
+            for R in Rs:
+                R = max(R, 1e-6)  # for numerical stability
+                bias_x, bias_y, bias_tot = self.compute_bias(R = R, **kwargs)
+                biases_x.append(bias_x)
+                biases_y.append(bias_y)
+                biases_tot.append(bias_tot)
+                if verbose:
+                    print((4 * '{:<10f} ').format(R, bias_x, bias_y, bias_tot))
+                #end if
+            #end for
+        elif W is not None:
+            Ws = array([W]) if isscalar(W) else W
             if verbose:
-                print((4 * '{:<10f} ').format(R, bias_x, bias_y, bias_tot))
+                print((4 * '{:<10s} ').format('W', 'bias_x', 'bias_y', 'bias_tot'))
             #end if
-        #end for
+            for W in Ws:
+                W = max(W, 1e-6)  # for numerical stability
+                bias_x, bias_y, bias_tot = self.compute_bias(W = W, **kwargs)
+                biases_x.append(bias_x)
+                biases_y.append(bias_y)
+                biases_tot.append(bias_tot)
+                if verbose:
+                    print((4 * '{:<10f} ').format(r, bias_x, bias_y, bias_tot))
+                #end if
+            #end for
+        #end if
         return array(biases_x), array(biases_y), array(biases_tot)
     #end def
 
-    def compute_bias_W(self, W, **kwargs):
-        R = W_to_R(W, self.Lambda)
-        return self.compute_bias_R(R, **kwargs)
+    # overrides method in LineSearch class with option to set target PES
+    def set_results(self, values, errors, set_target = False, **kwargs):
+        if set_target:
+            self.set_target(self.grid, values, **kwargs)
+            self._set_RW_max()
+        else:
+            LineSearch.set_results(self, values, errors, **kwargs)
+        #end if
+    #end def
+
+    def evaluate_target(self, grid):
+        try:
+            return AbstractTargetLineSearch.evaluate_target(self, grid)
+        except AssertionError:
+            print('  W_max and R_max are respectively {} and {}'.format(self.W_max, self.R_max))
+            return None
+        #end try
+    #end def
+
+    def _set_RW_max(self):
+        self.R_max = min([-self.grid.min(), self.grid.max()])
+        self.W_max = R_to_W(self.R_max, self.Lambda)
     #end def
 
 #end class
@@ -972,7 +1247,6 @@ class ParallelLineSearch():
     windows = None
     noises = None
     surrogate = None  # surrogate line-search object
-    targets = False  # whether resampling versus target or not
     fraction = None
     structure = None  # eqm structure
     structure_next = None  # next structure
@@ -991,13 +1265,11 @@ class ParallelLineSearch():
         hessian,
         structure,
         windows = None,
+        window_frac = 0.25,
         noises = None,
-        targets = None,
         path = 'pls',
         x_units = 'A',
         E_units = 'Ry',
-        Lambda_frac = 0.2,  # max window fraction of Lambda
-        noise_frac = 0.0,  # max noise fraction of window
         fraction = 0.025,
         job_func = None,
         analyze_func = None,
@@ -1011,19 +1283,16 @@ class ParallelLineSearch():
         self.analyze_func = analyze_func
         self.set_hessian(hessian)
         self.set_structure(structure)
-        self.Lambda_frac = Lambda_frac
-        self.noise_frac = noise_frac
-        self.set_windows(windows)
+        self.guess_windows(windows, window_frac)
         self.set_noises(noises)
-        self.set_targets(targets)
-        self._generate(**kwargs)
+        self._generate_ls_list(**kwargs)
     #end def
 
     def set_hessian(self, hessian):
         self._protected()
         if isinstance(hessian, ndarray):
-            hessian = LineSearchHessian(hessian = hessian, x_units = self.x_units, E_units = self.E_units)
-        elif isinstance(hessian, LineSearchHessian):
+            hessian = ParameterHessian(hessian = hessian, x_units = self.x_units, E_units = self.E_units)
+        elif isinstance(hessian, ParameterHessian):
             pass
         else:
             raise ValueError('Hessian matrix is not supported')
@@ -1036,67 +1305,47 @@ class ParallelLineSearch():
 
     def set_structure(self, structure):
         self._protected()
-        assert isinstance(structure, LineSearchStructure), 'Structure must be LineSearchStructure object'
+        assert isinstance(structure, ParameterStructure), 'Structure must be ParameterStructure object'
         self.structure = structure.copy(label = 'eqm')
     #end def
 
-    def set_windows(self, windows):
-        # guess windows
+    def guess_windows(self, windows, window_frac):
         if windows is None:
-            windows = self.Lambdas * self.Lambda_frac
-        else:
-            assert(len(windows) == self.D), 'length of windows differs from the number of directions'
+            windows = self.Lambdas**0.5 * window_frac
+            self.windows_frac = window_frac
         #end if
-        self.windows = array(windows)
+        self.set_windows(windows)
+    #end def
+
+    def set_windows(self, windows):
+        if windows is not None:
+            assert windows is not None or len(windows) == self.D, 'length of windows differs from the number of directions'
+            self.windows = array(windows)
+        #end if
     #end def
 
     def set_noises(self, noises):
-        if noises is None or all(array(noises) is None):
-            if self.noise_frac > 0.0:
-                self.noises = self.Lambdas * self.Lambda_frac * self.noise_frac
-                self.noisy = True
-            else:
-                self.noisy = False
-                self.noises = self.D * [None]
-            #end if
+        if noises is None:
+            self.noisy = False
+            self.noises = None
         else:
             assert(len(noises) == self.D)
-            self.noises = array(noises)
             self.noisy = True
+            self.noises = array(noises)
         #end if
     #end def
 
-    def set_targets(self, targets):
-        # whether target or not
-        if targets is None:
-            targets = self.D * [False]
-        else:
-            assert(len(targets) == self.D)
-        #end if
-        self.targets = targets
-    #end def
-
-    def _generate(self, **kwargs):
+    def _generate_ls_list(self, **kwargs):
+        noises = self.noises if self.noisy else self.D * [None]
         ls_list = []
-        for Lambda, direction, d, window, noise, target in zip(self.Lambdas, self.directions, range(self.D), self.windows, self.noises, self.targets):
-            if target:
-                ls = TargetLineSearch(
-                    structure = self.structure,
-                    hessian = self.hessian,
-                    d = d,
-                    W = window,
-                    target = target,
-                    sigma = noise,
-                    **kwargs)
-            else:
-                ls = LineSearch(
-                    structure = self.structure,
-                    hessian = self.hessian,
-                    d = d,
-                    W = window,
-                    sigma = noise,
-                    **kwargs)
-            #end if
+        for d, window, noise in zip(range(self.D), self.windows, noises):
+            ls = LineSearch(
+                structure = self.structure,
+                hessian = self.hessian,
+                d = d,
+                W = window,
+                sigma = noise,
+                **kwargs)
             ls_list.append(ls)
         #end for
         self.ls_list = ls_list
@@ -1168,9 +1417,13 @@ class ParallelLineSearch():
     def calculate_next(self, **kwargs):
         self._protected()
         assert self.loaded, 'Must load data before calculating next parameters'
-        params_next, params_next_err = self._calculate_params_with_errs(**kwargs)
+        params_next, params_next_err = self.calculate_next_params(**kwargs)
         self.structure_next = self.structure.copy(params = params_next, params_err = params_next_err)
         self.calculated = True
+    #end def
+
+    def ls(self, i):
+        return self.ls_list[i]
     #end def
 
     def check_integrity(self):
@@ -1183,46 +1436,224 @@ class ParallelLineSearch():
         return self.structure_next.params
     #end def
 
-    def _calculate_params_with_errs(self, N = 100, **kwargs):
+    def calculate_next_params(self, **kwargs):
         directions = self.hessian.get_directions()
         structure = self.structure
         # deterministic
-        x0s = []
-        for ls in self.ls_list:
-            x0s.append(ls.get_x0(err = False))
-        #end for
-        params = self._calculate_param_next(structure.params, directions, x0s)
+        params_next = self._calculate_params_next(self.get_params(), self.get_directions(), self.get_shifts())
         #stochastic
-        x0s_d = []
-        resample = False
-        for ls in self.ls_list:
-            x0s_d.append(ls.get_x0_distribution(N = N))
-            if ls.errors is not None:
-                resample = True
-            #end if
-        #end for
-        if resample:
-            params_d = []
-            for x0s in array(x0s_d).transpose():
-                params_d.append(self._calculate_param_next(structure.params, directions, x0s))
-            #end for
-            params_err = []
-            for param_d in params_d:
-                params_err.append(get_fraction_error(param_d, fraction = self.fraction))
-            #end
+        if self.noisy:
+            params_next_err = self.calculate_params_next_err(self.get_params(), self.get_directions(), params_next, **kwargs)
         else:
-            params_err = self.D * [None]
+            params_next_err = array(self.D * [0.0])
         #end if
-        return params, params_err
+        return params_next, params_next_err
     #end def
 
-    def _calculate_param_next(self, params, directions, shifts):
+    def get_params(self):
+        return self.structure.params
+    #end def
+
+    def get_shifted_params(self, i = None):
+        if i is None:
+            return [ls.get_shifted_params() for ls in self.ls_list]
+        else:
+            return self.ls(i).get_shifted_params()
+        #end if
+    #end def
+
+    def get_directions(self, d = None):
+        return self.hessian.get_directions(d)
+    #end def
+
+    def get_shifts(self):
+        assert self.loaded, 'Shift data has not been calculated yet'
+        return self._get_shifts()
+    #end def
+
+    def _get_shifts(self):
+        return array([ls.get_x0(err = False) for ls in self.ls_list])
+    #end def
+
+    def _calculate_params_next(self, params, directions, shifts):
         return params + shifts @ directions
+    #end def
+
+    def _calculate_params_next_err(self, params, directions, params_next, N = 200, fraction = 0.025, **kwargs):
+        x0s_d = self._get_x0_distributions(N = N)
+        params_d = []
+        for x0s in x0s_d:
+            params_d = self._calculate_params_next(params, directions, x0s) - params_next
+        #end for
+        params_next_err = [get_fraction_error(p, fraction = fraction) for p in array(params_d).T]
+        return array(params_next_err)
+    #end def
+
+    def _get_x0_distributions(self, N = 200, **kwargs):
+        return array([ls.get_x0_distribution(N = N, **kwargs) for ls in self.ls_list]).T
     #end def
 
     def write_to_disk(self, fname = 'data.p'):
         makedirs(self.path, exist_ok = True)
         pickle.dump(self, open(self.path + fname, mode='wb'))
+    #end def
+
+#end class
+
+
+class TargetParallelLineSearch(ParallelLineSearch):
+
+    epsilon = None
+    epsilon_d = None
+    temperature = None
+    window_frac = None
+
+    def __init__(
+        self,
+        structure = None,
+        hessian = None,
+        targets = None,
+        **kwargs
+    ):
+        ParallelLineSearch.__init__(self, structure = structure, hessian = hessian, **kwargs)
+        self.set_targets(targets)
+        self.set_tolerances(**kwargs)
+        self._generate_tls_list(**kwargs)
+    #end def
+
+    def set_targets(self, targets):
+        # whether target or not
+        if targets is None:
+            targets = self.D * [0.0]
+        else:
+            assert(len(targets) == self.D)
+        #end if
+        self.targets = array(targets)
+    #end def
+
+    def set_results(self, grid = None, values = None, set_targets = True, **kwargs):
+        grid = grid if grid is not None else self.grid
+    #end def
+
+    def set_tolerances(
+        self,
+        epsilon = None,
+        epsilon_d = None,
+        **kwargs
+    ):
+        # TODO: assertions
+        self.epsilon = epsilon
+        self.epsilon_d = epsilon_d
+    #end def
+
+    def optimize(
+        self,
+        epsilon = None,
+        epsilon_d = None,
+        temperature = None,
+        mixer_func = None,
+        **kwargs,
+    ):
+        if temperature is not None:
+            self.optimize_thermal(temperature, **kwargs)
+        else:
+            raise AssertionError('Not implemented')
+        #end if
+    #end def
+
+    def optimize_thermal(
+        self,
+        temperature,
+        **kwargs,
+    ):
+        assert temperature > 0, 'Temperature must be positive'
+        epsilon_d = self._get_thermal_epsilond(temperature)
+    #end def
+
+    def _get_thermal_epsilon_d(self, temperature):
+        return [(temperature / Lambda)**0.5 for Lambda in self.Lambdas]
+    #end def
+    
+    def _get_thermal_epsilon(self, temperature):
+        return [(temperature / Lambda)**0.5 for Lambda in self.hessian.diagonal]
+    #end def
+    
+    # Important: overrides ls_list generator
+    def _generate_ls_list(self, **kwargs):
+        pass
+    #end def
+
+    def _generate_tls_list(self, **kwargs):
+        noises = self.noises if self.noisy else self.D * [None]
+        ls_list = []
+        for d, window, noise, target in zip(range(self.D), self.windows, noises, self.targets):
+            tls = TargetLineSearch(
+                structure = self.structure,
+                hessian = self.hessian,
+                d = d,
+                W = window,
+                sigma = noise,
+                target = target,
+                **kwargs)
+            ls_list.append(tls)
+        #end for
+        self.ls_list = ls_list
+    #end def
+
+    def compute_bias_p(self, **kwargs):
+        return self.compute_bias(**kwargs)[1]
+    #end def
+
+    def compute_bias_d(self, **kwargs):
+        return self.compute_bias(**kwargs)[0]
+    #end def
+
+    def compute_bias(self, windows = None, **kwargs):
+        windows = windows if windows is not None else self.windows
+        return self._compute_bias(windows, **kwargs)
+    #end def
+
+    def _compute_bias(self, windows, **kwargs):
+        bias_d = []
+        for W, tls, target in zip(windows, self.ls_list, self.targets):
+            bias_d.append(tls.compute_bias(W = W, **kwargs)[0] - target )
+        #end for
+        bias_d = array(bias_d)
+        bias_p = self._calculate_params_next(self.get_params(), self.get_directions(), bias_d) - self.get_params()
+        return bias_d, bias_p
+    #end def
+
+    def _calculate_error(self, windows, errors, **kwargs):
+        return self._calculate_params_next_error(windows, errors, **kwargs) - self.targets
+    #end def
+
+    # based on windows, noises
+    def _resample_errorbars(self, windows, noises, N = 200, **kwargs):
+        x0s_d = []
+        biases_d, biases_p = self._compute_bias(windows, **kwargs)
+        errorbar_d, errorbar_p = [], []
+        for W, noise, tls, bias_d in zip(windows, noises, tls, biases_d):
+            grid, M = self._figure_out_grid(W = W)
+            values = self.evaluate_target(grid)
+            errors = M * [noise]
+            x0s = ls._get_x0_distribution(grid = grid, value = values, errors = errors, N = N)
+            x0s_d.append(x0s)
+            errorbar_d.append(get_fraction_error(x0s - bias_d), **kwargs)
+        #end for
+        # parameter errorbars
+        for x0s in array(x0s_d).T:
+            params_d = self._calculate_params_next(-bias_p, directions, x0s)
+        #end for
+        errorbar_p = [get_fraction_error(p - biases_p, **kwargs) for p in array(params_d).T]
+        return array(errorbar_d), array(errorbar_p)
+    #end def
+
+    def _resample_errors(self, windows, noises, **kwargs):
+        bias_d, bias_p = self._compute_bias(windows, **kwargs)
+        errorbar_d, errorbar_p = self._resample_errorbars(windows, noises, **kwargs)
+        error_d = abs(bias_d) + errorbar_d
+        error_p = abs(bias_p) + errorbar_p
+        return error_d, error_p
     #end def
 
 #end class
@@ -1270,8 +1701,8 @@ class LineSearchIteration():
     #end def
 
     def init_from_hessian(self, structure, hessian, **kwargs):
-        assert isinstance(structure, LineSearchStructure), 'Starting structure must be a LineSearchStructure object'
-        assert isinstance(hessian, LineSearchHessian), 'Starting hessian must be a LineSearchHessian'
+        assert isinstance(structure, ParameterStructure), 'Starting structure must be a ParameterStructure object'
+        assert isinstance(hessian, ParameterHessian), 'Starting hessian must be a ParameterHessian'
         pls = ParallelLineSearch(
             path = self._get_pls_path(0),
             structure = structure,

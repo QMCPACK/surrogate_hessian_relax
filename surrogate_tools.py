@@ -280,7 +280,7 @@ def bipolymin(p, X, Y, nx, ny, itermax = 6, shrink = 0.1, npoints = 10):
 
 # Important function to resolve the local minimum of a curve
 #   If endpts are given, search minima from them, too
-def get_min_params(x_n, y_n, pfn = 2, endpts=[]):
+def get_min_params(x_n, y_n, pfn = 2, endpts=[], **kwargs):
     pf     = polyfit(x_n, y_n, pfn)
     r      = roots(polyder(pf))
     Pmins  = list(r[r.imag == 0].real)

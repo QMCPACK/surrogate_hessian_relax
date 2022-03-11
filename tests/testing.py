@@ -2,7 +2,7 @@
 
 from numpy import array
 
-verbose = True
+gverbose = False
 unit_tests = []
 integration_tests = []
 
@@ -33,51 +33,45 @@ def run_tests(tests, R = None):
     #end for
 #end def
 
-def run_all_tests(**kwargs):
+def run_all_tests(verbose = False, **kwargs):
+    global gverbose
+    gverbose = verbose
     run_unit_tests(**kwargs)
     run_integration_tests(**kwargs)
 #end def
 
-def run_unit_tests(R = None):
+def run_unit_tests(**kwargs):
     print('Deterministic unit tests:')
-    run_tests(unit_tests, R = R)
+    run_tests(unit_tests, **kwargs)
 #end def
 
-def run_integration_tests(R = None):
+def run_integration_tests(**kwargs):
     print('Stochastic integration unit tests:')
-    run_tests(integration_tests, R = R)
+    run_tests(integration_tests, **kwargs)
 #end def
 
-
-def match_values(val1, val2, tol = 1e-8):
-    if abs(val1 - val2) < tol:
-        return True
-    else:
-        print('{} and {} differ by {} > {}'.format(val1, val2, abs(val1 - val2), tol))
-        return False
-    #end if
-#end def
-
-def match_all_values(val1, val2, tol = 1e-8, expect_false = False):
+def match_values(val1, val2, tol = 1e-8, expect_false = False):
     val1 = array(val1).flatten()
     val2 = array(val2).flatten()
+    failed = False
     for v,val in enumerate(abs(val1 - val2)):
         if val > tol:
-            if not expect_false:
-                print('row {}: {} and {} differ by {} > {}'.format(v, val1, val2, abs(val1 - val2), tol))
-            return False
+            if gverbose and not expect_false:
+                print('row {}: {} and {} differ by {} > {}'.format(v, val1[v], val2[v], abs(val), tol))
+            #end if
+            failed = True
         #end if
     #end for
-    return True
+    return not failed
 #end def
 
 def resolve(results):
-    if verbose:
-        if all(results):
-            return True
-        else:
+    if all(results):
+        return True
+    else:
+        if gverbose:
             print(results)
-            return False
         #end if
+        return False
     #end if
 #end def
