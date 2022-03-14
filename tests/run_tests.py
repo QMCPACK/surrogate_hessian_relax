@@ -8,9 +8,8 @@ parser.add_argument('-v', help = 'Verbose ouput for debugging:', default = False
 args = parser.parse_args()
 
 if __name__=='__main__':
-    import tools.unit
-    import tools.integration
-    import classes.unit
+    from tools import test_tools_unit, test_tools_integration
+    from classes import test_classes_unit#, test_classes_integration
     from testing import run_all_tests
     run_all_tests(R = args.R, verbose = args.v)
 #end if

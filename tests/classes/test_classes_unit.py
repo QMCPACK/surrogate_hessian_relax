@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-from numpy import array,exp,nan,isnan,random, polyval, linspace
+from numpy import array, exp, nan, isnan, random, polyval, linspace
+from pytest import raises
 
-from testing import add_unit_test, match_values, resolve
-
+from testing import match_values, add_unit_test
 from surrogate_classes import ParameterStructureBase, ParameterStructure, ParameterHessian
 from surrogate_classes import AbstractLineSearch, LineSearch
 from surrogate_classes import AbstractTargetLineSearch, TargetLineSearch, TargetParallelLineSearch
@@ -15,77 +15,64 @@ from classes.assets import morse
 
 # Test ParameterStructureBase class
 def test_parameterstructurebase_class():
-    results = []
-
     # test H2 (open; 1 parameter)
     pm = ParameterStructureBase()
 
     # test inconsistent pos vector
-    try:
+    with raises(AssertionError):
         pm.set_pos([0.0, 0.0])
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
+    #end with
 
     # test premature backward mapping
-    try:
+    with raises(AssertionError):
         pm.backward()
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
+    #end with
 
     # test backward mapping
     pm.set_params([1.4])
     pm.set_backward(backward_H2)  # pos should be computed automatically
-    results.append(match_values(pm.pos, pos_H2, tol=1e-5))
+    assert match_values(pm.pos, pos_H2, tol = 1e-5)
 
-    results.append(not pm.check_consistency())  # not yet consistent
+    assert not pm.check_consistency()  # not yet consistent
     # test premature forward mapping
-    try:
+    with raises(AssertionError):
         pm.forward()
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
+    #end with
 
     pm.set_forward(forward_H2)
-    results.append(match_values(pm.params, 1.4, tol=1e-5))  # params computed automatically
-    results.append(pm.check_consistency())  # finally consistent
+    assert match_values(pm.params, 1.4, tol = 1e-5)  # params computed automatically
+    assert pm.check_consistency()  # finally consistent
 
     # test H2O (open; 2 parameters)
     pm = ParameterStructureBase(pos = pos_H2O, forward = forward_H2O)
     params_ref = [0.95789707432, 104.119930724]
-    results.append(match_values(pm.params, params_ref, tol=1e-5))
+    assert match_values(pm.params, params_ref, tol = 1e-5)
 
     # add backward mapping
     pm.set_backward(backward_H2O)
     pos_ref = [[ 0.,          0.,          0.     ],
                [ 0.,          0.75545,     0.58895],
                [ 0.,         -0.75545,     0.58895]]
-    results.append(match_values(pm.pos, pos_ref, tol=1e-5))
-    results.append(pm.check_consistency())
+    assert match_values(pm.pos, pos_ref, tol = 1e-5)
+    assert pm.check_consistency()
 
     # test another set of parameters
     pos2 = pm.backward([1.0, 120.0])
     pos2_ref = [[ 0.,          0.,          0. ],
                 [ 0.,          0.8660254,   0.5],
                 [ 0.,         -0.8660254,   0.5]]
-    results.append(match_values(pos2, pos2_ref, tol = 1e-5))
+    assert match_values(pos2, pos2_ref, tol = 1e-5)
 
     # test GeSe (periodic; 5 parameters)
 
     # test when only mappings are provided
 
-    return resolve(results)
 #end def
 add_unit_test(test_parameterstructurebase_class)
 
+
 # Test ParameterStructure class
 def test_parameterstructure_class():
-    results = []
-
     # test empty
     s = ParameterStructure()
     if s.kind=='nexus':  # special tests for nexus Structure
@@ -95,19 +82,15 @@ def test_parameterstructure_class():
     # test copy
     s1 = ParameterStructure(pos = pos_H2O, forward = forward_H2O, label = '1')
     s2 = s1.copy(params = s1.params * 1.5, label = '2')
-    results.append(not match_values(s1.params, s2.params, expect_false = True))
-    results.append(s1.label == '1')
-    results.append(s2.label == '2')
-    results.append(s1.forward_func == s2.forward_func)
-
-    return resolve(results)
+    assert not match_values(s1.params, s2.params, expect_false = True)
+    assert s1.label == '1'
+    assert s2.label == '2'
+    assert s1.forward_func == s2.forward_func
 #end def
 add_unit_test(test_parameterstructure_class)
 
 
 def test_parameterhessian_class():
-    results = []
-
     structure = ParameterStructure(
         forward = forward_H2O,
         backward = backward_H2O,
@@ -120,42 +103,31 @@ def test_parameterhessian_class():
     Lambda_ref = array([1.07015621, 0.42984379])
     dire_ref = array([[ 0.94362832,  0.33100694],
                       [-0.33100694,  0.94362832]])
-    results.append(match_values(dire, dire_ref))
-    results.append(match_values(dir0, dire_ref[0]))
-    results.append(match_values(dir1, dire_ref[1]))
-    results.append(match_values(Lambda, Lambda_ref))
+    assert match_values(dire, dire_ref)
+    assert match_values(dir0, dire_ref[0])
+    assert match_values(dir1, dire_ref[1])
+    assert match_values(Lambda, Lambda_ref)
     # TODO: test conversions
     # TODO: test dummy init
-    try:
-        dir2 = hessian.get_directions(2)
-        results.append(False)
-    except IndexError:
-        results.append(True)
-    #end try
 
-    return resolve(results)
+    with raises(IndexError):
+        dir2 = hessian.get_directions(2)
+    #end with
 #end def
 add_unit_test(test_parameterhessian_class)
 
 
 def test_abstractlinesearch_class():
-    results = []
     ls = AbstractLineSearch()  # test generation
-    try:
+    with raises(AssertionError):
         ls.get_x0()
-    except AssertionError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(AssertionError):
         ls.get_y0()
-    except AssertionError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(AssertionError):
         ls.search()
-    except AssertionError:
-        results.append(True)
-    #end try
+    #end with
 
     ls = AbstractLineSearch(
         grid = [0, 1, 2, 3, 4],
@@ -166,18 +138,16 @@ def test_abstractlinesearch_class():
     x0_ref = [2.0000000000, 0.0]
     y0_ref = [0.3428571428, 0.0]
     fit_ref = [ 0.0,  4.28571429e-01, -1.71428571e+00,  2.05714286e+00]
-    results.append(match_values(x0, x0_ref))
-    results.append(match_values(y0, y0_ref))
-    results.append(match_values(ls.fit, fit_ref))
+    assert match_values(x0, x0_ref)
+    assert match_values(y0, y0_ref)
+    assert match_values(ls.fit, fit_ref)
 
     # TODO: more tests
-    return resolve(results)
 #end def
 add_unit_test(test_abstractlinesearch_class)
 
 
 def test_abstracttargetlinesearch_class():
-    results = []
 
     # generate reference potential
     p = [1.0, 0.5, 0.5, 0.0]
@@ -196,8 +166,6 @@ def test_abstracttargetlinesearch_class():
 
     bias_x, bias_y, bias_tot = ls.compute_bias(grid, values)
     # TODO
-
-    return resolve(results)
 #end def
 add_unit_test(test_abstracttargetlinesearch_class)
 
@@ -211,30 +179,18 @@ def test_linesearch_class():
         pos = pos_H2O)
     hessian = ParameterHessian(hessian_H2O)
 
-    try:
+    with raises(TypeError):
         ls_d0 = LineSearch()
-        results.append(False)
-    except TypeError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(TypeError):
         ls_d0 = LineSearch(structure)
-        results.append(False)
-    except TypeError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(TypeError):
         ls_d0 = LineSearch(structure, hessian)
-        results.append(False)
-    except TypeError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(AssertionError):
         ls_d0 = LineSearch(structure, hessian, d = 1)
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
+    #end with
 
     ls_d0 = LineSearch(structure, hessian, d = 0, R = 1.3)
     ls_d1 = LineSearch(structure, hessian, d = 1, W = 3.0)
@@ -247,26 +203,17 @@ def test_linesearch_class():
     gridW_d0_ref = array('-2.36783828 -1.57855885 -0.78927943  0.          0.78927943  1.57855885 2.36783828'.split(),dtype=float)
     gridR_d1_ref = array('-1.3        -0.86666667 -0.43333333  0.          0.43333333  0.86666667  1.3'.split(),dtype=float)
     gridW_d1_ref = array('-3.73611553 -2.80208665 -1.86805777 -0.93402888  0.          0.93402888  1.86805777  2.80208665  3.73611553'.split(),dtype=float)
-    results.append(match_values(gridR_d0, gridR_d0_ref))
-    results.append(match_values(gridR_d1, gridR_d1_ref))
-    results.append(match_values(gridW_d0, gridW_d0_ref))
-    results.append(match_values(gridW_d1, gridW_d1_ref))
+    assert match_values(gridR_d0, gridR_d0_ref)
+    assert match_values(gridR_d1, gridR_d1_ref)
+    assert match_values(gridW_d0, gridW_d0_ref)
+    assert match_values(gridW_d1, gridW_d1_ref)
 
-    # try negative grid parameters
-    try:
+    with raises(AssertionError):
         grid = ls_d0._make_grid_R(-1.0e-2, 7)
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
-    try:
+    #end with
+    with raises(AssertionError):
         grid = ls_d0._make_grid_W(0.0, 7)
-        results.append(False)
-    except AssertionError:
-        results.append(True)
-    #end try
-
-    return resolve(results)
+    #end with
 #end def
 add_unit_test(test_linesearch_class)
 
@@ -322,10 +269,10 @@ def test_targetlinesearch_class():
     0.475500   -0.010680  -0.036409  0.010680   
     0.500000   -0.012562  -0.045427  0.012562  
     '''.split(),dtype=float).reshape(-1,4)
-    results.append(match_values(Rs, biases_ref[:,0], tol=1e-5))
-    results.append(match_values(biases_x, biases_ref[:,1], tol=1e-5))
-    results.append(match_values(biases_y, biases_ref[:,2], tol=1e-5))
-    results.append(match_values(biases_tot, biases_ref[:,3], tol=1e-5))
+    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
 
     # bias_mix = 0.4, pf4, cubic
     tls0.set_target(grid, values, interpolate_kind = 'cubic')
@@ -353,10 +300,10 @@ def test_targetlinesearch_class():
     0.475500   -0.017304  0.000124   0.017354   
     0.500000   -0.021233  0.000067   0.021259   
     '''.split(),dtype=float).reshape(-1,4)
-    results.append(match_values(Rs, biases_ref[:,0], tol=1e-5))
-    results.append(match_values(biases_x, biases_ref[:,1], tol=1e-5))
-    results.append(match_values(biases_y, biases_ref[:,2], tol=1e-5))
-    results.append(match_values(biases_tot, biases_ref[:,3], tol=1e-5))
+    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
 
     # same as above, but from initialization
     tls4 = TargetLineSearch(
@@ -374,19 +321,15 @@ def test_targetlinesearch_class():
         interpolate_kind = 'cubic',
     )
     biases_x, biases_y, biases_tot = tls4.compute_bias_of(Rs, verbose = False)
-    results.append(match_values(Rs, biases_ref[:,0], tol=1e-5))
-    results.append(match_values(biases_x, biases_ref[:,1], tol=1e-5))
-    results.append(match_values(biases_y, biases_ref[:,2], tol=1e-5))
-    results.append(match_values(biases_tot, biases_ref[:,3], tol=1e-5))
-
-    return resolve(results)
+    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
 #end def
 add_unit_test(test_targetlinesearch_class)
 
 
 def test_parallellinesearch_class():
-    results = []
-
     s = ParameterStructure(
         forward = forward_H2O,
         backward = backward_H2O,
@@ -399,10 +342,10 @@ def test_parallellinesearch_class():
         M = 9,
         window_frac = 0.1,
         noise_frac = 0.0)
-    results.append(not pls.protected)
-    results.append(not pls.generated)
-    results.append(not pls.loaded)
-    results.append(not pls.calculated)
+    assert not pls.protected
+    assert not pls.generated
+    assert not pls.loaded
+    assert not pls.calculated
 
     ls0 = pls.ls_list[0]
     ls1 = pls.ls_list[1]
@@ -412,21 +355,21 @@ def test_parallellinesearch_class():
   0.21984835  0.32977252  0.4396967 '''.split(), dtype=float)
     ls1_grid_ref = array('''-0.55231563 -0.41423672 -0.27615782 -0.13807891  0.          0.13807891
   0.27615782  0.41423672  0.55231563'''.split(), dtype=float)
-    results.append(match_values(ls0.grid, ls0_grid_ref))
-    results.append(match_values(ls1.grid, ls1_grid_ref))
+    assert match_values(ls0.grid, ls0_grid_ref)
+    assert match_values(ls1.grid, ls1_grid_ref)
     # test params
     params0 = pls.get_shifted_params(0)
     params1 = pls.get_shifted_params(1)
     params0_ref = array('''
-     0.74298682 104.17438807
-     0.84671438 104.21077373
-     0.95044195 104.2471594 
-     1.05416951 104.28354506
-     1.15789707 104.31993072
-     1.26162464 104.35631639
-     1.3653522  104.39270205
-     1.46907977 104.42908772
-     1.57280733 104.46547338
+    0.74298682 104.17438807
+    0.84671438 104.21077373
+    0.95044195 104.2471594 
+    1.05416951 104.28354506
+    1.15789707 104.31993072
+    1.26162464 104.35631639
+    1.3653522  104.39270205
+    1.46907977 104.42908772
+    1.57280733 104.46547338
     '''.split(),dtype=float)
     params1_ref = array('''
     1.34071738 103.79875005
@@ -439,8 +382,8 @@ def test_parallellinesearch_class():
     1.02078184 104.71081623
     0.97507677 104.84111139
     '''.split(), dtype=float)
-    results.append(match_values(params0, params0_ref))
-    results.append(match_values(params1, params1_ref))
+    assert match_values(params0, params0_ref)
+    assert match_values(params1, params1_ref)
     # test PES
     values0 = [pes_H2O(params) for params in params0]
     values1 = [pes_H2O(params) for params in params1]
@@ -448,29 +391,27 @@ def test_parallellinesearch_class():
  -0.30724027 -0.24695829 -0.18959033'''.split(), dtype = float)
     values1_ref = array('''-0.3056267  -0.3616872  -0.40068042 -0.42214136 -0.42546898 -0.40989479
  -0.37444477 -0.31789329 -0.23870716'''.split(), dtype = float)
-    results.append(match_values(values0, values0_ref))
-    results.append(match_values(values1, values1_ref))
+    assert match_values(values0, values0_ref)
+    assert match_values(values1, values1_ref)
 
     # test loading without function
     pls.load_results()
-    results.append(not pls.loaded)
+    assert not pls.loaded
     # manually enter values
     pls.load_results(values=[values0, values1])
-    results.append(pls.loaded)
+    assert pls.loaded
 
     ls0_x0_ref = -0.19600534, 0.0
     ls0_y0_ref = -0.48854587, 0.0
     ls1_x0_ref = -0.04318508, 0.0
     ls1_y0_ref = -0.42666697, 0.0
-    results.append(match_values(ls0.get_x0(), ls0_x0_ref))
-    results.append(match_values(ls0.get_y0(), ls0_y0_ref))
-    results.append(match_values(ls1.get_x0(), ls1_x0_ref))
-    results.append(match_values(ls1.get_y0(), ls1_y0_ref))
+    assert match_values(ls0.get_x0(), ls0_x0_ref)
+    assert match_values(ls0.get_y0(), ls0_y0_ref)
+    assert match_values(ls1.get_x0(), ls1_x0_ref)
+    assert match_values(ls1.get_y0(), ls1_y0_ref)
   
     next_params_ref = [0.98723545, 104.21430094]
-    results.append(match_values(pls.get_next_params(), next_params_ref))
-
-    return resolve(results)
+    assert match_values(pls.get_next_params(), next_params_ref)
 #end def
 add_unit_test(test_parallellinesearch_class)
 
@@ -510,33 +451,27 @@ def test_targetparallellinesearch_class():
     0.86648692 104.38052106
     0.77507677 104.64111139
     '''.split(), dtype = float)
-    results.append(match_values(srg.ls(0).grid, grid0_ref))
-    results.append(match_values(srg.ls(1).grid, grid1_ref))
-    results.append(match_values(params0, params0_ref))
-    results.append(match_values(params1, params1_ref))
+    assert match_values(srg.ls(0).grid, grid0_ref)
+    assert match_values(srg.ls(1).grid, grid1_ref)
+    assert match_values(params0, params0_ref)
+    assert match_values(params1, params1_ref)
 
     values0 = [pes_H2O(p) for p in params0]
     values1 = [pes_H2O(p) for p in params1]
     values0_ref = [0.34626073187519557, -0.3652007349305562, -0.49999956687591435, -0.4396197672411492, -0.33029670717647247]
     values1_ref = [-0.31777610098060916, -0.4523302132096337, -0.49999956687591435, -0.4456834605043901, -0.2662664861469014]
-    results.append(match_values(values0, values0_ref))
-    results.append(match_values(values1, values1_ref))
+    assert match_values(values0, values0_ref)
+    assert match_values(values1, values1_ref)
 
     srg.load_results(values = [values0, values1], set_target = True)
 
     bias_d, bias_p = srg.compute_bias(windows = [0.1, 0.05])
     bias_d_ref = [-0.0157014,  0.0096304]
     bias_p_ref = [-0.01800402,  0.00389025]
-    results.append(match_values(bias_d, bias_d_ref))
-    results.append(match_values(bias_p, bias_p_ref))
-
-    # TODO: resampling
-    
-
-    return resolve(results)
+    assert match_values(bias_d, bias_d_ref)
+    assert match_values(bias_p, bias_p_ref)
 #end def
 add_unit_test(test_targetparallellinesearch_class)
-
 
 # test LineSearchIteration class
 
@@ -565,8 +500,6 @@ def analyze_H2O_pes(path, job_data = None, **kwargs):
 #end def
 
 def test_linesearchiteration_class():
-    results = []
-
     # test deterministic line-search iteration
     test_dir = 'tmp/test_pls_h2O/'
     lsi = LineSearchIteration(
@@ -581,29 +514,29 @@ def test_linesearchiteration_class():
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = True)
-    results.append(match_values(lsi.pls_list[-1].structure.params, [  0.89725537, 104.12804938]))
+    assert match_values(lsi.pls_list[-1].structure.params, [  0.89725537, 104.12804938])
 
     # second iteration
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = True)
-    results.append(match_values(lsi.pls_list[-1].structure.params, [  0.93244294, 104.1720672 ]))
+    assert match_values(lsi.pls_list[-1].structure.params, [  0.93244294, 104.1720672 ])
     
     # third iteration
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = False)
-    results.append(match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541]))
+    assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
 
     # start over and load until second iteration
     lsi = LineSearchIteration(path = test_dir)
-    results.append(len(lsi.pls_list) == 2)
+    assert len(lsi.pls_list) == 2
 
     lsi.propagate(write = False)
     lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = False)
-    results.append(match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541]))
+    assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
 
     # TODO: test starting from surrogate
     # TODO: test stochastic line-search
@@ -611,8 +544,5 @@ def test_linesearchiteration_class():
     # remove test directory
     from shutil import rmtree
     rmtree(test_dir)
-
-    return resolve(results)
 #end def
 add_unit_test(test_linesearchiteration_class)
-

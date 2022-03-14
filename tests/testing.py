@@ -21,7 +21,12 @@ def run_one_test(func, t_this, t_max, R = None):
             return
         #end if
     #end if
-    res = func()
+    try:
+        func()
+        res = True
+    except AssertionError:
+        res = False
+    #end try
     status = '    OK' if res else 'FAILED'
     print('  {:>4d}/{:<4d} {:40s} {:6s}'.format(t_this + 1, t_max, name[:40], status))
 #end def
@@ -63,15 +68,4 @@ def match_values(val1, val2, tol = 1e-8, expect_false = False):
         #end if
     #end for
     return not failed
-#end def
-
-def resolve(results):
-    if all(results):
-        return True
-    else:
-        if gverbose:
-            print(results)
-        #end if
-        return False
-    #end if
 #end def
