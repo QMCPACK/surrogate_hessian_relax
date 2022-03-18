@@ -457,10 +457,10 @@ def test_targetlinesearch_class():
     x2, y2 = tls4.maximize_sigma(epsilon= 0.02, verbose = False)
     x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
     x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
-    assert match_values([x1, y1], (0.05, 0.00265625))
-    assert match_values([x2, y2], (0.066884763, 0.005))
-    assert match_values([x3, y3], (0.100327144, 0.01))
-    assert match_values([x4, y4], (0.100327144, 0.01359375))
+    assert match_values([x1, y1], (0.05, 0.0025))
+    assert match_values([x2, y2], (0.06055297702, 0.005))
+    assert match_values([x3, y3], (0.10032714486, 0.01))
+    assert match_values([x4, y4], (0.11704833567, 0.015))
     assert not tls4.optimized
     tls4.optimize(epsilon= 0.05, verbose = False)
     x5, y5, eps5 = tls4.W_opt, tls4.sigma_opt, tls4.epsilon
@@ -617,10 +617,10 @@ def test_targetparallellinesearch_class():
     assert match_values(bias_p, bias_p_ref, tol = 1e-5)
 
     srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False)
-    assert match_values(srg.windows, [0.1034483548381337, 0.06556247311750507])
-    assert match_values(srg.noises, [0.002828665952605218, 0.00245859274190644])
-    assert match_values(srg.error_p, [0.01955647, 0.02292969])
-    assert match_values(srg.error_d, [0.02438087, 0.01628842])
+    assert match_values(srg.windows, [0.1034483548381337, 0.05736716397781694])
+    assert match_values(srg.noises, [0.0025862088709533424, 0.00245859274190644])
+    assert match_values(srg.error_p, [0.02419722806842793, 0.017208686468267183])
+    assert match_values(srg.error_d, [0.01922068298064178, 0.023883155920223293])
 #end def
 add_unit_test(test_targetparallellinesearch_class)
 
@@ -637,6 +637,7 @@ def test_linesearchiteration_class():
 
     # test deterministic line-search iteration
     test_dir = 'tmp/test_pls_h2O/'
+    rmtree(test_dir, ignore_errors = True)
     lsi = LineSearchIteration(
         path = test_dir,
         hessian = h,
@@ -671,8 +672,9 @@ def test_linesearchiteration_class():
 
     # test starting from surrogate
     test_dir = 'tmp/test_pls_srg_H2O/'
+    rmtree(test_dir, ignore_errors = True)
     srg = get_surrogate_H2O()
-    srg.optimize(windows = [0.1, 0.05], noises = [0.005, 0.005], Gs = Gs_N200_M7.reshape(2, -1, 5))
+    srg.optimize(windows = [0.1, 0.05], noises = [0.005, 0.005], M = 5, Gs = Gs_N200_M7.reshape(2, -1, 5))
     lsi = LineSearchIteration(
         path = test_dir,
         surrogate = srg,

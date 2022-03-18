@@ -1311,7 +1311,6 @@ class LineSearch(AbstractLineSearch):
 
 
 # Class for error scan line-search
-#class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
 class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
 
     R_max = None  # maximum R available for target evaluation
@@ -1515,9 +1514,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         epsilon,
         allow_init = True,  # allow initialization
         fix_res = True,  # try to fix bad sigma resolution
-        fix_res_max = 4,
-        fix_pes = False,  # allow extending the target PES
-        fix_pes_max = 4,
+        fix_res_max = 10,
         N = 500,
         verbose = True,
         low_thr = 0.9,
@@ -1535,27 +1532,16 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         if 'not_found' in errs:
             raise AssertionError('W, sigma not found for epsilon = {}. Check minimum bias and raise epsilon.'.format(epsilon))
         #end if
-        if fix_pes:
-            f_pes = 0
-            while 'x_underflow' in errs and f_pes < fix_pes_max:
-                f_pes += 1
+        if fix_res:
+            f_res = 0
+            while 'x_underflow' in errs and f_res < fix_res_max:
+                f_res += 1
                 self.insert_W_data(W / 2)
                 if verbose:
                     print('W underflow: added W = {} to resampling grid'.format((W / 2).round(7)))
                 #end if
                 W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
             #end while
-            while 'x_overflow' in errs and f_pes < fix_pes_max:
-                f_pes += 1
-                self.insert_W_data(2 * W)
-                if verbose:
-                    print('W overflow: added W = {} to resampling grid'.format((2 * W).round(7)))
-                #end if
-                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
-            #end while
-        #end if
-        if fix_res:
-            f_res = 0
             while 'y_underflow' in errs and f_res < fix_res_max:
                 f_res += 1
                 self.insert_sigma_data(sigma / 2)
@@ -1573,12 +1559,22 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
                 W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
             #end while
             while 'low_res' in errs and f_res < fix_res_max:
-                f_res += 1
+                f_res += 3
                 Wi, Si = self._argmax_y(self.E_mat, epsilon)
                 S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
+                W_lo = (self.W_mat[0, Wi] + self.W_mat[0, Wi - 1]) / 2
+                self.insert_W_data(W_lo)
                 self.insert_sigma_data(S_new)
                 if verbose:
-                    print('Sigma low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
+                    print('low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
+                    print('low-res: added W = {} to resampling grid'.format(W_lo.round(7)))
+                #end if
+                if 'x_overflow' not in errs:
+                    W_hi = (self.W_mat[0, Wi] + self.W_mat[0, Wi + 1]) / 2
+                    self.insert_W_data(W_hi)
+                    if verbose:
+                        print('low-res: added W = {} to resampling grid'.format(W_hi.round(7)))
+                    #end if
                 #end if
                 W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
             #end while
@@ -1608,7 +1604,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         elif yi == E.shape[0] - 1:
             errs.append('y_overflow')
         #end if
-        if E0 / epsilon > low_thr:
+        if E0 / epsilon < low_thr:
             errs.append('low_res')
         #end if
         return x0, y0, E0, errs
@@ -1667,6 +1663,7 @@ class ParallelLineSearch():
         noises = None,
         path = 'pls',
         M = 7,
+        fit_kind = 'pf3',
         x_unit = 'A',
         E_unit = 'Ry',
         fraction = 0.025,
@@ -1685,6 +1682,7 @@ class ParallelLineSearch():
         self.guess_windows(windows, window_frac)
         self.set_noises(noises)
         self.M = M
+        self.fit_kind = fit_kind
         self.ls_list = self._generate_ls_list(**kwargs)
     #end def
 
@@ -1745,6 +1743,7 @@ class ParallelLineSearch():
                 d = d,
                 W = window,
                 M = self.M,
+                fit_kind = self.fit_kind,
                 sigma = noise,
                 **kwargs)
             ls_list.append(ls)
@@ -1760,6 +1759,7 @@ class ParallelLineSearch():
             'windows': self.windows,
             'noises': self.noises,
             'M': self.M,
+            'fit_kind': self.fit_kind,
             'job_func': self.job_func,
             'analyze_func': self.analyze_func,
         }
@@ -1935,7 +1935,6 @@ class TargetParallelLineSearch(ParallelLineSearch):
     ):
         ParallelLineSearch.__init__(self, structure = structure, hessian = hessian, **kwargs)
         self.set_targets(targets)
-        self.set_tolerances(**kwargs)
         self.ls_list = self._generate_tls_list(**kwargs)
     #end def
 
@@ -1949,17 +1948,6 @@ class TargetParallelLineSearch(ParallelLineSearch):
         self.targets = array(targets)
     #end def
 
-    def set_tolerances(
-        self,
-        epsilon = None,
-        epsilon_d = None,
-        **kwargs
-    ):
-        # TODO: assertions
-        self.epsilon = epsilon
-        self.epsilon_d = epsilon_d
-    #end def
-
     def optimize(
         self,
         windows = None,
@@ -1967,22 +1955,29 @@ class TargetParallelLineSearch(ParallelLineSearch):
         epsilon_p = None,
         epsilon_d = None,
         temperature = None,
-        mixer_func = None,
         **kwargs,
     ):
         if windows is not None and noises is not None:
             self.optimize_windows_noises(windows, noises, **kwargs)
         elif temperature is not None:
             self.optimize_thermal(temperature, **kwargs)
+        elif epsilon_d is not None:
+            self.optimize_epsilon_d(epsilon_d, **kwargs)
+        elif epsilon_p is not None:
+            self.optimize_epsilon_p(epsilon_p, **kwargs)
         else:
             raise AssertionError('Not implemented')
         #end if
     #end def
 
-    def optimize_windows_noises(self, windows, noises, Gs = None, **kwargs):
+    def optimize_windows_noises(self, windows, noises, Gs = None, fit_kind = None, M = None, **kwargs):
         Gs_d = Gs if Gs is not None else self.D * [None]
+        M = M if M is not None else self.M
+        fit_kind = fit_kind if fit_kind is not None else self.fit_kind
         # TODO: check the results
-        self.error_p, self.error_d = self._resample_errors(windows, noises, Gs = Gs_d)
+        self.error_d, self.error_p = self._resample_errors(windows, noises, Gs = Gs_d, M = M, fit_kind = fit_kind, **kwargs)
+        self.M = M
+        self.fit_kind = fit_kind
         self.windows = windows
         self.noises = noises
         self.optimized = True
@@ -1991,14 +1986,30 @@ class TargetParallelLineSearch(ParallelLineSearch):
     def optimize_thermal(
         self,
         temperature,
+        **kwargs,
+    ):
+        assert temperature > 0, 'Temperature must be positive'
+        self.optimize_epsilon_d(self._get_thermal_epsilon_d(temperature), **kwargs)
+    #end def
+
+    def optimize_epsilon_p(
+        self,
+        epsilon_p,
+        #mixer_func = broyden1,
+        **kwargs,
+    ):
+        pass 
+    #end def
+
+    def optimize_epsilon_d(
+        self,
+        epsilon_d,
         Gs = None,
         verbose = True,
         **kwargs,
     ):
-        assert temperature > 0, 'Temperature must be positive'
         Gs_d = Gs if Gs is not None else self.D * [None]
-        assert len(Gs) == self.D, 'Must provide list of Gs equal to the number of directions'
-        epsilon_d = self._get_thermal_epsilon_d(temperature)
+        assert len(Gs_d) == self.D, 'Must provide list of Gs equal to the number of directions'
         windows, noises = [], []
         for epsilon, ls, Gs in zip(epsilon_d, self.ls_list, Gs_d):
             ls.optimize(epsilon, verbose = verbose, Gs = Gs, **kwargs)
@@ -2006,6 +2017,11 @@ class TargetParallelLineSearch(ParallelLineSearch):
             noises.append(ls.sigma_opt)
         #end for
         self.optimize_windows_noises(windows, noises, Gs = Gs_d)
+        self.epsilon_d = epsilon_d
+    #end def
+
+    def get_Gs(self):
+        return [ls.Gs for ls in self.ls_list]
     #end def
 
     def validate(self, N = 500, verbose = False, thr = 1.15):
@@ -2034,7 +2050,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
             valid_this = ratio < thr
             valid = valid and valid_this
             if verbose:
-                print('  {:<2d}  {:<10f}  {:<10f}  {:<5f}'.format(p, ref, corr, ratio))
+                print('  {:<2d}  {:<10f}  {:<10f}  {:<5f}'.format(d, ref, corr, ratio))
             #end if
         #end for
         return valid
@@ -2098,16 +2114,16 @@ class TargetParallelLineSearch(ParallelLineSearch):
     #end def
 
     # based on windows, noises
-    def _resample_errorbars(self, windows, noises, Gs = None, N = None, **kwargs):
+    def _resample_errorbars(self, windows, noises, Gs = None, N = None, M = None, fit_kind = None, **kwargs):
         Gs_d = self.D * [None] if Gs is None else Gs  # provide correlated sampling
-        biases_d, biases_p = self._compute_bias(windows, **kwargs)  # biases per direction, parameter
+        biases_d, biases_p = self._compute_bias(windows, fit_kind = fit_kind, **kwargs)  # biases per direction, parameter
         x0s_d, x0s_p = [], []  # list of distributions of minima per direction, parameter
         errorbar_d, errorbar_p = [], []  # list of statistical errorbars per direction, parameter
         for tls, W, noise, bias_d, Gs in zip(self.ls_list, windows, noises, biases_d, Gs_d):
-            grid, M = tls._figure_out_grid(W = W)
+            grid, M = tls._figure_out_grid(W = W, M = M)
             values = tls.evaluate_target(grid)
             errors = M * [noise]
-            x0s = tls.get_x0_distribution(grid = grid, values = values, errors = errors, Gs = Gs, N = N)
+            x0s = tls.get_x0_distribution(grid = grid, values = values, errors = errors, Gs = Gs, N = N, fit_kind = fit_kind)
             x0s_d.append(x0s)
             errorbar_d.append(get_fraction_error(x0s - bias_d, self.fraction, **kwargs)[1])
         #end for
