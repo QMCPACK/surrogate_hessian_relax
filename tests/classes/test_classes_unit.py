@@ -573,7 +573,7 @@ def test_targetparallellinesearch_class():
     srg = TargetParallelLineSearch(
         structure = s,
         hessian = h,
-        targets = [0.01,-0.01],
+        targets = [0.01, -0.01],
         M = 5,
         window_frac = 0.1)
 

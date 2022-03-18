@@ -6,6 +6,8 @@ from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan
 from numpy import random, argsort, isscalar, ndarray, polyfit, polyval
 from numpy import insert, append, where, polyder, argmin, median, argmax
 from scipy.interpolate import interp1d, PchipInterpolator
+from scipy.optimize import broyden1
+from functools import partial
 from textwrap import indent
 from copy import deepcopy
 
@@ -1436,10 +1438,13 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         sigma_num = 10,
         sigma_max = None,
         N = None,
+        M = None,
+        fit_kind = None,
         Gs = None,
         **kwargs
     ):
         if Gs is None:
+            self.M = M if M is not None else self.M
             if N is None:
                 Gs = self.Gs
             else:
@@ -1449,19 +1454,22 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
             #end if
         else:
             self.Gs = Gs
+            M = len(Gs[0])
         #end if
+        self.fit_kind = fit_kind if fit_kind is not None else self.fit_kind
         W_max = W_max if W_max is not None else self.W_max   
         sigma_max = sigma_max if sigma_max is not None else W_max/20
         # starting window array: sigma = 0, so only bias
         Ws = linspace(0.0, W_max, W_num)
         errors = array(self.M * [0.0])
-        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = Gs) for W in Ws]
+        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = Gs, fit_kind = fit_kind) for W in Ws]
+        # TODO: what about fit_kind?
         self.E_mat = array([E_this])
         self.W_mat = array([Ws])
         self.S_mat = array([W_num * [0.0]])
         # append the rest
         for sigma in linspace(0.0, sigma_max, sigma_num)[1:]:
-            self._insert_sigma_data(sigma, Gs = Gs)
+            self._insert_sigma_data(sigma, Gs = Gs, fit_kind = fit_kind)
         #end for
         self.resampled = True
     #end def
@@ -1580,6 +1588,19 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
             #end while
         #end if
         return W, sigma
+    #end def
+
+    def interpolate_max_sigma(self, epsilon, low_thr = 0.9, **kwargs):
+        W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+        # TODO: bilinear interpolation
+        if any([err in errs for err in ['y_overflow', 'x_underflow']]):
+            return W, sigma
+        else:
+            Wi, Si = self._argmax_y(self.E_mat, epsilon)
+            a = (self.E_mat[Si + 1, Wi] - epsilon) / (self.E_mat[Si, Wi] - epsilon)
+            sigma = a * (self.S_mat[Si + 1, Wi] - self.S_mat[Si + 1, Wi])
+            return W, sigma
+        #end if
     #end def
 
     def _maximize_y(self, X, Y, E, epsilon, low_thr = 0.9):
@@ -1970,17 +1991,20 @@ class TargetParallelLineSearch(ParallelLineSearch):
         #end if
     #end def
 
-    def optimize_windows_noises(self, windows, noises, Gs = None, fit_kind = None, M = None, **kwargs):
-        Gs_d = Gs if Gs is not None else self.D * [None]
+    def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, **kwargs):
         M = M if M is not None else self.M
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
-        # TODO: check the results
-        self.error_d, self.error_p = self._resample_errors(windows, noises, Gs = Gs_d, M = M, fit_kind = fit_kind, **kwargs)
+        self.error_d, self.error_p = self._errors_windows_noises(windows, noises, M = M, fit_kind = fit_kind, **kwargs)
         self.M = M
         self.fit_kind = fit_kind
         self.windows = windows
         self.noises = noises
         self.optimized = True
+    #end def
+
+    def _errors_windows_noises(self, windows, noises, Gs = None, fit_kind = None, M = None, **kwargs):
+        Gs_d = Gs if Gs is not None else self.D * [None]
+        return self._resample_errors(windows, noises, Gs = Gs_d, M = M, fit_kind = fit_kind, **kwargs)
     #end def
 
     def optimize_thermal(
@@ -1992,13 +2016,16 @@ class TargetParallelLineSearch(ParallelLineSearch):
         self.optimize_epsilon_d(self._get_thermal_epsilon_d(temperature), **kwargs)
     #end def
 
+    # Current: broyden1, probably fails
+    # TODO: fixed-point method
     def optimize_epsilon_p(
         self,
         epsilon_p,
-        #mixer_func = broyden1,
         **kwargs,
     ):
-        pass 
+        epsilon_d0 = epsilon_p  # TODO: fix
+        validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
+        epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
     #end def
 
     def optimize_epsilon_d(
@@ -2012,12 +2039,27 @@ class TargetParallelLineSearch(ParallelLineSearch):
         assert len(Gs_d) == self.D, 'Must provide list of Gs equal to the number of directions'
         windows, noises = [], []
         for epsilon, ls, Gs in zip(epsilon_d, self.ls_list, Gs_d):
-            ls.optimize(epsilon, verbose = verbose, Gs = Gs, **kwargs)
+            ls.optimize(epsilon, Gs = Gs, **kwargs)
             windows.append(ls.W_opt)
             noises.append(ls.sigma_opt)
         #end for
-        self.optimize_windows_noises(windows, noises, Gs = Gs_d)
+        self.optimize_windows_noises(windows, noises, Gs = Gs_d, **kwargs)
         self.epsilon_d = epsilon_d
+    #end def
+
+    def _windows_noises_of_epsilon_d(
+        self,
+        epsilon_d,
+        **kwargs,
+    ):
+        windows, noises = [], []
+        for epsilon, ls, in zip(epsilon_d, self.ls_list):
+            #W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)
+            W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
+            windows.append(W_opt)
+            noises.append(sigma_opt)
+        #end for
+        return windows, noises
     #end def
 
     def get_Gs(self):
@@ -2125,13 +2167,13 @@ class TargetParallelLineSearch(ParallelLineSearch):
             errors = M * [noise]
             x0s = tls.get_x0_distribution(grid = grid, values = values, errors = errors, Gs = Gs, N = N, fit_kind = fit_kind)
             x0s_d.append(x0s)
-            errorbar_d.append(get_fraction_error(x0s - bias_d, self.fraction, **kwargs)[1])
+            errorbar_d.append(get_fraction_error(x0s - bias_d, self.fraction)[1])
         #end for
         # parameter errorbars
         for x0 in array(x0s_d).T:
             x0s_p.append(self._calculate_params_next(-biases_p, self.directions, x0))  # TODO: could this be vectorized?
         #end for
-        errorbar_p = [get_fraction_error(x0s, self.fraction, **kwargs)[1] for x0s in array(x0s_p).T]
+        errorbar_p = [get_fraction_error(x0s, self.fraction)[1] for x0s in array(x0s_p).T]
         return array(errorbar_d), array(errorbar_p)
     #end def
 
@@ -2141,6 +2183,12 @@ class TargetParallelLineSearch(ParallelLineSearch):
         error_d = abs(bias_d) + errorbar_d
         error_p = abs(bias_p) + errorbar_p
         return error_d, error_p
+    #end def
+
+    def _resample_errors_p_of_d(self, epsilon_d, target = 0.0, **kwargs):
+        windows, noises = self._windows_noises_of_epsilon_d(epsilon_d, **kwargs)
+        print(epsilon_d, self._resample_errors(windows, noises, **kwargs)[1] - target)
+        return self._resample_errors(windows, noises, **kwargs)[1] - target
     #end def
 
 #end class
