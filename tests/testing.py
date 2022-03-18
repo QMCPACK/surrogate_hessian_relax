@@ -14,27 +14,32 @@ def add_integration_test(func):
     integration_tests.append(func)
 #end def
 
-def run_one_test(func, t_this, t_max, R = None):
+def run_one_test(func, t_this, t_max, R = None, pass_error = False):
     name = func.__name__
     if R is not None:
         if R not in name:
             return
         #end if
     #end if
-    try:
+    if pass_error:
         func()
         res = True
-    except AssertionError:
-        res = False
-    #end try
+    else:
+        try:
+            func()
+            res = True
+        except AssertionError:
+            res = False
+        #end try
+    #end if
     status = '    OK' if res else 'FAILED'
     print('  {:>4d}/{:<4d} {:40s} {:6s}'.format(t_this + 1, t_max, name[:40], status))
 #end def
 
-def run_tests(tests, R = None):
+def run_tests(tests, R = None, pass_error = False):
     t_max = len(tests)
     for t_this, test in enumerate(tests):
-        run_one_test(test, t_this, t_max, R = R)
+        run_one_test(test, t_this, t_max, R = R, pass_error = pass_error)
     #end for
 #end def
 

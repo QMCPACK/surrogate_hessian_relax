@@ -2,14 +2,12 @@
 
 import pickle
 from os import makedirs
-from numpy import array, diag, linalg, linspace, savetxt
-from numpy import random, argsort, isscalar, ndarray
+from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan
+from numpy import random, argsort, isscalar, ndarray, polyfit, polyval
+from numpy import insert, append, where, polyder, argmin, median, argmax
 from scipy.interpolate import interp1d, PchipInterpolator
+from textwrap import indent
 from copy import deepcopy
-
-from surrogate_tools import W_to_R, R_to_W, get_min_params
-from surrogate_tools import get_fraction_error
-
 
 Bohr = 0.5291772105638411  # A
 Ry = 13.605693012183622  # eV
@@ -17,6 +15,7 @@ Hartree = 27.211386024367243  # eV
 
 
 def match_to_tol(val1, val2, tol = 1e-10):
+    """Match the values of two vectors. True if all match, False if not."""
     assert len(val1) == len(val2), 'lengths of val1 and val2 do not match' + str(val1) + str(val2)
     for v1, v2 in zip(val1.flatten(), val2.flatten()):  # TODO: maybe vectorize?
         if abs(v2 - v1) > tol:
@@ -26,11 +25,63 @@ def match_to_tol(val1, val2, tol = 1e-10):
     return True
 #end def
 
-# TODO: currently not used
+# Important function to resolve the local minimum of a curve
+def get_min_params(x_n, y_n, pfn = 3, **kwargs):
+    pf = polyfit(x_n, y_n, pfn)
+    r = roots(polyder(pf))
+    x_mins  = list(r[r.imag == 0].real)
+    if len(x_mins) > 0:
+        y_mins = polyval(pf, array(x_mins))
+        imin = argmin(y_mins)
+        y0 = y_mins[imin]
+        x0 = x_mins[imin]
+    else:
+        y0 = nan
+        x0 = nan
+    #end if
+    return x0, y0, pf
+#end def
+
+# Map W to R, given H
+def W_to_R(W, H):
+    R = (2 * W / H)**0.5
+    return R
+#end def
+
+
+# Map R to W, given H
+def R_to_W(R, H):
+    W = 0.5 * H * R**2
+    return W
+#end def
+
+
+# Estimate conservative (maximum) uncertainty from a distribution based on a percentile fraction
+def get_fraction_error(data, fraction, both = False):
+    if fraction < 0.0 or fraction > 0.5:
+        raise ValueError('Invalid fraction')
+    #end if
+    data   = array(data, dtype = float)
+    data   = data[~isnan(data)]        # remove nan
+    ave    = median(data)
+    data   = data[data.argsort()] - ave  # sort and center
+    pleft  = abs(data[int((len(data) - 1) * fraction)])
+    pright = abs(data[int((len(data) - 1) * (1 - fraction))])
+    if both:
+        err = [pleft, pright]
+    else:
+        err = max(pleft, pright)
+    #end if
+    return ave, err
+#end def
+
+
+
 class StructuralParameter():
+    """Class for representing a physical structural parameter"""
     kind = None
     value = None
-    label = None,
+    label = None
     unit = None
 
     def __init__(
@@ -52,9 +103,8 @@ class StructuralParameter():
 #end class
 
 
-# Base class for structural parameter mappings
 class ParameterStructureBase():
-
+    """Base class for representing a mapping between reducible positions (pos, axes) and irreducible parameters."""
     forward_func = None  # mapping function from pos to params
     backward_func = None  # mapping function from params to pos
     pos = None  # real-space position
@@ -79,28 +129,25 @@ class ParameterStructureBase():
         backward = None,  # params to pos
         pos = None,
         axes = None,
+        elem = None,
         params = None,
         params_err = None,
-        elem = None,
         periodic = False,
-        dim = 3,
         value = None,
         error = None,
         label = None,
         unit = None,
+        dim = 3,
+        translate = True,  # attempt to translate pos
         **kwargs,
     ):
         self.dim = dim
         self.periodic = periodic
         self.label = label
-        if forward is not None:
-            self.set_forward(forward)
-        #end if
-        if backward is not None:
-            self.set_backward(backward)
-        #end if
+        self.set_forward(forward)
+        self.set_backward(backward)
         if pos is not None:
-            self.set_pos(pos)
+            self.set_position(pos, translate = translate)
         #end if
         if axes is not None:
             self.set_axes(axes)
@@ -108,18 +155,18 @@ class ParameterStructureBase():
         if params is not None:
             self.set_params(params, params_err)
         #end if
-        if elem is not None:
-            self.set_elem(elem)
-        #end if
         if value is not None:
             self.set_value(value, error)
+        #end if
+        if elem is not None:
+            self.set_elem(elem)
         #end if
     #end def
 
     def set_forward(self, forward):
         self.forward_func = forward
         if self.pos is not None:
-            self._set_pos(self.pos)  # rerun for forward mapping
+            self.forward()
         #end if
         self.check_consistency()
     #end def
@@ -127,24 +174,24 @@ class ParameterStructureBase():
     def set_backward(self, backward):
         self.backward_func = backward
         if self.params is not None:
-            self.set_params(self.params)  # rerun for backward mapping
+            self.backward()
         #end if
         self.check_consistency()
     #end def
 
-    def set_pos(self, pos):
+    # similar but alternative to Nexus function set_pos()
+    def set_position(self, pos, translate = True):
         pos = array(pos)
         assert pos.size % self.dim == 0, 'Position vector inconsistent with {} dimensions!'.format(self.dim)
-        self._set_pos(pos)
-        if self.forward_func is not None:
-            self.params = self.forward()
-        #end if
-        self.unset_value()
-        self.check_consistency()
-    #end def
-
-    def _set_pos(self, pos):
         self.pos = array(pos).reshape(-1, self.dim)
+        if self.forward_func is not None:
+            self.forward()
+            if translate and self.backward_func is not None:
+                self.backward()
+            #end if
+        #end if
+        self.unset_value()  # setting pos will unset value
+        self.check_consistency()
     #end def
 
     def set_axes(self, axes):
@@ -155,7 +202,7 @@ class ParameterStructureBase():
             assert axes.size == self.dim**2, 'Axes vector inconsistent with {} dimensions!'.format(self.dim)
             self.axes = array(axes).reshape(self.dim, self.dim)
         #end if
-        self.unset_value()
+        self.unset_value()  # setting aces will unset value
         self.check_consistency()
     #end def
 
@@ -167,7 +214,7 @@ class ParameterStructureBase():
         self.params = array(params).flatten()
         self.params_err = params_err
         if self.backward_func is not None:
-            self._set_pos(self.backward(self.params))
+            self.backward()
         #end if
         self.unset_value()
         self.check_consistency()
@@ -185,12 +232,22 @@ class ParameterStructureBase():
     #end def
 
     def forward(self, pos = None, axes = None):
+        """Propagate current structure from pos, axes (current, unless provided) to params"""
         assert self.forward_func is not None, 'Forward mapping has not been supplied'
         if pos is None:
             assert self.pos is not None, 'Must supply position for forward mapping'
             pos = self.pos
+            axes = self.axes
+        else:
+            self.pos = pos
+            self.axes = axes
         #end if
         assert not self.periodic or self.axes is not None, 'Must supply axes for periodic forward mappings'
+        self.params = self._forward(pos, axes)
+    #end def
+
+    def _forward(self, pos, axes = None):
+        """Perform forward mapping: return new params"""
         if self.periodic:
             return array(self.forward_func(array(pos), axes))
         else:
@@ -199,16 +256,24 @@ class ParameterStructureBase():
     #end def
 
     def backward(self, params = None):
+        """Propagate current structure from params (current, unless provided) to pos, axes"""
         assert self.backward_func is not None, 'Backward mapping has not been supplied'
         if params is None:
             assert self.params is not None, 'Must supply params for backward mapping'
             params = self.params
+        else:
+            self.params = params
         #end if
+        self.pos, self.axes = self._backward(params)
+    #end def
+
+    def _backward(self, params):
+        """Perform backward mapping: return new pos, axes"""
         if self.periodic:
             pos, axes = self.backward_func(array(params))
             return array(pos).reshape(-1, 3), array(axes).reshape(-1, 3)
         else:
-            return array(self.backward_func(array(params)))
+            return array(self.backward_func(array(params))), None
         #end if
     #end def
 
@@ -218,64 +283,64 @@ class ParameterStructureBase():
         pos = None,
         axes = None,
         tol = 1e-7,
+        verbose = False,
     ):
+        """Check consistency of the current or provided set of positions and params."""
+        if pos is None and params is None:
+            # if neither params nor pos are given, check and store internal consistency
+            if self.pos is None and self.params is None:
+                # without either set of coordinates the mapping is inconsistent
+                consistent = False
+            else:
+                consistent = self._check_consistency(self.params, self.pos, self.axes, tol)
+            #end if
+            self.consistent = consistent
+            if consistent:
+                self.forward()
+                self.backward()
+            #end if
+        else:
+            consistent = self._check_consistency(params, pos, axes, tol)
+        #end if
+        return consistent
+    #end def
+
+    def _check_consistency(self, params, pos, axes, tol = 1e-7):
+        """Check consistency of present forward-backward mapping.
+        If params or pos/axes are supplied, check at the corresponding points. If not, check at the present point.
+        """
         if self.forward_func is None or self.backward_func is None:
             return False
         #end if
         if pos is None and params is None:
-            # if neither params nor pos are given, check internal consistency
-            self.consistent = False
-            if self.pos is None and self.params is None:
-                # without either set of coordinates the mapping is inconsistent
-                return False
-            elif self.params is not None:
-                if not self._check_params_consistency(self.params):
-                    return False
-                #end if
-                if self.periodic:
-                    pos, axes = self.backward()
-                    if self._check_pos_consistency(pos, axes):
-                        self._set_pos(pos)
-                        self.consistent = True
-                    #end if
-                else:
-                    pos = self.backward()
-                    if self._check_pos_consistency(pos):
-                        self._set_pos(pos)
-                        self.consistent = True
-                    #end if
-                #end if
-            else:  # self.pos is not None
-                if not self._check_pos_consistency(self.pos, self.axes):
-                    return False
-                #end if
-                params = self.forward()
-                if self._check_params_consistency(params):
-                    self.params = params
-                    self.consistent = True
-                #end if
-            #end if
-            return self.consistent
+            return False
         elif pos is not None and params is not None:
             # if both params and pos are given, check their internal consistency
-            params_new = self.forward(pos)
-            pos_new = self.backward(params)
-            return match_to_tol(params, params_new, tol) and match_to_tol(pos, pos_new, tol)
+            pos = array(pos)
+            params = array(params)
+            axes = array(axes)
+            params_new = self._forward(pos, axes)
+            pos_new, axes_new = self._backward(params)
+            if self.periodic:
+                return match_to_tol(params, params_new, tol) and match_to_tol(pos, pos_new, tol) and match_to_tol(axes, axes_new, tol)
+            else:
+                return match_to_tol(params, params_new, tol) and match_to_tol(pos, pos_new, tol)
+            #end if
         elif params is not None:
-            return self._check_params_consistency(params)
+            return self._check_params_consistency(array(params), tol)
         else:  # pos is not None
-            return self._check_pos_consistency(pos, axes)
+            return self._check_pos_consistency(array(pos), array(axes), tol)
         #end if
     #end def
 
-    def _check_pos_consistency(self, pos, axes = None, tol = 1e-7):
+    def _check_pos_consistency(self, pos, axes, tol = 1e-7):
         if self.periodic:
-            params = self.forward(pos, axes)
-            pos_new, axes_new = self.backward(params)
+            params = self._forward(pos, axes)
+            pos_new, axes_new = self._backward(params)
             consistent = match_to_tol(pos, pos_new, tol) and match_to_tol(axes, axes_new, tol)
         else:
-            params = self.forward(pos)
-            pos_new = self.backward(params)
+            params = self._forward(pos, axes)
+            pos_new, axes_new = self._backward(params)
             consistent = match_to_tol(pos, pos_new, tol)
         #end if
         return consistent
@@ -283,11 +348,11 @@ class ParameterStructureBase():
 
     def _check_params_consistency(self, params, tol = 1e-7):
         if self.periodic:
-            pos, axes = self.backward(params)
-            params_new = self.forward(pos, axes)
+            pos, axes = self._backward(params)
+            params_new = self._forward(pos, axes)
         else:
-            pos = self.backward(params)
-            params_new = self.forward(pos)
+            pos, axes = self._backward(params)
+            params_new = self._forward(pos, axes)
         #end if
         return match_to_tol(params, params_new, tol)
     #end def
@@ -298,14 +363,14 @@ class ParameterStructureBase():
         #end if
         dpos = array(dpos)
         assert self.pos.size == dpos.size
-        return self.pos + dpos
+        return (self.pos.flatten() + dpos.flatten()).reshape(-1, self.dim)
     #end def
 
     def shift_pos(self, dpos):
+        assert self.pos is not None, 'position has not been set'
         self.pos = self._shift_pos(dpos)
-        if self.consistent:
-            self.forward()
-        #end if
+        self.forward()
+        self.check_consistency()
     #end def
 
     def _shift_params(self, dparams):
@@ -318,10 +383,10 @@ class ParameterStructureBase():
     #end def
 
     def shift_params(self, dparams):
+        assert self.params is not None, 'params has not been set'
         self.params = self._shift_params(dparams)
-        if self.consistent:
-            self.backward()
-        #end if
+        self.backward()
+        self.check_consistency()
     #end def
 
     def copy(
@@ -349,7 +414,6 @@ class ParameterStructureBase():
     #end def
 
     def pos_difference(self, pos_ref):
-        # TODO: assertions
         dpos = pos_ref.reshape(-1, 3) - self.pos
         return dpos
     #end def
@@ -360,7 +424,8 @@ class ParameterStructureBase():
         for p in range(len(self.params)):
             params_this = self.params.copy()
             params_this[p] += dp
-            dpos = self.pos_difference(self.backward(params_this))
+            pos, axes = self._backward(params_this)
+            dpos = self.pos_difference(pos)
             jacobian.append(dpos.flatten() / dp)
         #end for
         return array(jacobian).T
@@ -404,7 +469,19 @@ class ParameterStructureBase():
                 string += '\n    {:2s} {:<6f} {:<6f} {:<6f}'.format(elem, pos[0], pos[1], pos[2])
             #end for
         #end if
-        # TODO: periodicity, cell
+        if self.periodic:
+            string += '\n  periodic: yes'
+            if self.axes is None:
+                string += '\n  axes: not set'
+            else:
+                string += '\n  axes:'
+                for axes in self.axes:
+                    string += '\n    {:<6f} {:<6f} {:<6f}'.format(axes[0], axes[1], axes[2])
+                #end for
+            #end if
+        else:
+            string += '\n  periodic: no'
+        #end if
         return string
     #end def
 
@@ -470,35 +547,35 @@ except ModuleNotFoundError:  # plain implementation if nexus not present
 class ParameterHessian():
     hessian = None  # always stored in (Ry/A)**2
     Lambda = None
+    structure = None
     U = None
-    P = 0
-    D = 0
-    x_units = ('A', 'B')
-    E_units = ('Ry', 'Ha', 'eV')
+    P = None
+    D = None
     hessian_set = False  # flag whether hessian is set (True) or just initialized (False)
 
     def __init__(
         self,
         hessian = None,
-        hessian_real = None,
         structure = None,
-        x_unit = 'A',
-        E_unit = 'Ry',
+        hessian_real = None,
+        **kwargs,  # units etc
     ):
-        assert x_unit in self.x_units, 'x_unit {} not recognized. Available: {}'.format(x_unit, self.x_units)
-        assert E_unit in self.E_units, 'E_unit {} not recognized. Available: {}'.format(E_unit, self.E_units)
-        self.x_unit = x_unit
-        self.E_unit = E_unit
         if structure is not None:
+            self.set_structure(structure)
             if hessian_real is not None:
-                self.init_hessian_real(structure, hessian_real)
+                self.init_hessian_real(hessian_real)
             else:
                 self.init_hessian_structure(structure)
             #end if
         #end if
         if hessian is not None:
-            self.init_hessian_array(hessian)
+            self.init_hessian_array(hessian, **kwargs)
         #end if
+    #end def
+
+    def set_structure(self, structure):
+        assert isinstance(structure, ParameterStructure), 'Structure must be ParameterStructure object'
+        self.structure = structure
     #end def
 
     def init_hessian_structure(self, structure):
@@ -509,32 +586,22 @@ class ParameterHessian():
         self.hessian_set = False  # this is not an appropriate hessian
     #end def
 
-    def init_hessian_real(self, structure, hessian_real):
+    def init_hessian_real(self, hessian_real, structure = None):
+        structure = structure if structure is not None else self.structure
         jacobian = structure.jacobian()
         hessian = jacobian.T @ hessian_real @ jacobian
         self._set_hessian(hessian)
     #end def
 
-    def init_hessian_array(self, hessian):
-        hessian = self._convert_hessian(array(hessian))
+    def init_hessian_array(self, hessian, **kwargs):
+        hessian = self._convert_hessian(array(hessian), **kwargs)
         self._set_hessian(hessian)
     #end def
 
-    def update_hessian_array(
+    def update_hessian(
         self,
         hessian,
-        x_unit = 'A',
-        E_unit = 'Ry',
-        change_units = True,
     ):
-        assert x_unit in self.x_units, 'x_unit {} not recognized. Available: {}'.format(x_unit, self.x_units)
-        assert E_unit in self.E_units, 'E_unit {} not recognized. Available: {}'.format(E_unit, self.E_units)
-        if change_units:
-            self.x_unit = x_unit
-            self.E_unit = E_unit
-            #assert(x_unit == self.x_unit, 'x_unit {} does not match initial {}'.format(x_unit, self.x_unit))
-            #assert(E_unit == self.E_unit, 'E_unit {} does not match initial {}'.format(E_unit, self.E_unit))
-        #end if
         hessian = self._convert_hessian(array(hessian))
         P, D = hessian.shape
         Lambda, U = linalg.eig(hessian)
@@ -578,11 +645,9 @@ class ParameterHessian():
     def _convert_hessian(
         self,
         hessian,
-        x_unit = None,
-        E_unit = None,
+        x_unit = 'A',
+        E_unit = 'Ry',
     ):
-        x_unit = self.x_unit if x_unit is None else x_unit
-        E_unit = self.E_unit if E_unit is None else E_unit
         if x_unit == 'B':
             hessian *= Bohr**2
         elif x_unit == 'A':
@@ -591,23 +656,37 @@ class ParameterHessian():
             raise ValueError('E_unit {} not recognized'.format(E_unit))
         #end if
         if E_unit == 'Ha':
-            hessian /= (Ry / Hartree)**2
+            hessian /= (Hartree / Ry)**2
         elif E_unit == 'eV':
             hessian /= Ry**2
         elif E_unit == 'Ry':
-            hessian *= 1.0
+            hessian /= 1.0
         else:
             raise ValueError('E_unit {} not recognized'.format(E_unit))
         #end if
         return hessian
     #end def
 
-    def get_hessian(self, x_unit = 'A', E_unit = 'Ry'):
-        return self._convert_hessian(self.hessian, x_unit = x_unit, E_unit = E_unit)
+    def get_hessian(self, **kwargs):
+        return self._convert_hessian(self.hessian, **kwargs)
     #end def
 
     def __repr__(self):
-        return str(self.hessian)  # TODO
+        string = self.__class__.__name__
+        if self.hessian_set:
+            string += '\n  hessian:'
+            for h in self.hessian:
+                string += ('\n    ' + len(h) * '{:<8f} ').format(*tuple(h))
+            #end for
+            string += '\n  Conjugate directions:'
+            string += '\n    Lambda     Direction'
+            for Lambda, direction in zip(self.Lambda, self.get_directions()):
+                string += ('\n    {:<8f}   ' + len(direction) * '{:<+1.6f} ').format(Lambda, *tuple(direction))
+            #end for
+        else:
+            string += '\n  hessian: not set'
+        #end if
+        return string
     #end def
 
 #end class
@@ -616,8 +695,8 @@ class ParameterHessian():
 # Class for line-search along direction in abstract context
 class AbstractLineSearch():
 
-    fit_kind = None
     fraction = None
+    fit_kind = None
     func = None
     func_p = None
     grid = None
@@ -656,6 +735,14 @@ class AbstractLineSearch():
         self.fit_kind = fit_kind
     #end def
 
+    def get_func(self, fit_kind = None):
+        if fit_kind is None:
+            return self.func, self.func_p
+        else:
+            return self._get_func(fit_kind)
+        #end if
+    #end def
+
     def _get_func(self, fit_kind):
         if 'pf' in fit_kind:
             func = self._pf_search
@@ -673,16 +760,19 @@ class AbstractLineSearch():
 
     def set_grid(self, grid):
         assert len(grid) > 2, 'Number of grid points must be greater than 2'
-        self.grid = grid
+        self.reset()
+        self.grid = array(grid)
     #end def
 
     def set_values(self, values, errors = None, also_search = True):
         assert len(values) == len(self.grid), 'Number of values does not match the grid'
+        self.reset()
         if errors is None or all(array(errors) == None):
-            errors = None
+            self.errors = None
+        else:
+            self.errors = array(errors)
         #end if
-        self.values = values
-        self.errors = errors
+        self.values = array(values)
         if also_search:
             self.search()
         #end if
@@ -690,7 +780,13 @@ class AbstractLineSearch():
 
     def search(self, **kwargs):
         assert self.grid is not None and self.values is not None
-        res = self._search(self.grid, self.values, self.errors, fraction = self.fraction, **kwargs)
+        res = self._search_with_error(
+            self.grid,
+            self.values,
+            self.errors,
+            fit_kind = self.fit_kind,
+            fraction = self.fraction,
+            **kwargs)
         self.x0 = res[0]
         self.y0 = res[2]
         self.x0_err = res[1]
@@ -702,25 +798,40 @@ class AbstractLineSearch():
         self,
         grid,
         values,
-        errors,
-        fraction = 0.025,
         fit_kind = None,
         **kwargs,
     ):
-        if fit_kind is None:
-            func, func_p = self.func, self.func_p
-        else:
-            func, func_p = self._get_func(fit_kind)
-        #end if
-        res0 = func(grid, values, func_p, **kwargs)
-        y0 = res0[0]
-        x0 = res0[1]
-        fit = res0[2]
+        func, func_p = self.get_func(fit_kind)
+        return self._search_one(grid, values, func, func_p, **kwargs)
+    #end def
+
+    def _search_one(
+        self,
+        grid,
+        values,
+        func,
+        func_p = None,
+        **kwargs,
+    ):
+        return func(grid, values, func_p, **kwargs)  # x0, y0, fit
+    #end def
+
+    def _search_with_error(
+        self,
+        grid,
+        values,
+        errors,
+        fraction = 0.25,
+        fit_kind = None,
+        **kwargs,
+    ):
+        func, func_p = self.get_func(fit_kind)
+        x0, y0, fit = self._search_one(grid, values, func, func_p, **kwargs)
         # resample for errorbars
         if errors is not None:
-            x0s, y0s = self._get_distribution(grid, values, errors, **kwargs)
-            x0_err = get_fraction_error(x0s - x0, fraction = self.fraction)
-            y0_err = get_fraction_error(y0s - y0, fraction = self.fraction)
+            x0s, y0s = self._get_distribution(grid, values, errors, func = func, func_p = func_p, **kwargs)
+            ave, x0_err = get_fraction_error(x0s - x0, fraction = self.fraction)
+            ave, y0_err = get_fraction_error(y0s - y0, fraction = self.fraction)
         else:
             x0_err, y0_err = 0.0, 0.0
         #end if
@@ -735,6 +846,10 @@ class AbstractLineSearch():
         **kwargs,
     ):
         return get_min_params(shifts, values, pfn, **kwargs)
+    #end def
+
+    def reset(self):
+        self.x0, self.x0_err, self.y0, self.y0_err, self.fit = None, None, None, None, None
     #end def
 
     def get_x0(self, err = True):
@@ -756,9 +871,9 @@ class AbstractLineSearch():
     #end def
 
     def get_distribution(self, grid = None, values = None, errors = None, **kwargs):
-        grid = grid if grid is None else self.grid
-        values = values if values is None else self.values
-        errors = errors if errors is None else self.errors
+        grid = grid if grid is not None else self.grid
+        values = values if values is not None else self.values
+        errors = errors if errors is not None else self.errors
         assert errors is not None, 'Cannot produce distribution unless errors are provided'
         return self._get_distribution(grid, values, errors, **kwargs)
     #end def
@@ -777,13 +892,14 @@ class AbstractLineSearch():
         return self.get_distribution(errors = errors, **kwargs)[1]
     #end def
 
-    def _get_distribution(self, grid, values, errors, resamples = None, N = 100, **kwargs):
-        if resamples is None:
-            resamples = random.randn(N, len(errors))
+    def _get_distribution(self, grid, values, errors, Gs = None, N = 100, fit_kind = None, **kwargs):
+        func, func_p = self.get_func(fit_kind)
+        if Gs is None:
+            Gs = random.randn(N, len(errors))
         #end if
         x0s, y0s, pfs = [], [], []
-        for rs in resamples:
-            x0, y0, pf = self.func(grid, values + errors * rs, **kwargs)
+        for G in Gs:
+            x0, y0, pf = self._search_one(grid, values + errors * G, func, func_p)
             x0s.append(x0)
             y0s.append(y0)
             pfs.append(pf)
@@ -793,20 +909,10 @@ class AbstractLineSearch():
 
     def __repr__(self):
         string = self.__class__.__name__
-        if self.fit_kind is None:
+        if self.fit_kind is not None:
             string += '\n  fit_kind: {:s}'.format(self.fit_kind)
         #end if
-        if self.grid is None:
-            string += '\n  data: no grid'
-        else:
-            string += '\n  data:'
-            values = self.values if self.values is not None else self.M * ['-']
-            errors = self.errors if self.errors is not None else self.M * ['-']
-            string += '\n    {:9s} {:9s} {:9s}'.format('grid', 'value', 'error')
-            for g, v, e in zip(self.grid, values, errors):
-                string += '\n    {: 8f} {:9s} {:9s}'.format(g, str(v), str(e))
-            #end for
-        #end if
+        string += self.__repr_grid__()
         if self.x0 is None:
             string += '\n  x0: not set'
         else:
@@ -818,6 +924,22 @@ class AbstractLineSearch():
         else:
             y0_err = '' if self.y0_err is None else ' +/- {: <8f}'.format(self.y0_err)
             string += '\n  y0: {: <8f} {:s}'.format(self.y0, y0_err)
+        #end if
+        return string
+    #end def
+
+    # repr of grid
+    def __repr_grid__(self):
+        if self.grid is None:
+            string = '\n  data: no grid'
+        else:
+            string = '\n  data:'
+            values = self.values if self.values is not None else self.M * ['-']
+            errors = self.errors if self.errors is not None else self.M * ['-']
+            string += '\n    {:9s} {:9s} {:9s}'.format('grid', 'value', 'error')
+            for g, v, e in zip(self.grid, values, errors):
+                string += '\n    {: 8f} {:9s} {:9s}'.format(g, str(v), str(e))
+            #end for
         #end if
         return string
     #end def
@@ -875,25 +997,26 @@ class AbstractTargetLineSearch(AbstractLineSearch):
     #end def
 
     def evaluate_target(self, grid):
-        assert grid.min() > self.target_xlim[0] and grid.max() < self.target_xlim[1], 'Requested point off the grid'
-        return self.target_in(grid)
+        assert grid.min() - self.target_xlim[0] > -1e-6 and grid.max() - self.target_xlim[1] < 1e-6, 'Requested points off the grid: ' + str(grid)
+        return self.target_in(0.99999*grid)
     #end def
 
     def compute_bias(self, grid = None, bias_mix = None, **kwargs):
         bias_mix = bias_mix if bias_mix is not None else self.bias_mix
-        grid = 0.9999999999*grid if grid is not None else self.target_grid
+        grid = grid if grid is not None else self.target_grid
         return self._compute_bias(grid, bias_mix)
     #end def
 
     def _compute_xy_bias(self, grid, **kwargs):
         values = self.evaluate_target(grid)
-        x0, x0_err, y0, y0_err, fit = self._search(grid, values, None, **kwargs)
+        x0, y0, fit = self._search(grid, values, **kwargs)
         bias_x = x0 - self.target_x0
         bias_y = y0 - self.target_y0
         return bias_x, bias_y
     #end def
 
-    def _compute_bias(self, grid, bias_mix, **kwargs):
+    def _compute_bias(self, grid, bias_mix = None, **kwargs):
+        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
         bias_x, bias_y = self._compute_xy_bias(grid, **kwargs)
         bias_tot = abs(bias_x) + bias_mix * abs(bias_y)
         return bias_x, bias_y, bias_tot
@@ -913,7 +1036,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
     # dvalues is an array of value fluctuations: 'errors * Gs' or 'noise * Gs'
     def _compute_errorbar(self, grid, errors, **kwargs):
         values = self.evaluate_target(grid)
-        x0, x0_err, y0, y0_err, fit = self._search(grid, values, errors, **kwargs)
+        x0, x0_err, y0, y0_err, fit = self._search_with_error(grid, values, errors, **kwargs)
         return x0_err, y0_err
     #end def
     
@@ -923,13 +1046,45 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         errors = None,
         **kwargs
     ):
-        bias_x, bias_y, bias_tot = self.compute_bias(grid, errors, **kwargs)
+        bias_x, bias_y, bias_tot = self.compute_bias(grid, **kwargs)
         errorbar_x, errorbar_y = self.compute_errorbar(grid, errors, **kwargs)
         error = bias_tot + errorbar_x
         return error
     #end def
 
-    # TODO: def __repr__(self):
+    def _compute_error(self, grid, errors, **kwargs):
+        bias_x, bias_y, bias_tot = self._compute_bias(grid, **kwargs)
+        errorbar_x, errorbar_y = self._compute_errorbar(grid, errors, **kwargs)
+        return bias_tot + errorbar_x
+    #end def
+
+    def __repr__(self):
+        string = AbstractLineSearch.__repr__(self)
+        if self.target_grid is not None:
+            string += '\n  target grid: set'
+        #end if
+        if self.target_values is not None:
+            string += '\n  target values: set'
+        #end if
+        string += '\n  bias_mix: {:<4f}'.format(self.bias_mix)
+        return string
+    #end def
+
+    # repr of grid
+    def __repr_grid__(self):
+        if self.target_grid is None:
+            string = '\n  target data: no grid'
+        else:
+            string = '\n  target data:'
+            values = self.target_values if self.target_values is not None else self.M * ['-']
+            string += '\n    {:9s} {:9s}'.format('grid', 'value')
+            for g, v in zip(self.target_grid, values):
+                string += '\n    {: 8f} {:9s}'.format(g, str(v))
+            #end for
+        #end if
+        return string
+    #end def
+
 
 #end class
 
@@ -985,13 +1140,18 @@ class LineSearch(AbstractLineSearch):
         self.grid, self.M = self._figure_out_grid(**kwargs)
     #end def
 
-    def _figure_out_grid(self, M = 7, W = None, R = None, grid = None, **kwargs):
+    def _figure_out_grid(self, M = None, W = None, R = None, grid = None, **kwargs):
+        if M is None:
+            M = self.M if self.M is not None else 7  # universal default
+        #end if
         if grid is not None:
             self.M = len(grid)
         elif R is not None:
+            assert not R < 0, 'R cannot be negative, {} requested'.format(R)
             grid = self._make_grid_R(R, M = M)
             self.R = R
         elif W is not None:
+            assert not W < 0, 'W cannot be negative, {} requested'.format(W)
             grid = self._make_grid_W(W, M = M)
             self.W = W
         else:
@@ -1001,14 +1161,13 @@ class LineSearch(AbstractLineSearch):
     #end def
 
     def _make_grid_R(self, R, M):
-        assert R > 0, 'R must be positive, {} requested'.format(R)
+        R = max(R, 1e-4)
         grid = linspace(-R, R, M)
         return grid
     #end def
 
     def _make_grid_W(self, W, M):
-        assert W > 0, 'W must be positive, {} requested'.format(W)
-        R = W_to_R(W, self.Lambda)
+        R = W_to_R(max(W, 1e-4), self.Lambda)
         return self._make_grid_R(R, M = M)
     #end def
 
@@ -1120,14 +1279,53 @@ class LineSearch(AbstractLineSearch):
         return array([structure.params for structure in self.structure_list])
     #end def
 
+    def __repr__(self):
+        string = AbstractLineSearch.__repr__(self)
+        string += '\n  Lambda: {:<9f}'.format(self.Lambda)
+        if self.W is not None:
+            string += '\n  W: {:<9f}'.format(self.W)
+        #end if
+        if self.R is not None:
+            string += '\n  R: {:<9f}'.format(self.R)
+        #end if
+        return string
+    #end def
+
+    # repr of grid
+    def __repr_grid__(self):
+        if self.grid is None:
+            string = '\n  data: no grid'
+        else:
+            string = '\n  data:'
+            values = self.values if self.values is not None else self.M * ['-']
+            errors = self.errors if self.errors is not None else self.M * ['-']
+            string += '\n    {:11s}  {:9s}  {:9s}  {:9s}'.format('label', 'grid', 'value', 'error')
+            for s, g, v, e in zip(self.structure_list, self.grid, values, errors):
+                string += '\n    {:11s}  {: 8f}  {:9.9s}  {:<9.9s}'.format(s.label, g, str(v), str(e))
+            #end for
+        #end if
+        return string
+    #end def
+
 #end class
 
 
 # Class for error scan line-search
-class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
+#class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
+class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
 
-    R_max = None
-    W_max = None
+    R_max = None  # maximum R available for target evaluation
+    W_max = None  # maximum W available for target evaluation
+    E_mat = None  # resampled W-sigma matrix of errors
+    W_mat = None  # resampled W-mesh
+    S_mat = None  # resampled sigma-mesh
+    Gs = None  # N x M set of correlated random fluctuations for the grid
+    epsilon = None  # optimized target error
+    W_opt = None  # W to meet epsilon
+    sigma_opt = None  # sigma to meet epsilon
+    # FLAGS
+    resampled = False
+    optimized = False
 
     def __init__(
         self,
@@ -1150,6 +1348,7 @@ class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
             R = R,
             grid = grid,
         )
+        self._set_RW_max()
         AbstractTargetLineSearch.__init__(self, **kwargs)
     #end def
 
@@ -1157,13 +1356,6 @@ class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
         bias_mix = bias_mix if bias_mix is not None else self.bias_mix
         grid, M = self._figure_out_grid(**kwargs)
         return self._compute_bias(grid = grid, bias_mix = bias_mix, **kwargs)
-    #end def
-
-    def compute_errorbar(self, sigma = None, errors = None, **kwargs):
-        sigma = sigma if not sigma is None else self.sigma
-        grid, M = self._figure_out_grid(**kwargs)
-        errors = errors if not errors is None else array(M * [sigma])
-        return self._compute_errorbar(grid = grid, errors = errors, **kwargs)
     #end def
 
     def compute_bias_of(
@@ -1232,6 +1424,210 @@ class TargetLineSearch(LineSearch, AbstractTargetLineSearch):
         self.W_max = R_to_W(self.R_max, self.Lambda)
     #end def
 
+    def _W_sigma_of_epsilon(self, epsilon, **kwargs):
+        W, sigma = self._contour_max_sigma(epsilon)
+        return W, sigma
+    #end def
+
+    # X: grid of W values; Y: grid of sigma values; E: grid of total errors
+    def generate_W_sigma_data(
+        self,
+        W_num = 10,
+        W_max = None,
+        sigma_num = 10,
+        sigma_max = None,
+        N = None,
+        Gs = None,
+        **kwargs
+    ):
+        if Gs is None:
+            if N is None:
+                Gs = self.Gs
+            else:
+                assert N > 1, 'Must provide N > 1'
+                Gs = random.randn(N, self.M)
+                self.Gs = Gs
+            #end if
+        else:
+            self.Gs = Gs
+        #end if
+        W_max = W_max if W_max is not None else self.W_max   
+        sigma_max = sigma_max if sigma_max is not None else W_max/20
+        # starting window array: sigma = 0, so only bias
+        Ws = linspace(0.0, W_max, W_num)
+        errors = array(self.M * [0.0])
+        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = Gs) for W in Ws]
+        self.E_mat = array([E_this])
+        self.W_mat = array([Ws])
+        self.S_mat = array([W_num * [0.0]])
+        # append the rest
+        for sigma in linspace(0.0, sigma_max, sigma_num)[1:]:
+            self._insert_sigma_data(sigma, Gs = Gs)
+        #end for
+        self.resampled = True
+    #end def
+
+    def insert_sigma_data(self, sigma, N = None, Gs = None, **kwargs):
+        Gs = Gs if Gs is not None else self.Gs
+        self._insert_sigma_data(sigma, Gs = Gs, **kwargs)
+    #end def
+
+    def insert_W_data(self, W, N = None, Gs = None, **kwargs):
+        Gs = Gs if Gs is not None else self.Gs
+        # TODO: consider generating new jobs
+        self._insert_W_data(W, Gs = Gs, **kwargs)
+    #end def
+
+    def _insert_sigma_data(self, sigma, **kwargs):
+        Ws = self.W_mat[0]
+        Es = [self._compute_error(self._make_grid_W(W, self.M), self.M * [sigma], **kwargs) for W in Ws]
+        W_mat = append(self.W_mat, [Ws], axis = 0)
+        S_mat = append(self.S_mat, [len(Ws) * [sigma]], axis = 0)
+        E_mat = append(self.E_mat, [Es], axis = 0)
+        idx = argsort(S_mat[:, 0])
+        self.W_mat = W_mat[idx]
+        self.S_mat = S_mat[idx]
+        self.E_mat = E_mat[idx]
+    #end def
+
+    def _insert_W_data(self, W, **kwargs):
+        sigmas = self.S_mat[:, 0]
+        grid = self._make_grid_W(W, self.M)
+        Es = [self._compute_error(grid, self.M * [sigma], **kwargs) for sigma in sigmas]
+        W_mat = append(self.W_mat, array([len(sigmas) * [W]]).T, axis = 1)
+        S_mat = append(self.S_mat, array([sigmas]).T, axis = 1)
+        E_mat = append(self.E_mat, array([Es]).T, axis = 1)
+        idx = argsort(W_mat[0])
+        self.W_mat = W_mat[:, idx]
+        self.S_mat = S_mat[:, idx]
+        self.E_mat = E_mat[:, idx]
+    #end def
+
+    def optimize(self, epsilon, **kwargs):
+        """Optimize W and sigma to a given target error epsilon > 0."""
+        self.W_opt, self.sigma_opt = self.maximize_sigma(epsilon, **kwargs)
+        self.epsilon = epsilon
+        self.optimized = True
+    #end def
+
+    def maximize_sigma(
+        self,
+        epsilon,
+        allow_init = True,  # allow initialization
+        fix_res = True,  # try to fix bad sigma resolution
+        fix_res_max = 4,
+        fix_pes = False,  # allow extending the target PES
+        fix_pes_max = 4,
+        N = 500,
+        verbose = True,
+        low_thr = 0.9,
+        **kwargs
+    ):
+        """Optimize W and sigma based on maximizing sigma."""
+        if not self.resampled:
+            if allow_init:
+                self.generate_W_sigma_data(N = N, **kwargs)
+            else:
+                raise AssertionError('Must resample errors first!')
+            #end if
+        #end if
+        W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+        if 'not_found' in errs:
+            raise AssertionError('W, sigma not found for epsilon = {}. Check minimum bias and raise epsilon.'.format(epsilon))
+        #end if
+        if fix_pes:
+            f_pes = 0
+            while 'x_underflow' in errs and f_pes < fix_pes_max:
+                f_pes += 1
+                self.insert_W_data(W / 2)
+                if verbose:
+                    print('W underflow: added W = {} to resampling grid'.format((W / 2).round(7)))
+                #end if
+                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            #end while
+            while 'x_overflow' in errs and f_pes < fix_pes_max:
+                f_pes += 1
+                self.insert_W_data(2 * W)
+                if verbose:
+                    print('W overflow: added W = {} to resampling grid'.format((2 * W).round(7)))
+                #end if
+                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            #end while
+        #end if
+        if fix_res:
+            f_res = 0
+            while 'y_underflow' in errs and f_res < fix_res_max:
+                f_res += 1
+                self.insert_sigma_data(sigma / 2)
+                if verbose:
+                    print('Sigma underflow: added sigma = {} to resampling grid'.format((sigma / 2).round(7)))
+                #end if
+                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            #end while
+            while 'y_overflow' in errs and f_res < fix_res_max:
+                f_res += 1
+                self.insert_sigma_data(sigma * 2)
+                if verbose:
+                    print('Sigma overflow: added sigma = {} to resampling grid'.format((sigma * 2).round(7)))
+                #end if
+                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            #end while
+            while 'low_res' in errs and f_res < fix_res_max:
+                f_res += 1
+                Wi, Si = self._argmax_y(self.E_mat, epsilon)
+                S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
+                self.insert_sigma_data(S_new)
+                if verbose:
+                    print('Sigma low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
+                #end if
+                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            #end while
+        #end if
+        return W, sigma
+    #end def
+
+    def _maximize_y(self, X, Y, E, epsilon, low_thr = 0.9):
+        """Return X, Y, and E values """
+        assert low_thr < 0.99, 'Threshold limit too high'
+        assert epsilon > 0, 'epsilon must be positive'
+        errs = []
+        xi, yi = self._argmax_y(E, epsilon)
+        if isnan(xi):
+            return nan, nan, nan, ['not_found']
+        #end if
+        E0 = E[yi, xi]
+        x0 = X[yi, xi]
+        y0 = Y[yi, xi]
+        if xi == 0:
+            errs.append('x_underflow')
+        elif xi == E.shape[1] - 1:
+            errs.append('x_overflow')
+        #end if
+        if yi == 0:
+            errs.append('y_underflow')
+        elif yi == E.shape[0] - 1:
+            errs.append('y_overflow')
+        #end if
+        if E0 / epsilon > low_thr:
+            errs.append('low_res')
+        #end if
+        return x0, y0, E0, errs
+    #end def
+
+    def _argmax_y(self, E, epsilon):
+        """Return indices to the highest point in E matrix that is lower than epsilon"""
+        xi, yi = nan, nan
+        for i in range(len(E), 0, -1):  # from high to low
+            err = where(E[i - 1] < epsilon)
+            if len(err[0]) > 0:
+                yi = i - 1
+                xi = err[0][argmax(E[i-1][err[0]])]
+                break
+            #end if
+        #end for
+        return xi, yi
+    #end def
+
 #end class
 
 
@@ -1243,15 +1639,17 @@ class ParallelLineSearch():
     Lambdas = None
     directions = None
     D = None
+    M = None  # number of grid points
     path = None
     windows = None
     noises = None
-    surrogate = None  # surrogate line-search object
     fraction = None
     structure = None  # eqm structure
     structure_next = None  # next structure
     job_func = None
     analyze_func = None
+    x_unit = None
+    E_unit = None
     # flags
     noisy = False  # flag whether deterministic or noisy
     limits_set = False  # flag whether sensible line-search limits (windows, noises) are set
@@ -1268,15 +1666,16 @@ class ParallelLineSearch():
         window_frac = 0.25,
         noises = None,
         path = 'pls',
-        x_units = 'A',
-        E_units = 'Ry',
+        M = 7,
+        x_unit = 'A',
+        E_unit = 'Ry',
         fraction = 0.025,
         job_func = None,
         analyze_func = None,
         **kwargs,
     ):
-        self.x_units = x_units
-        self.E_units = E_units
+        self.x_unit = x_unit
+        self.E_unit = E_unit
         self.fraction = fraction
         self.path = path
         self.job_func = job_func
@@ -1285,13 +1684,14 @@ class ParallelLineSearch():
         self.set_structure(structure)
         self.guess_windows(windows, window_frac)
         self.set_noises(noises)
-        self._generate_ls_list(**kwargs)
+        self.M = M
+        self.ls_list = self._generate_ls_list(**kwargs)
     #end def
 
     def set_hessian(self, hessian):
         self._protected()
         if isinstance(hessian, ndarray):
-            hessian = ParameterHessian(hessian = hessian, x_units = self.x_units, E_units = self.E_units)
+            hessian = ParameterHessian(hessian = hessian, x_unit = self.x_unit, E_unit = self.E_unit)
         elif isinstance(hessian, ParameterHessian):
             pass
         else:
@@ -1344,11 +1744,12 @@ class ParallelLineSearch():
                 hessian = self.hessian,
                 d = d,
                 W = window,
+                M = self.M,
                 sigma = noise,
                 **kwargs)
             ls_list.append(ls)
         #end for
-        self.ls_list = ls_list
+        return ls_list
     #end def
 
     def copy(self, path, **kwargs):
@@ -1358,6 +1759,7 @@ class ParallelLineSearch():
             'hessian': self.hessian,
             'windows': self.windows,
             'noises': self.noises,
+            'M': self.M,
             'job_func': self.job_func,
             'analyze_func': self.analyze_func,
         }
@@ -1443,7 +1845,7 @@ class ParallelLineSearch():
         params_next = self._calculate_params_next(self.get_params(), self.get_directions(), self.get_shifts())
         #stochastic
         if self.noisy:
-            params_next_err = self.calculate_params_next_err(self.get_params(), self.get_directions(), params_next, **kwargs)
+            params_next_err = self._calculate_params_next_err(self.get_params(), self.get_directions(), params_next, **kwargs)
         else:
             params_next_err = array(self.D * [0.0])
         #end if
@@ -1498,15 +1900,31 @@ class ParallelLineSearch():
         pickle.dump(self, open(self.path + fname, mode='wb'))
     #end def
 
+    def __repr__(self):
+        string = self.__class__.__name__
+        if self.ls_list is None:
+            string += '\n  Line-searches: None'
+        else:
+            string += '\n  Line-searches:\n'
+            string += indent('\n'.join(['#{:<2d} {}'.format(ls.d, str(ls)) for ls in self.ls_list]), '    ')
+        #end if
+        # TODO
+        return string
+    #end def
+
 #end class
 
 
 class TargetParallelLineSearch(ParallelLineSearch):
 
-    epsilon = None
+    epsilon_p = None
     epsilon_d = None
+    error_p = None
+    error_d = None
     temperature = None
     window_frac = None
+    # FLAGS
+    optimized = False
 
     def __init__(
         self,
@@ -1518,7 +1936,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
         ParallelLineSearch.__init__(self, structure = structure, hessian = hessian, **kwargs)
         self.set_targets(targets)
         self.set_tolerances(**kwargs)
-        self._generate_tls_list(**kwargs)
+        self.ls_list = self._generate_tls_list(**kwargs)
     #end def
 
     def set_targets(self, targets):
@@ -1529,10 +1947,6 @@ class TargetParallelLineSearch(ParallelLineSearch):
             assert(len(targets) == self.D)
         #end if
         self.targets = array(targets)
-    #end def
-
-    def set_results(self, grid = None, values = None, set_targets = True, **kwargs):
-        grid = grid if grid is not None else self.grid
     #end def
 
     def set_tolerances(
@@ -1548,26 +1962,82 @@ class TargetParallelLineSearch(ParallelLineSearch):
 
     def optimize(
         self,
-        epsilon = None,
+        windows = None,
+        noises = None,
+        epsilon_p = None,
         epsilon_d = None,
         temperature = None,
         mixer_func = None,
         **kwargs,
     ):
-        if temperature is not None:
+        if windows is not None and noises is not None:
+            self.optimize_windows_noises(windows, noises, **kwargs)
+        elif temperature is not None:
             self.optimize_thermal(temperature, **kwargs)
         else:
             raise AssertionError('Not implemented')
         #end if
     #end def
 
+    def optimize_windows_noises(self, windows, noises, Gs = None, **kwargs):
+        Gs_d = Gs if Gs is not None else self.D * [None]
+        # TODO: check the results
+        self.error_p, self.error_d = self._resample_errors(windows, noises, Gs = Gs_d)
+        self.windows = windows
+        self.noises = noises
+        self.optimized = True
+    #end def
+
     def optimize_thermal(
         self,
         temperature,
+        Gs = None,
+        verbose = True,
         **kwargs,
     ):
         assert temperature > 0, 'Temperature must be positive'
-        epsilon_d = self._get_thermal_epsilond(temperature)
+        Gs_d = Gs if Gs is not None else self.D * [None]
+        assert len(Gs) == self.D, 'Must provide list of Gs equal to the number of directions'
+        epsilon_d = self._get_thermal_epsilon_d(temperature)
+        windows, noises = [], []
+        for epsilon, ls, Gs in zip(epsilon_d, self.ls_list, Gs_d):
+            ls.optimize(epsilon, verbose = verbose, Gs = Gs, **kwargs)
+            windows.append(ls.W_opt)
+            noises.append(ls.sigma_opt)
+        #end for
+        self.optimize_windows_noises(windows, noises, Gs = Gs_d)
+    #end def
+
+    def validate(self, N = 500, verbose = False, thr = 1.15):
+        """Validate optimization by independent random resampling"""
+        assert self.optimized, 'Must be optimized first'
+        ref_error_p, ref_error_d = self._resample_errors(self.windows, self.noises, Gs = None, N = N)
+        valid = True
+        if verbose:
+            print('Parameter errors:')
+            print('  {:<2s}  {:<10s}  {:<10s}  {:<5s}'.format('#', 'validation', 'corr. samp.', 'ratio'))
+        #end if
+        for p, ref, corr in zip(range(len(ref_error_p)), ref_error_p, self.error_p):
+            ratio = ref/corr
+            valid_this = ratio < thr
+            valid = valid and valid_this
+            if verbose:
+                print('  {:<2d}  {:<10f}  {:<10f}  {:<5f}'.format(p, ref, corr, ratio))
+            #end if
+        #end for
+        if verbose:
+            print('Direction errors:')
+            print('  {:<2s}  {:<10s}  {:<10s}  {:<5s}'.format('#', 'validation', 'corr. samp.', 'ratio'))
+        #end if
+        for d, ref, corr in zip(range(len(ref_error_d)), ref_error_d, self.error_d):
+            ratio = ref/corr
+            valid_this = ratio < thr
+            valid = valid and valid_this
+            if verbose:
+                print('  {:<2d}  {:<10f}  {:<10f}  {:<5f}'.format(p, ref, corr, ratio))
+            #end if
+        #end for
+        return valid
     #end def
 
     def _get_thermal_epsilon_d(self, temperature):
@@ -1580,7 +2050,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
     
     # Important: overrides ls_list generator
     def _generate_ls_list(self, **kwargs):
-        pass
+        return None
     #end def
 
     def _generate_tls_list(self, **kwargs):
@@ -1597,7 +2067,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
                 **kwargs)
             ls_list.append(tls)
         #end for
-        self.ls_list = ls_list
+        return ls_list
     #end def
 
     def compute_bias_p(self, **kwargs):
@@ -1628,23 +2098,24 @@ class TargetParallelLineSearch(ParallelLineSearch):
     #end def
 
     # based on windows, noises
-    def _resample_errorbars(self, windows, noises, N = 200, **kwargs):
-        x0s_d = []
-        biases_d, biases_p = self._compute_bias(windows, **kwargs)
-        errorbar_d, errorbar_p = [], []
-        for W, noise, tls, bias_d in zip(windows, noises, tls, biases_d):
-            grid, M = self._figure_out_grid(W = W)
-            values = self.evaluate_target(grid)
+    def _resample_errorbars(self, windows, noises, Gs = None, N = None, **kwargs):
+        Gs_d = self.D * [None] if Gs is None else Gs  # provide correlated sampling
+        biases_d, biases_p = self._compute_bias(windows, **kwargs)  # biases per direction, parameter
+        x0s_d, x0s_p = [], []  # list of distributions of minima per direction, parameter
+        errorbar_d, errorbar_p = [], []  # list of statistical errorbars per direction, parameter
+        for tls, W, noise, bias_d, Gs in zip(self.ls_list, windows, noises, biases_d, Gs_d):
+            grid, M = tls._figure_out_grid(W = W)
+            values = tls.evaluate_target(grid)
             errors = M * [noise]
-            x0s = ls._get_x0_distribution(grid = grid, value = values, errors = errors, N = N)
+            x0s = tls.get_x0_distribution(grid = grid, values = values, errors = errors, Gs = Gs, N = N)
             x0s_d.append(x0s)
-            errorbar_d.append(get_fraction_error(x0s - bias_d), **kwargs)
+            errorbar_d.append(get_fraction_error(x0s - bias_d, self.fraction, **kwargs)[1])
         #end for
         # parameter errorbars
-        for x0s in array(x0s_d).T:
-            params_d = self._calculate_params_next(-bias_p, directions, x0s)
+        for x0 in array(x0s_d).T:
+            x0s_p.append(self._calculate_params_next(-biases_p, self.directions, x0))  # TODO: could this be vectorized?
         #end for
-        errorbar_p = [get_fraction_error(p - biases_p, **kwargs) for p in array(params_d).T]
+        errorbar_p = [get_fraction_error(x0s, self.fraction, **kwargs)[1] for x0s in array(x0s_p).T]
         return array(errorbar_d), array(errorbar_p)
     #end def
 
@@ -1672,14 +2143,14 @@ class LineSearchIteration():
         surrogate = None,
         structure = None,
         hessian = None,
-        no_load = False,
+        load = True,
         n_max = 0,  # no limit
         **kwargs,  # e.g. windows, noises, targets, units, job_func, analyze_func ...
     ):
         self.path = path
         self.pls_list = []
         # try to load pickles
-        if not no_load:
+        if load:
             self._load_until_failure()
         #end if
         if len(self.pls_list) == 0:  # if no iterations loaded, try to initialize
@@ -1726,6 +2197,11 @@ class LineSearchIteration():
 
     def _get_current_pls(self):
         return self.pls_list[-1]
+    #end def
+
+    def pls(self, i = None):
+        pls = self.pls_list[i] if i is not None else self._get_current_pls()
+        return pls
     #end def
 
     def _load_until_failure(self):

@@ -4,69 +4,139 @@ from numpy import array, exp, nan, isnan, random, polyval, linspace
 from pytest import raises
 
 from testing import match_values, add_unit_test
+from surrogate_classes import StructuralParameter
 from surrogate_classes import ParameterStructureBase, ParameterStructure, ParameterHessian
 from surrogate_classes import AbstractLineSearch, LineSearch
 from surrogate_classes import AbstractTargetLineSearch, TargetLineSearch, TargetParallelLineSearch
 from surrogate_classes import ParallelLineSearch, LineSearchIteration
-from classes.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O
-from classes.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2
-from classes.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe
-from classes.assets import morse
+from classes.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
+from classes.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
+from classes.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
+from classes.assets import morse, Gs_N200_M7
+
+# Test StructuralParameter class
+def test_structuralparameter_class():
+    # TODO: add features, add meaningful tests
+    # test defaults
+    p = StructuralParameter(0.74)
+    assert p.value == 0.74
+    assert p.kind == 'bond'
+    assert p.label == 'r'
+    assert p.unit == 'A'
+    return True
+#end def
+add_unit_test(test_structuralparameter_class)
+
 
 # Test ParameterStructureBase class
 def test_parameterstructurebase_class():
     # test H2 (open; 1 parameter)
-    pm = ParameterStructureBase()
+    s = ParameterStructureBase()
 
     # test inconsistent pos vector
     with raises(AssertionError):
-        pm.set_pos([0.0, 0.0])
+        s.set_position([0.0, 0.0])
     #end with
-
     # test premature backward mapping
     with raises(AssertionError):
-        pm.backward()
+        s.backward()
     #end with
+    assert not s.check_consistency()  # cannot be consistent without mapping functions
 
     # test backward mapping
-    pm.set_params([1.4])
-    pm.set_backward(backward_H2)  # pos should be computed automatically
-    assert match_values(pm.pos, pos_H2, tol = 1e-5)
+    s.set_params([1.4])
+    s.set_backward(backward_H2)  # pos should now be computed automatically
+    assert match_values(s.pos, pos_H2, tol = 1e-5)
 
-    assert not pm.check_consistency()  # not yet consistent
+    assert not s.check_consistency()  # still not consistent, without forward mapping
     # test premature forward mapping
     with raises(AssertionError):
-        pm.forward()
+        s.forward()
     #end with
 
-    pm.set_forward(forward_H2)
-    assert match_values(pm.params, 1.4, tol = 1e-5)  # params computed automatically
-    assert pm.check_consistency()  # finally consistent
+    s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])  # set another pos
+    s.set_forward(forward_H2)  # then set forward mapping
+    assert match_values(s.params, 1.6, tol = 1e-5)  # params computed automatically
+    assert not s.check_consistency()  # pos is not translated in this order
+    s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])  # this time translate position by default
+    assert s.check_consistency()  # finally consistent
+    assert s.check_consistency(params = [1.3])  # also consistent at another point
+    assert s.check_consistency(pos = pos_H2)  # also consistent at another point
+    assert s.check_consistency(pos = pos_H2 * 0.5, params = [0.7])  # consistent set of arguments
+    assert not s.check_consistency(pos = pos_H2 * 0.5, params = [1.4])  # inconsistent set of arguments
 
     # test H2O (open; 2 parameters)
-    pm = ParameterStructureBase(pos = pos_H2O, forward = forward_H2O)
+    s = ParameterStructureBase(pos = pos_H2O, forward = forward_H2O, elem = elem_H2O)
     params_ref = [0.95789707432, 104.119930724]
-    assert match_values(pm.params, params_ref, tol = 1e-5)
+    assert match_values(s.params, params_ref, tol = 1e-5)
 
     # add backward mapping
-    pm.set_backward(backward_H2O)
+    s.set_backward(backward_H2O)
     pos_ref = [[ 0.,          0.,          0.     ],
                [ 0.,          0.75545,     0.58895],
                [ 0.,         -0.75545,     0.58895]]
-    assert match_values(pm.pos, pos_ref, tol = 1e-5)
-    assert pm.check_consistency()
+    assert match_values(s.pos, pos_ref, tol = 1e-5)
+    assert s.check_consistency()
 
     # test another set of parameters
-    pos2 = pm.backward([1.0, 120.0])
+    s.backward([1.0, 120.0])
     pos2_ref = [[ 0.,          0.,          0. ],
                 [ 0.,          0.8660254,   0.5],
                 [ 0.,         -0.8660254,   0.5]]
-    assert match_values(pos2, pos2_ref, tol = 1e-5)
+    assert match_values(s.params, [1.0, 120.0], tol = 1e-5)
+    assert match_values(s.pos, pos2_ref, tol = 1e-5)
 
-    # test GeSe (periodic; 5 parameters)
+    jac_ref = array('''
+    0.          0.        
+    0.          0.        
+    0.          0.        
+    0.          0.        
+    0.8660254   0.00436329
+    0.5        -0.00755752
+    0.          0.        
+   -0.8660254  -0.00436329
+    0.5        -0.00755752
+    '''.split(), dtype = float).reshape(-1, 2)
+    assert match_values(jac_ref, s.jacobian())
 
-    # test when only mappings are provided
-
+    # test complete positional init of a periodic system (GeSe)
+    s = ParameterStructureBase(
+        forward_GeSe,  # forward
+        backward_GeSe,  # backward
+        None,  # pos
+        None,  # axes
+        elem_GeSe,  # elem
+        params_GeSe,
+        None,  # params_err
+        True,  # periodic
+        -10.0,  # value
+        0.1,  # error
+        'GeSe test',  # label
+        'crystal',  # unit
+        3,  # dim
+    )
+    pos_orig = s.pos
+    s.shift_params([0.1,0.1,0.0,-0.1,0.05])
+    params_ref = [4.360000, 4.050000, 0.414000, 0.456000, 0.610000 ]
+    pos_ref = array('''
+    0.414000 0.250000 0.456000
+    0.914000 0.750000 0.544000
+    0.500000 0.250000 0.390000
+    0.000000 0.750000 0.610000
+    '''.split(), dtype = float)
+    axes_ref = array('''
+    4.360000 0.000000 0.000000
+    0.000000 4.050000 0.000000
+    0.000000 0.000000 20.000000
+    '''.split(), dtype = float)
+    assert match_values(s.params, params_ref)
+    assert match_values(s.pos, pos_ref)
+    assert match_values(s.axes, axes_ref)
+    dpos = pos_orig.flatten() - pos_ref
+    s.shift_pos(dpos)
+    params_ref2 = [4.360000, 4.050000, 0.414000, 0.556000, 0.560000]
+    assert match_values(s.params, params_ref2)
+    assert match_values(s.pos, pos_orig)
 #end def
 add_unit_test(test_parameterstructurebase_class)
 
@@ -80,7 +150,7 @@ def test_parameterstructure_class():
     #end if
 
     # test copy
-    s1 = ParameterStructure(pos = pos_H2O, forward = forward_H2O, label = '1')
+    s1 = ParameterStructure(pos = pos_H2O, forward = forward_H2O, label = '1', elem = elem_H2O)
     s2 = s1.copy(params = s1.params * 1.5, label = '2')
     assert not match_values(s1.params, s2.params, expect_false = True)
     assert s1.label == '1'
@@ -91,28 +161,36 @@ add_unit_test(test_parameterstructure_class)
 
 
 def test_parameterhessian_class():
-    structure = ParameterStructure(
-        forward = forward_H2O,
-        backward = backward_H2O,
-        pos = pos_H2O)
-    hessian = ParameterHessian(hessian_H2O)
-    Lambda = hessian.Lambda
-    dire = hessian.get_directions()
-    dir0 = hessian.get_directions(0)
-    dir1 = hessian.get_directions(1)
+    # init from parameter hessian array
+    h = ParameterHessian(hessian_H2O)
+    Lambda = h.Lambda
+    dire = h.get_directions()
+    dir0 = h.get_directions(0)
+    dir1 = h.get_directions(1)
     Lambda_ref = array([1.07015621, 0.42984379])
     dire_ref = array([[ 0.94362832,  0.33100694],
                       [-0.33100694,  0.94362832]])
+    with raises(IndexError):
+        dir2 = h.get_directions(2)
+    #end with
     assert match_values(dire, dire_ref)
     assert match_values(dir0, dire_ref[0])
     assert match_values(dir1, dire_ref[1])
     assert match_values(Lambda, Lambda_ref)
-    # TODO: test conversions
-    # TODO: test dummy init
+    # test update hessian
+    h.update_hessian(hessian_H2O**2)
+    assert match_values(h.get_directions(0), [ 0.9985888, 0.05310744], tol = 1e-5)
+    assert match_values(h.get_directions(1), [-0.05310744, 0.9985888], tol = 1e-5)
+    assert match_values(h.Lambda, [1.002127, 0.247873], tol = 1e-5)
 
-    with raises(IndexError):
-        dir2 = hessian.get_directions(2)
-    #end with
+    # init hessian from structure and real-space hessian
+    s = get_structure_H2O()
+    h = ParameterHessian(structure = s, hessian_real = hessian_real_H2O)
+    h_ref = array('''
+    3.008569 0.005269 
+    0.005269 0.000188 
+    '''.split(), dtype = float)
+    assert match_values(h.hessian, h_ref, tol = 1e-5)
 #end def
 add_unit_test(test_parameterhessian_class)
 
@@ -142,6 +220,19 @@ def test_abstractlinesearch_class():
     assert match_values(y0, y0_ref)
     assert match_values(ls.fit, fit_ref)
 
+    # test setting wrong number of values
+    with raises(AssertionError):
+        ls.set_values(ls.values[:-2])
+    #end with
+
+    # test _search method
+    x2, y2, pf2 = ls._search(2 * ls.grid, 2 * ls.values, None)
+    assert match_values(x2, 2 * x0_ref[0])
+    assert match_values(y2, 2 * y0_ref[0])
+    x3, y3, pf3 = ls._search(ls.grid, ls.values, fit_kind = 'pf2')
+    assert match_values(x3, [2.0])
+    assert match_values(y3, [0.34285714285])
+    assert match_values(pf3, [ 0.42857143, -1.71428571,  2.05714286])
     # TODO: more tests
 #end def
 add_unit_test(test_abstractlinesearch_class)
@@ -173,27 +264,24 @@ add_unit_test(test_abstracttargetlinesearch_class)
 # test LineSearch
 def test_linesearch_class():
     results = []
-    structure = ParameterStructure(
-        forward = forward_H2O,
-        backward = backward_H2O,
-        pos = pos_H2O)
-    hessian = ParameterHessian(hessian_H2O)
+    s = get_structure_H2O()
+    h = get_hessian_H2O()
 
     with raises(TypeError):
         ls_d0 = LineSearch()
     #end with
     with raises(TypeError):
-        ls_d0 = LineSearch(structure)
+        ls_d0 = LineSearch(s)
     #end with
     with raises(TypeError):
-        ls_d0 = LineSearch(structure, hessian)
+        ls_d0 = LineSearch(s, h)
     #end with
     with raises(AssertionError):
-        ls_d0 = LineSearch(structure, hessian, d = 1)
+        ls_d0 = LineSearch(s, h, d = 1)
     #end with
 
-    ls_d0 = LineSearch(structure, hessian, d = 0, R = 1.3)
-    ls_d1 = LineSearch(structure, hessian, d = 1, W = 3.0)
+    ls_d0 = LineSearch(s, h, d = 0, R = 1.3)
+    ls_d1 = LineSearch(s, h, d = 1, W = 3.0)
     # test grid generation
     gridR_d0 = ls_d0._make_grid_R(1.3, M = 9)
     gridW_d0 = ls_d0._make_grid_W(3.0, M = 7)
@@ -209,10 +297,13 @@ def test_linesearch_class():
     assert match_values(gridW_d1, gridW_d1_ref)
 
     with raises(AssertionError):
-        grid = ls_d0._make_grid_R(-1.0e-2, 7)
+        grid, M = ls_d0.figure_out_grid()
     #end with
     with raises(AssertionError):
-        grid = ls_d0._make_grid_W(0.0, 7)
+        grid, M = ls_d0.figure_out_grid(R = -1.0)
+    #end with
+    with raises(AssertionError):
+        grid = ls_d0.figure_out_grid(W = -1.0)
     #end with
 #end def
 add_unit_test(test_linesearch_class)
@@ -227,8 +318,8 @@ def test_targetlinesearch_class():
     grid = linspace(-0.51, 0.51, 21)
     values = morse(p, grid + 1.0)
 
-    s = ParameterStructure(forward = forward_H2, backward = backward_H2, pos = pos_H2)
-    h = ParameterHessian(hessian_H2)
+    s = get_structure_H2O()
+    h = get_hessian_H2O()
 
     # bias_mix = 0
     tls0 = TargetLineSearch(
@@ -325,17 +416,64 @@ def test_targetlinesearch_class():
     assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
     assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
     assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
+
+    # test generation of W-sigma data: the error surface will be automatically extended, making the test a bit slower to run than most
+    tls4.generate_W_sigma_data(
+        sigma_max = 0.005,
+        W_num = 5,
+        sigma_num = 5,
+        Gs = Gs_N200_M7)
+    tls4.insert_sigma_data(0.0045)
+    tls4.insert_W_data(0.05)
+    W_ref = array('''
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+0.         0.03344238 0.05       0.06688476 0.10032714 0.13376953
+    '''.split(), dtype = float)
+    S_ref = array('''
+0.      0.      0.      0.      0.      0.     
+0.00125 0.00125 0.00125 0.00125 0.00125 0.00125
+0.0025  0.0025  0.0025  0.0025  0.0025  0.0025 
+0.00375 0.00375 0.00375 0.00375 0.00375 0.00375
+0.0045  0.0045  0.0045  0.0045  0.0045  0.0045 
+0.005   0.005   0.005   0.005   0.005   0.005  
+    '''.split(), dtype = float)
+    E_ref = array('''
+4.52112460e-06 1.25095641e-03 2.83723170e-03 5.15373644e-03  1.18319679e-02 2.12587458e-02
+6.29036654e-02 5.42297785e-03 6.21844719e-03 8.08023571e-03  1.41361340e-02 2.30947758e-02
+6.40383526e-02 3.38260433e+00 9.55472899e-03 1.09463151e-02  1.63852020e-02 2.48927799e-02
+6.44092902e-02 7.91191090e+00 1.15231563e+00 1.37012997e-02  1.85817665e-02 2.66730377e-02
+6.46160884e-02 6.30306293e+00 1.81503065e+00 1.53117739e-02  1.98755300e-02 2.77348900e-02
+6.46775821e-02 1.16086422e+01 2.64362674e+00 1.63683030e-02  2.07282364e-02 2.84389483e-02
+    '''.split(), dtype = float)
+    assert match_values(tls4.W_mat, W_ref, tol = 1e-5)
+    assert match_values(tls4.S_mat, S_ref, tol = 1e-5)
+    assert match_values(tls4.E_mat, E_ref, tol = 1e-5)
+
+    x1, y1 = tls4.maximize_sigma(epsilon= 0.01, verbose = False)
+    x2, y2 = tls4.maximize_sigma(epsilon= 0.02, verbose = False)
+    x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
+    x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
+    assert match_values([x1, y1], (0.05, 0.00265625))
+    assert match_values([x2, y2], (0.066884763, 0.005))
+    assert match_values([x3, y3], (0.100327144, 0.01))
+    assert match_values([x4, y4], (0.100327144, 0.01359375))
+    assert not tls4.optimized
+    tls4.optimize(epsilon= 0.05, verbose = False)
+    x5, y5, eps5 = tls4.W_opt, tls4.sigma_opt, tls4.epsilon
+    assert tls4.optimized
+    assert match_values([x5, y5, eps5], (0.133769526, 0.02, 0.05))
 #end def
 add_unit_test(test_targetlinesearch_class)
 
 
 def test_parallellinesearch_class():
-    s = ParameterStructure(
-        forward = forward_H2O,
-        backward = backward_H2O,
-        pos = pos_H2O)
+    s = get_structure_H2O()
     s.shift_params([0.2, 0.2])
-    h = ParameterHessian(hessian_H2O)
+    h = get_hessian_H2O()
     pls = ParallelLineSearch(
         hessian = h,
         structure = s,
@@ -412,19 +550,26 @@ def test_parallellinesearch_class():
   
     next_params_ref = [0.98723545, 104.21430094]
     assert match_values(pls.get_next_params(), next_params_ref)
+
+    # test init from hessian array, also switch units
+    pls = ParallelLineSearch(
+        structure = s,
+        hessian = hessian_H2O,
+        M = 5,
+        x_unit = 'B',
+        E_unit = 'Ha',
+        window_frac = 0.1,
+        noise_frac = 0.0)
+    assert match_values(pls.Lambdas, [0.074919, 0.030092], tol = 1e-5)
+    # TODO:
 #end def
 add_unit_test(test_parallellinesearch_class)
 
 
 # test TargetParallelLineSearch class
 def test_targetparallellinesearch_class():
-    results = []
-    
-    s = ParameterStructure(
-        forward = forward_H2O,
-        backward = backward_H2O,
-        pos = pos_H2O)
-    h = ParameterHessian(hessian_H2O)
+    s = get_structure_H2O()
+    h = get_hessian_H2O()
     srg = TargetParallelLineSearch(
         structure = s,
         hessian = h,
@@ -466,40 +611,30 @@ def test_targetparallellinesearch_class():
     srg.load_results(values = [values0, values1], set_target = True)
 
     bias_d, bias_p = srg.compute_bias(windows = [0.1, 0.05])
-    bias_d_ref = [-0.0157014,  0.0096304]
-    bias_p_ref = [-0.01800402,  0.00389025]
-    assert match_values(bias_d, bias_d_ref)
-    assert match_values(bias_p, bias_p_ref)
+    bias_d_ref = [-0.0156427,  0.0096307]
+    bias_p_ref = [-0.01794873,  0.00390995]
+    assert match_values(bias_d, bias_d_ref, tol = 1e-5)
+    assert match_values(bias_p, bias_p_ref, tol = 1e-5)
+
+    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False)
+    assert match_values(srg.windows, [0.1034483548381337, 0.06556247311750507])
+    assert match_values(srg.noises, [0.002828665952605218, 0.00245859274190644])
+    assert match_values(srg.error_p, [0.01955647, 0.02292969])
+    assert match_values(srg.error_d, [0.02438087, 0.01628842])
 #end def
 add_unit_test(test_targetparallellinesearch_class)
 
+
 # test LineSearchIteration class
-
-# defined here to make functions global for pickling
-s = ParameterStructure(
-    forward = forward_H2O,
-    backward = backward_H2O,
-    pos = pos_H2O,
-    elem = ['O', 'H', 'H'])
-s.shift_params([0.2, -0.2])
-h = ParameterHessian(hessian_H2O)
-params_ref = s.forward(pos_H2O)
-
-def job_H2O_pes(structure, path, sigma, **kwargs):
-    p = structure.params
-    value = pes_H2O(p)
-    return [(path, value, sigma)]
-#end def
-def analyze_H2O_pes(path, job_data = None, **kwargs):
-    for row in job_data:
-        if path == row[0]:
-            return row[1], row[2]
-        #end if
-    #end for
-    return None
-#end def
-
 def test_linesearchiteration_class():
+    from shutil import rmtree
+    s = get_structure_H2O()
+    s.shift_params([0.2, -0.2])
+    params_ref = s._forward(pos_H2O)
+    h = get_hessian_H2O()
+    # must make global for pickling
+    from classes.assets import job_H2O_pes, analyze_H2O_pes
+
     # test deterministic line-search iteration
     test_dir = 'tmp/test_pls_h2O/'
     lsi = LineSearchIteration(
@@ -509,40 +644,49 @@ def test_linesearchiteration_class():
         job_func = job_H2O_pes,
         analyze_func = analyze_H2O_pes,
         windows = [0.05, 1.0],
-        no_load = True,
-    )
+        load = False)
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = True)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.89725537, 104.12804938])
-
     # second iteration
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = True)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93244294, 104.1720672 ])
-    
     # third iteration
     job_data = lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = False)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
-
     # start over and load until second iteration
-    lsi = LineSearchIteration(path = test_dir)
+    lsi = LineSearchIteration(path = test_dir, load = True)
     assert len(lsi.pls_list) == 2
-
     lsi.propagate(write = False)
     lsi.generate_jobs()
     lsi.load_results(job_data = job_data)
     lsi.propagate(write = False)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
+    rmtree(test_dir)
 
-    # TODO: test starting from surrogate
-    # TODO: test stochastic line-search
-
-    # remove test directory
-    from shutil import rmtree
+    # test starting from surrogate
+    test_dir = 'tmp/test_pls_srg_H2O/'
+    srg = get_surrogate_H2O()
+    srg.optimize(windows = [0.1, 0.05], noises = [0.005, 0.005], Gs = Gs_N200_M7.reshape(2, -1, 5))
+    lsi = LineSearchIteration(
+        path = test_dir,
+        surrogate = srg,
+        job_func = job_H2O_pes,
+        analyze_func = analyze_H2O_pes)
+    job_data = lsi.generate_jobs()
+    lsi.load_results(job_data = job_data)
+    lsi.propagate(write = True)
+    grid0_ref = [-0.432306, -0.216153, 0., 0.216153, 0.432306]
+    grid1_ref = [-0.482330, -0.241165, 0., 0.241165, 0.482330]
+    assert match_values(lsi.pls(0).ls(0).grid, grid0_ref, tol = 1e-5)
+    assert match_values(lsi.pls(0).ls(1).grid, grid1_ref, tol = 1e-5)
+    assert match_values(lsi.pls().ls(0).grid, grid0_ref, tol = 1e-5)
+    assert match_values(lsi.pls().ls(1).grid, grid1_ref, tol = 1e-5)
     rmtree(test_dir)
 #end def
 add_unit_test(test_linesearchiteration_class)
