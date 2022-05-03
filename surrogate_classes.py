@@ -781,6 +781,7 @@ class AbstractLineSearch():
     #end def
 
     def search(self, **kwargs):
+        """Perform line-search with the preset values and settings, saving the result to self."""
         assert self.grid is not None and self.values is not None
         res = self._search_with_error(
             self.grid,
@@ -936,8 +937,8 @@ class AbstractLineSearch():
             string = '\n  data: no grid'
         else:
             string = '\n  data:'
-            values = self.values if self.values is not None else self.M * ['-']
-            errors = self.errors if self.errors is not None else self.M * ['-']
+            values = self.values if self.values is not None else len(self.values) * ['-']
+            errors = self.errors if self.errors is not None else len(self.values) * ['-']
             string += '\n    {:9s} {:9s} {:9s}'.format('grid', 'value', 'error')
             for g, v, e in zip(self.grid, values, errors):
                 string += '\n    {: 8f} {:9s} {:9s}'.format(g, str(v), str(e))
@@ -1073,6 +1074,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
     #end def
 
     # repr of grid
+    # TODO: change; currently overlapping information
     def __repr_grid__(self):
         if self.target_grid is None:
             string = '\n  target data: no grid'
@@ -1431,58 +1433,74 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
     #end def
 
     # X: grid of W values; Y: grid of sigma values; E: grid of total errors
+    #   if Gs is not provided, use M and N
     def generate_W_sigma_data(
         self,
         W_num = 10,
         W_max = None,
         sigma_num = 10,
         sigma_max = None,
-        N = None,
-        M = None,
-        fit_kind = None,
         Gs = None,
+        M = None,
+        N = None,
+        fit_kind = None,
         **kwargs
     ):
-        if Gs is None:
-            self.M = M if M is not None else self.M
-            if N is None:
-                Gs = self.Gs
-            else:
-                assert N > 1, 'Must provide N > 1'
-                Gs = random.randn(N, self.M)
-                self.Gs = Gs
-            #end if
-        else:
+        if Gs is None: 
+            M = M if M is not None else self.M
+            self.regenerate_Gs(M, N)  # set (or reset) Gs and M appropriately
+        else: # Gs is not None
+            N, M = Gs.shape
+            assert N > 1, 'Must provide N > 1'
+            assert M > 1, 'Must provide M > 1'
             self.Gs = Gs
-            M = len(Gs[0])
+            self.M = M
         #end if
-        self.fit_kind = fit_kind if fit_kind is not None else self.fit_kind
-        W_max = W_max if W_max is not None else self.W_max   
+        W_max = W_max if W_max is not None else self.W_max
+        fit_kind = fit_kind if fit_kind is not None else self.fit_kind
         sigma_max = sigma_max if sigma_max is not None else W_max/20
         # starting window array: sigma = 0, so only bias
         Ws = linspace(0.0, W_max, W_num)
-        errors = array(self.M * [0.0])
-        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = Gs, fit_kind = fit_kind) for W in Ws]
-        # TODO: what about fit_kind?
+        sigmas = linspace(0.0, sigma_max, sigma_num)
+        errors = array(self.M * sigmas[0])
+        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = self.Gs, fit_kind = fit_kind) for W in Ws]
+        self.fit_kind = fit_kind
         self.E_mat = array([E_this])
         self.W_mat = array([Ws])
-        self.S_mat = array([W_num * [0.0]])
+        self.S_mat = array([W_num * [sigmas[0]]])
         # append the rest
-        for sigma in linspace(0.0, sigma_max, sigma_num)[1:]:
+        for sigma in sigmas[1:]:
             self._insert_sigma_data(sigma, Gs = Gs, fit_kind = fit_kind)
         #end for
         self.resampled = True
     #end def
 
-    def insert_sigma_data(self, sigma, N = None, Gs = None, **kwargs):
-        Gs = Gs if Gs is not None else self.Gs
-        self._insert_sigma_data(sigma, Gs = Gs, **kwargs)
+    def _check_Gs_M_N(self, Gs, M, N):
+        """Return True if Gs (and derived quantities) do not need regeneration, otherwise return False"""
+        if self.Gs is None:
+            return False
+        #end if
+        Gs = Gs if Gs is not None else self.Gs  # only Gs will matter when provided
+        M = M if M is not None else self.M  # check user input
+        N = N if N is not None else len(self.Gs)  # check user input
+        return (len(Gs) == N and len(Gs[0]) == M)
     #end def
 
-    def insert_W_data(self, W, N = None, Gs = None, **kwargs):
-        Gs = Gs if Gs is not None else self.Gs
-        # TODO: consider generating new jobs
-        self._insert_W_data(W, Gs = Gs, **kwargs)
+    def regenerate_Gs(self, M, N):
+        """Regenerate and save Gs array"""
+        assert N > 1, 'Must provide N > 1'
+        assert M > 1, 'Must provide M > 1'
+        self.Gs = random.randn(N, M)
+        self.M = M
+    #end def
+
+    def insert_sigma_data(self, sigma, **kwargs):
+        self._insert_sigma_data(sigma, Gs = self.Gs, fit_kind = self.fit_kind, **kwargs)
+    #end def
+
+    def insert_W_data(self, W, **kwargs):
+        assert W < self.W_max, 'Cannot resample past W_max={:<9f}; extend the target data'.format(self.W_max)
+        self._insert_W_data(W, Gs = self.Gs, fit_kind = self.fit_kind, **kwargs)
     #end def
 
     def _insert_sigma_data(self, sigma, **kwargs):
@@ -1520,21 +1538,27 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
     def maximize_sigma(
         self,
         epsilon,
-        allow_init = True,  # allow initialization
+        allow_override = True,  # allow regeneration of errors
         fix_res = True,  # try to fix bad sigma resolution
         fix_res_max = 10,
-        N = 500,
+        Gs = None,
+        M = None,
+        N = None,
         verbose = True,
         low_thr = 0.9,
         **kwargs
     ):
         """Optimize W and sigma based on maximizing sigma."""
-        if not self.resampled:
-            if allow_init:
-                self.generate_W_sigma_data(N = N, **kwargs)
-            else:
-                raise AssertionError('Must resample errors first!')
+        if self.resampled:
+            if not self._check_Gs_M_N(Gs, M, N):
+                if allow_override:
+                    self.generate_W_sigma_data(Gs = Gs, M = M, N = N, **kwargs)
+                else:
+                    raise AssertionError('Requested inconsistent resampling.')
+                #end if
             #end if
+        else:
+            self.generate_W_sigma_data(Gs = Gs, M = M, N = N, **kwargs)
         #end if
         W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
         if 'not_found' in errs:
@@ -1570,7 +1594,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
                 f_res += 3
                 Wi, Si = self._argmax_y(self.E_mat, epsilon)
                 S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
-                W_lo = (self.W_mat[0, Wi] + self.W_mat[0, Wi - 1]) / 2
+                W_lo = (self.W_mat[1, Wi] + self.W_mat[0, Wi - 1]) / 2
                 self.insert_W_data(W_lo)
                 self.insert_sigma_data(S_new)
                 if verbose:
@@ -1598,13 +1622,14 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         else:
             Wi, Si = self._argmax_y(self.E_mat, epsilon)
             a = (self.E_mat[Si + 1, Wi] - epsilon) / (self.E_mat[Si, Wi] - epsilon)
-            sigma = a * (self.S_mat[Si + 1, Wi] - self.S_mat[Si + 1, Wi])
+            sigma = a * (self.S_mat[Si, Wi] - self.S_mat[Si + 1, Wi])
             return W, sigma
         #end if
     #end def
 
     def _maximize_y(self, X, Y, E, epsilon, low_thr = 0.9):
         """Return X, Y, and E values """
+        assert self.resampled, 'Must resample errors first!'
         assert low_thr < 0.99, 'Threshold limit too high'
         assert epsilon > 0, 'epsilon must be positive'
         errs = []
@@ -2007,32 +2032,77 @@ class TargetParallelLineSearch(ParallelLineSearch):
         return self._resample_errors(windows, noises, Gs = Gs_d, M = M, fit_kind = fit_kind, **kwargs)
     #end def
 
-    def optimize_thermal(
-        self,
-        temperature,
-        **kwargs,
-    ):
+    def optimize_thermal(self, temperature, **kwargs):
         assert temperature > 0, 'Temperature must be positive'
         self.optimize_epsilon_d(self._get_thermal_epsilon_d(temperature), **kwargs)
     #end def
 
-    # Current: broyden1, probably fails
-    # TODO: fixed-point method
+    # TODO: fixed-point method, also need to init error matrices
     def optimize_epsilon_p(
         self,
         epsilon_p,
+        kind = 'ls',  # try line-search by default
         **kwargs,
     ):
-        epsilon_d0 = epsilon_p  # TODO: fix
-        validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
-        epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
+        epsilon_d0 = epsilon_p.copy()  # TODO: fix
+        if kind == 'ls':
+            epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, **kwargs)
+        elif kind == 'thermal':
+            epsilon_d_opt = self._optimize_epsilon_p_thermal(epsilon_p, **kwargs)
+        elif kind == 'broyden1':
+            # Current: broyden1, probably fails to convergample_errors_p_of_d(epsilon_d, target = epsilon_p)
+            validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
+            epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
+        else:
+            raise AssertionError('Fixed-point kind not recognized')
+        #end if
+        self.optimize_epsilon_d(epsilon_d_opt)
+        self.epsilon_p = epsilon_p
+    #end def
+
+    # TODO: figure out good heuristics for dT
+    def _optimize_epsilon_p_thermal(self, epsilon_p, dT = 0.00001, **kwargs):
+        T = dT
+        while all(self._resample_errors_p_of_d(self._get_thermal_epsilon_d(T), target = epsilon_p) < 0.0):
+            T += dT
+        #end while
+        return self._get_thermal_epsilon_d(T - dT)
+    #end def
+
+    def _optimize_epsilon_p_ls(
+        self,
+        epsilon_p,
+        epsilon_d0,
+        thr = 1e-4,
+        it_max = 5,
+        **kwargs
+    ):
+        epsilon_d_opt = epsilon_d0.copy()
+        for it in range(it_max):
+            # sequential line-search starting from d0...dD
+            for d in range(len(epsilon_d_opt)):
+                epsilon_d = epsilon_d_opt.copy()
+                epsilons = linspace(epsilon_d[d] / 2, 2 * epsilon_d[d], 10)
+                costs = []
+                for s in epsilons:
+                    epsilon_d[d] = s
+                    depsilon_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p)
+                    costs.append(sum(depsilon_p**2)**0.5)
+                #end for
+                epsilon_d_opt[d] = epsilons[argmin(costs)]
+            #end for
+            depsilon_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p)
+            if sum(depsilon_p**2)**0.5 < thr:
+                break
+            #end if
+        #end for
+        return epsilon_d_opt
     #end def
 
     def optimize_epsilon_d(
         self,
         epsilon_d,
         Gs = None,
-        verbose = True,
         **kwargs,
     ):
         Gs_d = Gs if Gs is not None else self.D * [None]
@@ -2054,8 +2124,8 @@ class TargetParallelLineSearch(ParallelLineSearch):
     ):
         windows, noises = [], []
         for epsilon, ls, in zip(epsilon_d, self.ls_list):
-            #W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)
-            W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
+            W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)
+            #W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
             windows.append(W_opt)
             noises.append(sigma_opt)
         #end for
@@ -2165,6 +2235,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
             grid, M = tls._figure_out_grid(W = W, M = M)
             values = tls.evaluate_target(grid)
             errors = M * [noise]
+            Gs = Gs if Gs is not None else tls.Gs
             x0s = tls.get_x0_distribution(grid = grid, values = values, errors = errors, Gs = Gs, N = N, fit_kind = fit_kind)
             x0s_d.append(x0s)
             errorbar_d.append(get_fraction_error(x0s - bias_d, self.fraction)[1])
@@ -2187,7 +2258,6 @@ class TargetParallelLineSearch(ParallelLineSearch):
 
     def _resample_errors_p_of_d(self, epsilon_d, target = 0.0, **kwargs):
         windows, noises = self._windows_noises_of_epsilon_d(epsilon_d, **kwargs)
-        print(epsilon_d, self._resample_errors(windows, noises, **kwargs)[1] - target)
         return self._resample_errors(windows, noises, **kwargs)[1] - target
     #end def
 
