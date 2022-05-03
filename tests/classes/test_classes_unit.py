@@ -573,7 +573,7 @@ def test_targetparallellinesearch_class():
     srg = TargetParallelLineSearch(
         structure = s,
         hessian = h,
-        targets = [0.01, -0.01],
+        targets = [0.01, -0.01], # NOTE!
         M = 5,
         window_frac = 0.1)
 
@@ -611,16 +611,71 @@ def test_targetparallellinesearch_class():
     srg.load_results(values = [values0, values1], set_target = True)
 
     bias_d, bias_p = srg.compute_bias(windows = [0.1, 0.05])
-    bias_d_ref = [-0.0156427,  0.0096307]
-    bias_p_ref = [-0.01794873,  0.00390995]
+    bias_d_ref = [-0.0056427,  -0.00036930]
+    bias_p_ref = [-0.00520237, -0.00221626]
     assert match_values(bias_d, bias_d_ref, tol = 1e-5)
     assert match_values(bias_p, bias_p_ref, tol = 1e-5)
 
-    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False)
-    assert match_values(srg.windows, [0.1034483548381337, 0.05736716397781694])
-    assert match_values(srg.noises, [0.0025862088709533424, 0.00245859274190644])
-    assert match_values(srg.error_p, [0.02419722806842793, 0.017208686468267183])
-    assert match_values(srg.error_d, [0.01922068298064178, 0.023883155920223293])
+    # test optimization
+    #1: windows, noises
+    with raises(AssertionError):
+        srg.optimize(windows = [0.1,0.05], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False)
+    #end with
+    with raises(AssertionError):
+        srg.optimize(noises = [0.02,0.02], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False)
+    #end with
+    with raises(AssertionError): # too large W
+        srg.optimize(windows = [0.2,0.4], noises = [0.02, 0.02], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5)
+    #end with
+    srg.optimize(windows = [0.1,0.05], noises = [0.02, 0.02], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5)
+    assert match_values(srg.windows, [0.1,  0.05])
+    assert match_values(srg.noises,  [0.02, 0.02])
+    assert match_values(srg.error_d, [0.03312047, 0.1099758])
+    assert match_values(srg.error_p, [0.05657029, 0.10617361])
+
+    #2: thermal
+    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res_max = 0)
+    assert match_values(srg.windows,   [0.1034483548381337, 0.06556247311750507])
+    assert match_values(srg.noises,    [0.0025862088709533, 0.00245859274190644])
+    assert match_values(srg.error_p,   [0.01136238, 0.01459201])
+    assert match_values(srg.error_d,   [0.00922068, 0.01366444])
+    assert match_values(srg.epsilon_d, [0.009666659286797805, 0.015252627798340353])
+    assert srg.epsilon_p is None
+    assert srg.ls(0).E_mat.shape == (5, 5)
+    assert srg.ls(1).E_mat.shape == (5, 5)
+
+    srg.optimize(temperature = 0.0002, verbose = False, fix_res = True)
+    assert match_values(srg.windows,   [0.1034483548381337,   0.0491718548381288])
+    assert match_values(srg.noises,    [0.005172417741906685, 0.0032781236558752534])
+    assert match_values(srg.error_p,   [0.01622812, 0.02110696])
+    assert match_values(srg.error_d,   [0.0127679,  0.02093523])
+    assert match_values(srg.epsilon_d, [0.013670720666229288, 0.02157047309424181])
+    assert srg.epsilon_p is None
+    assert srg.ls(0).E_mat.shape == (6, 5)
+    assert srg.ls(1).E_mat.shape == (6, 5)
+
+    #3: epsilon_d
+    with raises(AssertionError):  # too low tolerances
+        srg.optimize(epsilon_d = [0.001, 0.001], verbose = False)
+    #end with
+    srg.optimize(epsilon_d = [0.008, 0.007], verbose = False)
+    assert match_values(srg.windows,   [0.1034483548381337, 0.032781236558752536])
+    assert match_values(srg.noises,    [0.0012931044354766712, 0.0008195309139688133])
+    assert match_values(srg.error_d,   [0.00741869, 0.00670662])
+    assert match_values(srg.error_p,   [0.00821476, 0.00810403])
+    assert match_values(srg.epsilon_d, [0.008, 0.007])
+
+    #4: epsilon_p with thermal
+    srg.optimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose=True)
+    assert match_values(srg.windows,   [0.07758626612860027, 0.032781236558752536])
+    assert match_values(srg.noises,    [0.0012931044354766712, 0.0016390618279376267])
+    assert match_values(srg.error_d,   [0.00820818, 0.01304423])
+    assert match_values(srg.error_p,   [0.01040297, 0.01422726])
+    assert match_values(srg.epsilon_d, [0.008371572512095663, 0.013209163147831458])
+    assert match_values(srg.epsilon_p, [0.01, 0.015])
+
+    # TODO: epsilon_p with ls/broyden
+
 #end def
 add_unit_test(test_targetparallellinesearch_class)
 

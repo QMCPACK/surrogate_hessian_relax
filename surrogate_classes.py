@@ -1576,9 +1576,10 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
             #end while
             while 'y_underflow' in errs and f_res < fix_res_max:
                 f_res += 1
-                self.insert_sigma_data(sigma / 2)
+                sigma2 = self.S_mat[1, 0] / 2
+                self.insert_sigma_data(sigma2)
                 if verbose:
-                    print('Sigma underflow: added sigma = {} to resampling grid'.format((sigma / 2).round(7)))
+                    print('Sigma underflow: added sigma = {} to resampling grid'.format((sigma2).round(7)))
                 #end if
                 W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
             #end while
@@ -1969,6 +1970,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
     error_d = None
     temperature = None
     window_frac = None
+    targets = None
     # FLAGS
     optimized = False
 
@@ -2003,6 +2005,24 @@ class TargetParallelLineSearch(ParallelLineSearch):
         temperature = None,
         **kwargs,
     ):
+        """Optimize parallel line-search for noise using different constraints. The optimizer modes are called in the following order of priority based on input parameters provided:
+  1) windows, noises (list, list)
+     when windows and noises per DIRECTION are provided, they are allocated to each DIRECTION and parameter errors resampled
+  2) temperature (float > 0)
+    temperature: windows and noises per DIRECTION are optimized to meet DIRECTIONAL tolerances based on thermal equipartition, parameter errors resampled
+  3) epsilon_d (list)
+    windows and noises per DIRECTION are optimized to meet DIRECTIONAL tolerances
+  4) epsilon_p (list)
+    windows and noises per DIRECTION are optimized for total predicted cost while meeting PARAMETER tolerances
+    Guided by a keyword:
+      kind = 'ls': [DEFAULT] use an auxiliary line-search method for optimization
+      kind = 'thermal': find maximum temperature to maintain PARAMETER errors
+      kind = 'broyden1': use broyden1 minimization to find the optimal solution (very unstable)
+useful keyword arguments:
+  M = number of points
+  N = number of points for resampling
+  fit_kind = fitting function
+        """ 
         if windows is not None and noises is not None:
             self.optimize_windows_noises(windows, noises, **kwargs)
         elif temperature is not None:
@@ -2050,23 +2070,32 @@ class TargetParallelLineSearch(ParallelLineSearch):
         elif kind == 'thermal':
             epsilon_d_opt = self._optimize_epsilon_p_thermal(epsilon_p, **kwargs)
         elif kind == 'broyden1':
-            # Current: broyden1, probably fails to convergample_errors_p_of_d(epsilon_d, target = epsilon_p)
+            # Current: broyden1, probably fails to converge
             validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
             epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
         else:
             raise AssertionError('Fixed-point kind not recognized')
         #end if
-        self.optimize_epsilon_d(epsilon_d_opt)
+        self.optimize_epsilon_d(epsilon_d_opt, fix_res_max = 0)
         self.epsilon_p = epsilon_p
     #end def
 
-    # TODO: figure out good heuristics for dT
-    def _optimize_epsilon_p_thermal(self, epsilon_p, dT = 0.00001, **kwargs):
-        T = dT
-        while all(self._resample_errors_p_of_d(self._get_thermal_epsilon_d(T), target = epsilon_p) < 0.0):
-            T += dT
+    # TODO: check for the first step
+    def _optimize_epsilon_p_thermal(self, epsilon_p, T0 = 0.00001, dT = 0.000005, **kwargs):
+        T = T0
+        error_p = array([-1,-1]) # init
+        first = True
+        while all(error_p < 0.0):
+            try:
+                epsilon_d = self._get_thermal_epsilon_d(T)
+                error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p)
+                T += dT
+            except AssertionError:
+                T += dT
+            #end try
         #end while
-        return self._get_thermal_epsilon_d(T - dT)
+        T -= dT
+        return self._get_thermal_epsilon_d(T)
     #end def
 
     def _optimize_epsilon_p_ls(
@@ -2124,7 +2153,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
     ):
         windows, noises = [], []
         for epsilon, ls, in zip(epsilon_d, self.ls_list):
-            W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)
+            W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)  # no altering the error
             #W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
             windows.append(W_opt)
             noises.append(sigma_opt)
@@ -2214,7 +2243,9 @@ class TargetParallelLineSearch(ParallelLineSearch):
     def _compute_bias(self, windows, **kwargs):
         bias_d = []
         for W, tls, target in zip(windows, self.ls_list, self.targets):
-            bias_d.append(tls.compute_bias(W = W, **kwargs)[0] - target )
+            assert W <= tls.W_max, 'window is larger than W_max'
+            #bias_d.append(tls.compute_bias(W = W, **kwargs)[0] - target )
+            bias_d.append(tls.compute_bias(W = W, **kwargs)[0])
         #end for
         bias_d = array(bias_d)
         bias_p = self._calculate_params_next(self.get_params(), self.get_directions(), bias_d) - self.get_params()
@@ -2222,7 +2253,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
     #end def
 
     def _calculate_error(self, windows, errors, **kwargs):
-        return self._calculate_params_next_error(windows, errors, **kwargs) - self.targets
+        return self._calculate_params_next_error(windows, errors, **kwargs)
     #end def
 
     # based on windows, noises
@@ -2232,6 +2263,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
         x0s_d, x0s_p = [], []  # list of distributions of minima per direction, parameter
         errorbar_d, errorbar_p = [], []  # list of statistical errorbars per direction, parameter
         for tls, W, noise, bias_d, Gs in zip(self.ls_list, windows, noises, biases_d, Gs_d):
+            assert W <= tls.W_max, 'window is larger than W_max'
             grid, M = tls._figure_out_grid(W = W, M = M)
             values = tls.evaluate_target(grid)
             errors = M * [noise]
