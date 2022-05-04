@@ -197,7 +197,7 @@ class ParameterStructureBase():
     #end def
 
     def set_axes(self, axes):
-        if len(axes) == self.dim:
+        if array(axes).size == self.dim:
             self.axes = diag(axes)
         else:
             axes = array(axes)
@@ -266,7 +266,11 @@ class ParameterStructureBase():
         else:
             self.params = params
         #end if
-        self.pos, self.axes = self._backward(params)
+        if self.periodic:
+            self.pos, self.axes = self._backward(params)
+        else:
+            self.pos, axes = self._backward(params)  # no update
+        #end if
     #end def
 
     def _backward(self, params):
@@ -275,7 +279,7 @@ class ParameterStructureBase():
             pos, axes = self.backward_func(array(params))
             return array(pos).reshape(-1, 3), array(axes).reshape(-1, 3)
         else:
-            return array(self.backward_func(array(params))), None
+            return array(self.backward_func(array(params))).reshape(-1, 3), None
         #end if
     #end def
 
@@ -528,7 +532,7 @@ try:
                 'units': units,
             }
             if self.axes is not None:
-                s_args.append({
+                s_args.update({
                     'axes': self.axes,
                     'kshift': kshift,
                     'kgrid': kgrid,
