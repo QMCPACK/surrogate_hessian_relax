@@ -417,6 +417,9 @@ def test_targetlinesearch_class():
     assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
     assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
 
+    # TODO: unit test maximize_sigma function manually
+    # tls_test = TargetLinesearch(structure = s, hessian = h, d = 0)
+
     # test generation of W-sigma data: the error surface will be automatically extended, making the test a bit slower to run than most
     tls4.generate_W_sigma_data(
         sigma_max = 0.005,
@@ -458,14 +461,14 @@ def test_targetlinesearch_class():
     x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
     x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
     assert match_values([x1, y1], (0.05, 0.0025))
-    assert match_values([x2, y2], (0.06055297702, 0.005))
-    assert match_values([x3, y3], (0.10032714486, 0.01))
-    assert match_values([x4, y4], (0.11704833567, 0.015))
+    assert match_values([x2, y2], (0.08360595405247206, 0.005))
+    assert match_values([x3, y3], (0.10032714486296647, 0.01))
+    assert match_values([x4, y4], (0.11704833567346087, 0.015))
     assert not tls4.optimized
     tls4.optimize(epsilon= 0.05, verbose = False)
     x5, y5, eps5 = tls4.W_opt, tls4.sigma_opt, tls4.epsilon
     assert tls4.optimized
-    assert match_values([x5, y5, eps5], (0.133769526, 0.02, 0.05))
+    assert match_values([x5, y5, eps5], (0.1337695264839553, 0.02, 0.05))
 #end def
 add_unit_test(test_targetlinesearch_class)
 
@@ -634,7 +637,7 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.error_p, [0.05657029, 0.10617361])
 
     #2: thermal
-    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res_max = 0)
+    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.06556247311750507])
     assert match_values(srg.noises,    [0.0025862088709533, 0.00245859274190644])
     assert match_values(srg.error_p,   [0.01136238, 0.01459201])
@@ -666,15 +669,22 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.epsilon_d, [0.008, 0.007])
 
     #4: epsilon_p with thermal
-    srg.optimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose=True)
-    assert match_values(srg.windows,   [0.07758626612860027, 0.032781236558752536])
+    srg.optimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose = False)
+    assert match_values(srg.windows,   [0.1034483548381337, 0.04097654569844067])
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0016390618279376267])
-    assert match_values(srg.error_d,   [0.00820818, 0.01304423])
-    assert match_values(srg.error_p,   [0.01040297, 0.01422726])
-    assert match_values(srg.epsilon_d, [0.008371572512095663, 0.013209163147831458])
+    assert match_values(srg.error_d,   [0.00741869, 0.01167165])
+    assert match_values(srg.error_p,   [0.00944918, 0.01285586])
+    assert match_values(srg.epsilon_d, [0.008087707415388121, 0.01276126397847382])
     assert match_values(srg.epsilon_p, [0.01, 0.015])
 
-    # TODO: epsilon_p with ls/broyden
+    #5 epsilon_p with ls
+    srg.optimize(epsilon_p = [0.02, 0.05], kind='ls', verbose = False)
+    assert match_values(srg.windows,   [0.1034483548381337, 0.04097654569844067])
+    assert match_values(srg.noises,    [8.081902721729195e-05, 0.006556247311750507])
+    assert match_values(srg.error_d,   [0.0057126,  0.04470828])
+    assert match_values(srg.error_p,   [0.01941638, 0.04404034])
+    assert match_values(srg.epsilon_d, [0.005723591908711029, 0.04878897098061215])
+    assert match_values(srg.epsilon_p, [0.02, 0.05])
 
 #end def
 add_unit_test(test_targetparallellinesearch_class)

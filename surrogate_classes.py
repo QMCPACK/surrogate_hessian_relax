@@ -2,7 +2,7 @@
 
 import pickle
 from os import makedirs
-from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan
+from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan, mean
 from numpy import random, argsort, isscalar, ndarray, polyfit, polyval
 from numpy import insert, append, where, polyder, argmin, median, argmax
 from scipy.interpolate import interp1d, PchipInterpolator
@@ -1322,6 +1322,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
     E_mat = None  # resampled W-sigma matrix of errors
     W_mat = None  # resampled W-mesh
     S_mat = None  # resampled sigma-mesh
+    T_mat = None  # resampled trust-mesh (whether error is reliable)
     Gs = None  # N x M set of correlated random fluctuations for the grid
     epsilon = None  # optimized target error
     W_opt = None  # W to meet epsilon
@@ -1468,11 +1469,16 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         self.E_mat = array([E_this])
         self.W_mat = array([Ws])
         self.S_mat = array([W_num * [sigmas[0]]])
+        self.T_mat = self._generate_T_mat()
         # append the rest
         for sigma in sigmas[1:]:
             self._insert_sigma_data(sigma, Gs = Gs, fit_kind = fit_kind)
         #end for
         self.resampled = True
+    #end def
+
+    def _generate_T_mat(self):
+        return self.W_mat > self.S_mat
     #end def
 
     def _check_Gs_M_N(self, Gs, M, N):
@@ -1488,8 +1494,8 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
 
     def regenerate_Gs(self, M, N):
         """Regenerate and save Gs array"""
-        assert N > 1, 'Must provide N > 1'
-        assert M > 1, 'Must provide M > 1'
+        assert N is not None and N > 1, 'Must provide N > 1'
+        assert M is not None and M > 1, 'Must provide M > 1'
         self.Gs = random.randn(N, M)
         self.M = M
     #end def
@@ -1513,6 +1519,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         self.W_mat = W_mat[idx]
         self.S_mat = S_mat[idx]
         self.E_mat = E_mat[idx]
+        self.T_mat = self._generate_T_mat()
     #end def
 
     def _insert_W_data(self, W, **kwargs):
@@ -1526,6 +1533,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         self.W_mat = W_mat[:, idx]
         self.S_mat = S_mat[:, idx]
         self.E_mat = E_mat[:, idx]
+        self.T_mat = self._generate_T_mat()
     #end def
 
     def optimize(self, epsilon, **kwargs):
@@ -1539,8 +1547,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         self,
         epsilon,
         allow_override = True,  # allow regeneration of errors
-        fix_res = True,  # try to fix bad sigma resolution
-        fix_res_max = 10,
+        fix_res = True,
         Gs = None,
         M = None,
         N = None,
@@ -1560,63 +1567,103 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         else:
             self.generate_W_sigma_data(Gs = Gs, M = M, N = N, **kwargs)
         #end if
-        W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+        W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
         if 'not_found' in errs:
             raise AssertionError('W, sigma not found for epsilon = {}. Check minimum bias and raise epsilon.'.format(epsilon))
         #end if
         if fix_res:
-            f_res = 0
-            while 'x_underflow' in errs and f_res < fix_res_max:
-                f_res += 1
-                self.insert_W_data(W / 2)
-                if verbose:
-                    print('W underflow: added W = {} to resampling grid'.format((W / 2).round(7)))
-                #end if
-                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            while 'x_underflow' in errs and self._fix_x_underflow(W, verbose = verbose):
+                W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
             #end while
-            while 'y_underflow' in errs and f_res < fix_res_max:
-                f_res += 1
-                sigma2 = self.S_mat[1, 0] / 2
-                self.insert_sigma_data(sigma2)
-                if verbose:
-                    print('Sigma underflow: added sigma = {} to resampling grid'.format((sigma2).round(7)))
-                #end if
-                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            while 'y_underflow' in errs and self._fix_y_underflow(sigma, verbose = verbose):
+                W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
             #end while
-            while 'y_overflow' in errs and f_res < fix_res_max:
-                f_res += 1
-                self.insert_sigma_data(sigma * 2)
-                if verbose:
-                    print('Sigma overflow: added sigma = {} to resampling grid'.format((sigma * 2).round(7)))
-                #end if
-                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            while 'y_overflow' in errs and self._fix_y_overflow(sigma, verbose = verbose):
+                W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
             #end while
-            while 'low_res' in errs and f_res < fix_res_max:
-                f_res += 3
-                Wi, Si = self._argmax_y(self.E_mat, epsilon)
-                S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
-                W_lo = (self.W_mat[1, Wi] + self.W_mat[0, Wi - 1]) / 2
-                self.insert_W_data(W_lo)
-                self.insert_sigma_data(S_new)
-                if verbose:
-                    print('low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
-                    print('low-res: added W = {} to resampling grid'.format(W_lo.round(7)))
-                #end if
-                if 'x_overflow' not in errs:
-                    W_hi = (self.W_mat[0, Wi] + self.W_mat[0, Wi + 1]) / 2
-                    self.insert_W_data(W_hi)
-                    if verbose:
-                        print('low-res: added W = {} to resampling grid'.format(W_hi.round(7)))
-                    #end if
-                #end if
-                W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+            while 'low_res' in errs and self._fix_low_res(epsilon, verbose = verbose):
+                W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
             #end while
-        #end if
         return W, sigma
     #end def
 
+    def _fix_x_underflow(self, W_this, verbose = True):
+        W_new = self.W_mat[0, 1] / 2
+        if W_new < self.W_max * 1e-3:
+            if verbose:
+                print('W underflow: did not add W = {}'.format(W_new.round(7)))
+            #end if
+            return False
+        #end if
+        self.insert_W_data(W_new)
+        if verbose:
+            print('W underflow: added W = {} to resampling grid'.format((W_new).round(7)))
+        #end if
+        return True
+    #end def
+
+    def _fix_y_underflow(self, S_this, verbose = True):
+        S_new = self.S_mat[1, 0] / 2
+        if S_new < self.W_max * 1e-8:
+            return False
+        #end if
+        self.insert_sigma_data(S_new)
+        if verbose:
+            print('Sigma underflow: added sigma = {} to resampling grid'.format((S_new).round(7)))
+        #end if
+        return True
+    #end def
+
+    def _fix_y_overflow(self, S_this, verbose = True):
+        S_new = S_this * 2
+        if S_new > self.W_max:
+            if verbose:
+                print('sigma overflow: did not add sigma = {} to resampling grid'.format(S_new))
+            #end if
+            return False
+        #end if
+        self.insert_sigma_data(S_new)
+        if verbose:
+            print('Sigma overlow: added sigma = {} to resampling grid'.format((S_new).round(7)))
+        #end if
+        return True
+    #end def
+
+    def _fix_low_res(self, epsilon, verbose = True):
+        status = False
+        Wi, Si = self._argmax_y(self.E_mat, self.T_mat, epsilon)
+        W_this, S_this = self.W_mat[0, Wi], self.S_mat[Si, 0]
+        S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
+        W_lo = (self.W_mat[0, Wi - 1] + self.W_mat[0, Wi]) / 2
+        if Wi < len(self.W_mat[0]) - 1:  # whether to add high W value
+            W_hi = (self.W_mat[0, Wi] + self.W_mat[0, Wi + 1]) / 2
+            if abs(W_hi - W_this) > self.W_max * 1e-3:
+                status = True
+                self.insert_W_data(W_hi)
+                if verbose:
+                    print('low-res: added W = {} to resampling grid'.format(W_hi.round(7)))
+                #end if
+            #end if
+        #end if
+        if abs(W_lo - W_this) > self.W_max * 1e-3:
+            self.insert_W_data(W_lo)
+            status = True
+            if verbose:
+                print('low-res: added W = {} to resampling grid'.format(W_lo.round(7)))
+            #end if
+        #end if
+        if abs(S_new - S_this) > self.S_mat.max() * 1e-3:
+            self.insert_sigma_data(S_new)
+            status = True
+            if verbose:
+                print('low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
+            #end if
+        #end if
+        return status
+    #end def
+
     def interpolate_max_sigma(self, epsilon, low_thr = 0.9, **kwargs):
-        W, sigma, E, errs = self._maximize_y(self.W_mat, self.S_mat, self.E_mat, epsilon, low_thr = low_thr)
+        W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
         # TODO: bilinear interpolation
         if any([err in errs for err in ['y_overflow', 'x_underflow']]):
             return W, sigma
@@ -1628,27 +1675,27 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         #end if
     #end def
 
-    def _maximize_y(self, X, Y, E, epsilon, low_thr = 0.9):
+    def _maximize_y(self, epsilon, low_thr = 0.9):
         """Return X, Y, and E values """
         assert self.resampled, 'Must resample errors first!'
         assert low_thr < 0.99, 'Threshold limit too high'
         assert epsilon > 0, 'epsilon must be positive'
         errs = []
-        xi, yi = self._argmax_y(E, epsilon)
+        xi, yi = self._argmax_y(self.E_mat, self.T_mat, epsilon)
         if isnan(xi):
             return nan, nan, nan, ['not_found']
         #end if
-        E0 = E[yi, xi]
-        x0 = X[yi, xi]
-        y0 = Y[yi, xi]
+        E0 = self.E_mat[yi, xi]
+        x0 = self.W_mat[yi, xi]
+        y0 = self.S_mat[yi, xi]
         if xi == 0:
             errs.append('x_underflow')
-        elif xi == E.shape[1] - 1:
+        elif xi == self.E_mat.shape[1] - 1:
             errs.append('x_overflow')
         #end if
         if yi == 0:
             errs.append('y_underflow')
-        elif yi == E.shape[0] - 1:
+        elif yi == self.E_mat.shape[0] - 1:
             errs.append('y_overflow')
         #end if
         if E0 / epsilon < low_thr:
@@ -1657,11 +1704,11 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         return x0, y0, E0, errs
     #end def
 
-    def _argmax_y(self, E, epsilon):
+    def _argmax_y(self, E, T, epsilon):
         """Return indices to the highest point in E matrix that is lower than epsilon"""
         xi, yi = nan, nan
         for i in range(len(E), 0, -1):  # from high to low
-            err = where(E[i - 1] < epsilon)
+            err = where((E[i - 1] < epsilon) & (T[i - 1]))
             if len(err[0]) > 0:
                 yi = i - 1
                 xi = err[0][argmax(E[i-1][err[0]])]
@@ -2076,25 +2123,31 @@ useful keyword arguments:
         else:
             raise AssertionError('Fixed-point kind not recognized')
         #end if
-        self.optimize_epsilon_d(epsilon_d_opt, fix_res_max = 0)
+        self.optimize_epsilon_d(epsilon_d_opt, fix_res = False)
         self.epsilon_p = epsilon_p
     #end def
 
     # TODO: check for the first step
-    def _optimize_epsilon_p_thermal(self, epsilon_p, T0 = 0.00001, dT = 0.000005, **kwargs):
+    def _optimize_epsilon_p_thermal(self, epsilon_p, T0 = 0.00001, dT = 0.000005, verbose = False, **kwargs):
         T = T0
         error_p = array([-1,-1]) # init
         first = True
         while all(error_p < 0.0):
             try:
                 epsilon_d = self._get_thermal_epsilon_d(T)
-                error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p)
+                error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose)
+                if verbose:
+                    print('T = {} highest error {} %'.format(T, (error_p + epsilon_p) / epsilon_p * 100))
+                #end if
                 T += dT
             except AssertionError:
+                if verbose:
+                    print('T = {} skipped'.format(T))
+                #end if
                 T += dT
             #end try
         #end while
-        T -= dT
+        T -= 2 * dT
         return self._get_thermal_epsilon_d(T)
     #end def
 
@@ -2102,26 +2155,42 @@ useful keyword arguments:
         self,
         epsilon_p,
         epsilon_d0,
-        thr = 1e-4,
-        it_max = 5,
+        thr = None,
+        it_max = 10,
         **kwargs
     ):
-        epsilon_d_opt = epsilon_d0.copy()
+        thr = thr if thr is not None else mean(epsilon_p)/20
+        def cost(derror_p):
+            return sum(derror_p**2)**0.5
+        #end def
+        epsilon_d_opt = array(epsilon_d0)
         for it in range(it_max):
-            # sequential line-search starting from d0...dD
+            coeff = 0.5**(it + 1)
+            epsilon_d_old = epsilon_d_opt.copy()
+            # sequential line-search from d0...dD
             for d in range(len(epsilon_d_opt)):
                 epsilon_d = epsilon_d_opt.copy()
-                epsilons = linspace(epsilon_d[d] / 2, 2 * epsilon_d[d], 10)
+                epsilons = linspace(epsilon_d[d] * (1 - coeff), (1 + coeff) * epsilon_d[d], 10)
                 costs = []
                 for s in epsilons:
                     epsilon_d[d] = s
-                    depsilon_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p)
-                    costs.append(sum(depsilon_p**2)**0.5)
+                    derror_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, fix_res = False, **kwargs)
+                    costs.append(cost(derror_p))
                 #end for
                 epsilon_d_opt[d] = epsilons[argmin(costs)]
             #end for
-            depsilon_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p)
-            if sum(depsilon_p**2)**0.5 < thr:
+            derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, **kwargs)
+            cost_it = cost(derror_p)
+            # scale down
+            if cost_it < thr or sum(abs(epsilon_d_old - epsilon_d_opt)) < thr/100:
+                break
+            #end if
+        #end for
+        for c in range(100):
+            if any(derror_p > 0.0):
+                epsilon_d_opt = [e*0.99 for e in epsilon_d_opt]
+                derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, **kwargs)
+            else:
                 break
             #end if
         #end for
@@ -2146,26 +2215,11 @@ useful keyword arguments:
         self.epsilon_d = epsilon_d
     #end def
 
-    def _windows_noises_of_epsilon_d(
-        self,
-        epsilon_d,
-        **kwargs,
-    ):
-        windows, noises = [], []
-        for epsilon, ls, in zip(epsilon_d, self.ls_list):
-            W_opt, sigma_opt = ls.maximize_sigma(epsilon, fix_res = False, verbose = False)  # no altering the error
-            #W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
-            windows.append(W_opt)
-            noises.append(sigma_opt)
-        #end for
-        return windows, noises
-    #end def
-
     def get_Gs(self):
         return [ls.Gs for ls in self.ls_list]
     #end def
 
-    def validate(self, N = 500, verbose = False, thr = 1.15):
+    def validate(self, N = 500, verbose = False, thr = 1.1):
         """Validate optimization by independent random resampling"""
         assert self.optimized, 'Must be optimized first'
         ref_error_p, ref_error_d = self._resample_errors(self.windows, self.noises, Gs = None, N = N)
@@ -2291,6 +2345,21 @@ useful keyword arguments:
     def _resample_errors_p_of_d(self, epsilon_d, target = 0.0, **kwargs):
         windows, noises = self._windows_noises_of_epsilon_d(epsilon_d, **kwargs)
         return self._resample_errors(windows, noises, **kwargs)[1] - target
+    #end def
+
+    def _windows_noises_of_epsilon_d(
+        self,
+        epsilon_d,
+        **kwargs,
+    ):
+        windows, noises = [], []
+        for epsilon, ls, in zip(epsilon_d, self.ls_list):
+            W_opt, sigma_opt = ls.maximize_sigma(epsilon, **kwargs)  # no altering the error
+            #W_opt, sigma_opt = ls.interpolate_max_sigma(abs(epsilon))
+            windows.append(W_opt)
+            noises.append(sigma_opt)
+        #end for
+        return windows, noises
     #end def
 
 #end class
