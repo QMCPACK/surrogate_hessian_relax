@@ -96,8 +96,19 @@ def generate_surrogate(
     path = 'surrogate',
     epsilon = None,
     generate = True,
+    load = None,
     **kwargs,
 ):
+    if load is not None:
+        from surrogate_classes import load_from_disk
+        fname = '{}/{}'.format(path, load)
+        surrogate = load_from_disk(fname)
+        if surrogate is not None:
+            return surrogate
+        else:
+            print('Failed to load {}, generating from scratch...'.format(fname))
+        #end if
+    #end if
     from surrogate_classes import TargetParallelLineSearch
     surrogate = TargetParallelLineSearch(
         structure = structure,
@@ -243,9 +254,18 @@ def plot_one_surrogate_bias(
 def optimize_surrogate(
     surrogate,
     epsilon = None,
+    save = None,
+    rewrite = True,
     **kwargs,
 ):
+    if not rewrite and surrogate.optimized:
+        print('Did not rewrite already optimized surrogate')
+        return
+    #end if
     surrogate.optimize(epsilon_p = epsilon, **kwargs)
+    if not save is None:
+        surrogate.write_to_disk(save)
+    #end if
 #end def
 
 
@@ -254,8 +274,37 @@ def generate_linesearch(
     linesearch_job,
     mode = 'nexus',
     path = 'linesearch',
-    *kwargs,
+    load = True,
+    **kwargs,
 ):
-    lsi = LineSearchIteration(surrogate = surrogate, path = path, **kwargs)
+    from surrogate_classes import LineSearchIteration
+    lsi = LineSearchIteration(surrogate = surrogate, path = path, load = load, **kwargs)
     return lsi
+#end def
+
+def propagate_linesearch(
+    lsi,
+    mode = 'nexus',
+    add_sigma = False,
+    write = True,
+    i = None,
+    **kwargs,
+):
+    pls = lsi.pls(i = i)
+    # if already computed, carry on
+    if not pls is None and pls.protected:
+        lsi.propagate(write = write)
+        return
+    #end if
+    # else run and analyze
+    if mode == 'nexus':
+        from nexus import run_project
+        run_project(lsi.generate_jobs())
+        lsi.load_results(analyze_func = nexus_pwscf_analyzer, add_sigma = add_sigma, **kwargs)
+        pls_next = lsi.propagate(write = write)
+    else:
+        print('Not implemented')
+        return None
+    #end if
+    return
 #end def

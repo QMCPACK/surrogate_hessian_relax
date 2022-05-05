@@ -1253,10 +1253,13 @@ class LineSearch(AbstractLineSearch):
 
     # analyzer fuctions must accept 0: path
     #   return energy, errorbar
-    def analyze_jobs(self, analyze_func, path = '', **kwargs):
+    def analyze_jobs(self, analyze_func, path = '', add_sigma = False, **kwargs):
         values, errors = [], []
         for structure in self.structure_list:
             value, error = analyze_func(self._make_job_path(path, structure.label), **kwargs)
+            if add_sigma:
+                error += self.sigma
+            #end if
             structure.set_value(value, error)
             values.append(value)
             errors.append(error)
@@ -1983,14 +1986,14 @@ class ParallelLineSearch():
         x0s_d = self._get_x0_distributions(N = N)
         params_d = []
         for x0s in x0s_d:
-            params_d = self._calculate_params_next(params, directions, x0s) - params_next
+            params_d.append(self._calculate_params_next(params, directions, x0s) - params_next)
         #end for
-        params_next_err = [get_fraction_error(p, fraction = fraction) for p in array(params_d).T]
+        params_next_err = [get_fraction_error(p, fraction = fraction)[1] for p in array(params_d).T]
         return array(params_next_err)
     #end def
 
     def _get_x0_distributions(self, N = 200, **kwargs):
-        return array([ls.get_x0_distribution(N = N, **kwargs) for ls in self.ls_list]).T
+        return array([ls.get_x0_distribution(errors = ls.errors, N = N, **kwargs) for ls in self.ls_list]).T
     #end def
 
     def write_to_disk(self, fname = 'data.p'):
@@ -2440,8 +2443,13 @@ class LineSearchIteration():
     #end def
 
     def pls(self, i = None):
-        pls = self.pls_list[i] if i is not None else self._get_current_pls()
-        return pls
+        if i is None:
+            return self._get_current_pls()
+        elif i < len(self.pls_list):
+            return self.pls_list[i]
+        else:
+            return None
+        #end if
     #end def
 
     def _load_until_failure(self):
@@ -2453,8 +2461,10 @@ class LineSearchIteration():
             pls = self._load_linesearch_pickle(path)
             if pls is not None and pls.check_integrity():
                 pls_list.append(pls)
+                print('Loaded pls{} from {}'.format(i, path))
                 i += 1
             else:
+                print('Could not find pls{} from {}'.format(i, path))
                 load_failed = True
             #end if
         #end while
@@ -2462,12 +2472,7 @@ class LineSearchIteration():
     #end def
 
     def _load_linesearch_pickle(self, path):
-        try:
-            data = pickle.load(open(path, mode='rb'))
-            return data
-        except FileNotFoundError:
-            return None
-        #end try
+        return load_from_disk(path)
     #end def
 
     def propagate(self, **kwargs):
@@ -2481,6 +2486,16 @@ class LineSearchIteration():
 # Dummy job function
 def dummy_job(position, path, noise, **kwargs):
     pass
+#end def
+
+# load pickle from disk
+def load_from_disk(path):
+    try:
+        data = pickle.load(open(path, mode='rb'))
+        return data
+    except FileNotFoundError:
+        return None
+    #end try
 #end def
 
 
