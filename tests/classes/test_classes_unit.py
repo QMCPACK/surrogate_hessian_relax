@@ -367,30 +367,31 @@ def test_targetlinesearch_class():
 
     # bias_mix = 0.4, pf4, cubic
     tls0.set_target(grid, values, interpolate_kind = 'cubic')
-    biases_x, biases_y, biases_tot = tls0.compute_bias_of(Rs, fit_kind = 'pf4', bias_mix = 0.4, M = 7, verbose = False)
+    biases_x, biases_y, biases_tot = tls0.compute_bias_of(R=Rs, fit_kind = 'pf4', bias_mix = 0.4, M = 7, verbose = False)
     biases_ref = array('''
     0.010000   -0.000005  -0.000000  0.000005   
     0.034500   -0.000005  -0.000000  0.000005   
     0.059000   -0.000005  -0.000001  0.000005   
     0.083500   -0.000016  -0.000001  0.000016   
-    0.108000   -0.000045  -0.000000  0.000045   
+    0.108000   -0.000044  -0.000000  0.000045   
     0.132500   -0.000096  0.000000   0.000096   
     0.157000   -0.000190  0.000001   0.000190   
     0.181500   -0.000342  0.000002   0.000343   
     0.206000   -0.000570  0.000003   0.000571   
-    0.230500   -0.000895  0.000006   0.000897   
+    0.230500   -0.000894  0.000006   0.000897   
     0.255000   -0.001351  0.000013   0.001356   
     0.279500   -0.001960  0.000021   0.001968   
-    0.304000   -0.002761  0.000033   0.002774   
+    0.304000   -0.002760  0.000033   0.002774   
     0.328500   -0.003791  0.000049   0.003811   
     0.353000   -0.005094  0.000068   0.005121   
     0.377500   -0.006707  0.000089   0.006742   
-    0.402000   -0.008687  0.000112   0.008732   
-    0.426500   -0.011070  0.000131   0.011122   
-    0.451000   -0.013921  0.000139   0.013976   
+    0.402000   -0.008686  0.000112   0.008731   
+    0.426500   -0.011069  0.000131   0.011122   
+    0.451000   -0.013920  0.000139   0.013976   
     0.475500   -0.017304  0.000124   0.017354   
-    0.500000   -0.021233  0.000067   0.021259   
+    0.500000   -0.021232  0.000067   0.021259  
     '''.split(),dtype=float).reshape(-1,4)
+
     assert match_values(Rs, biases_ref[:,0], tol=1e-5)
     assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
     assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
@@ -445,12 +446,12 @@ def test_targetlinesearch_class():
 0.005   0.005   0.005   0.005   0.005   0.005  
     '''.split(), dtype = float)
     E_ref = array('''
-4.52112460e-06 1.25095641e-03 2.83723170e-03 5.15373644e-03  1.18319679e-02 2.12587458e-02
-6.29036654e-02 5.42297785e-03 6.21844719e-03 8.08023571e-03  1.41361340e-02 2.30947758e-02
-6.40383526e-02 3.38260433e+00 9.55472899e-03 1.09463151e-02  1.63852020e-02 2.48927799e-02
-6.44092902e-02 7.91191090e+00 1.15231563e+00 1.37012997e-02  1.85817665e-02 2.66730377e-02
-6.46160884e-02 6.30306293e+00 1.81503065e+00 1.53117739e-02  1.98755300e-02 2.77348900e-02
-6.46775821e-02 1.16086422e+01 2.64362674e+00 1.63683030e-02  2.07282364e-02 2.84389483e-02
+4.52112460e-06 1.25095641e-03 2.83723170e-03 5.15373644e-03 1.18319679e-02 2.12587458e-02
+9.03844597e-03 5.42297785e-03 6.21844719e-03 8.08023571e-03 1.41361340e-02 2.30947758e-02
+9.04268709e-03 9.46617238e-03 9.55472899e-03 1.09463151e-02 1.63852020e-02 2.48927799e-02
+1.05408674e-02 1.32813681e-02 1.27452719e-02 1.37012997e-02 1.85817665e-02 2.66730377e-02
+1.04723739e-02 1.56528175e-02 1.45600956e-02 1.53117739e-02 1.98755300e-02 2.77348900e-02
+1.04180628e-02 1.72255235e-02 1.57640068e-02 1.63683030e-02 2.07282364e-02 2.84389483e-02
     '''.split(), dtype = float)
     assert match_values(tls4.W_mat, W_ref, tol = 1e-5)
     assert match_values(tls4.S_mat, S_ref, tol = 1e-5)
@@ -461,8 +462,8 @@ def test_targetlinesearch_class():
     x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
     x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
     assert match_values([x1, y1], (0.05, 0.0025))
-    assert match_values([x2, y2], (0.08360595405247206, 0.005))
-    assert match_values([x3, y3], (0.10032714486296647, 0.01))
+    assert match_values([x2, y2], (0.04172119081049441, 0.00625))
+    assert match_values([x3, y3], (0.04172119081049441, 0.01))
     assert match_values([x4, y4], (0.11704833567346087, 0.015))
     assert not tls4.optimized
     tls4.optimize(epsilon= 0.05, verbose = False)
@@ -614,8 +615,8 @@ def test_targetparallellinesearch_class():
     srg.load_results(values = [values0, values1], set_target = True)
 
     bias_d, bias_p = srg.compute_bias(windows = [0.1, 0.05])
-    bias_d_ref = [-0.0056427,  -0.00036930]
-    bias_p_ref = [-0.00520237, -0.00221626]
+    bias_d_ref = [-0.00559829, -0.00036738]
+    bias_p_ref = [-0.0051611 , -0.00219974]
     assert match_values(bias_d, bias_d_ref, tol = 1e-5)
     assert match_values(bias_p, bias_p_ref, tol = 1e-5)
 
@@ -631,17 +632,18 @@ def test_targetparallellinesearch_class():
         srg.optimize(windows = [0.2,0.4], noises = [0.02, 0.02], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5)
     #end with
     srg.optimize(windows = [0.1,0.05], noises = [0.02, 0.02], Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5)
+
     assert match_values(srg.windows, [0.1,  0.05])
     assert match_values(srg.noises,  [0.02, 0.02])
-    assert match_values(srg.error_d, [0.03312047, 0.1099758])
-    assert match_values(srg.error_p, [0.05657029, 0.10617361])
+    assert match_values(srg.error_d, [0.03307606, 0.10997387])
+    assert match_values(srg.error_p, [0.05652902, 0.10615709])
 
     #2: thermal
     srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.06556247311750507])
     assert match_values(srg.noises,    [0.0025862088709533, 0.00245859274190644])
-    assert match_values(srg.error_p,   [0.01136238, 0.01459201])
     assert match_values(srg.error_d,   [0.00922068, 0.01366444])
+    assert match_values(srg.error_p,   [0.01136238, 0.01459201])
     assert match_values(srg.epsilon_d, [0.009666659286797805, 0.015252627798340353])
     assert srg.epsilon_p is None
     assert srg.ls(0).E_mat.shape == (5, 5)
@@ -650,8 +652,8 @@ def test_targetparallellinesearch_class():
     srg.optimize(temperature = 0.0002, verbose = False, fix_res = True)
     assert match_values(srg.windows,   [0.1034483548381337,   0.0491718548381288])
     assert match_values(srg.noises,    [0.005172417741906685, 0.0032781236558752534])
-    assert match_values(srg.error_p,   [0.01622812, 0.02110696])
-    assert match_values(srg.error_d,   [0.0127679,  0.02093523])
+    assert match_values(srg.error_d,   [0.0127679, 0.0209332])
+    assert match_values(srg.error_p,   [0.0162288, 0.02110504])
     assert match_values(srg.epsilon_d, [0.013670720666229288, 0.02157047309424181])
     assert srg.epsilon_p is None
     assert srg.ls(0).E_mat.shape == (6, 5)
@@ -664,25 +666,28 @@ def test_targetparallellinesearch_class():
     srg.optimize(epsilon_d = [0.008, 0.007], verbose = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.032781236558752536])
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0008195309139688133])
-    assert match_values(srg.error_d,   [0.00741869, 0.00670662])
-    assert match_values(srg.error_p,   [0.00821476, 0.00810403])
+    assert match_values(srg.error_d,   [0.00741869, 0.00670213])
+    assert match_values(srg.error_p,   [0.00821624, 0.0080998])
     assert match_values(srg.epsilon_d, [0.008, 0.007])
 
     #4: epsilon_p with thermal
     srg.optimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.04097654569844067])
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0016390618279376267])
-    assert match_values(srg.error_d,   [0.00741869, 0.01167165])
-    assert match_values(srg.error_p,   [0.00944918, 0.01285586])
+    assert match_values(srg.error_d,   [0.00741869, 0.01166845])
+    assert match_values(srg.error_p,   [0.00945024, 0.01285284])
     assert match_values(srg.epsilon_d, [0.008087707415388121, 0.01276126397847382])
     assert match_values(srg.epsilon_p, [0.01, 0.015])
 
     #5 epsilon_p with ls
     srg.optimize(epsilon_p = [0.02, 0.05], kind='ls', verbose = False)
+    print(srg.error_d)
+    print(srg.error_p)
+
     assert match_values(srg.windows,   [0.1034483548381337, 0.04097654569844067])
     assert match_values(srg.noises,    [8.081902721729195e-05, 0.006556247311750507])
-    assert match_values(srg.error_d,   [0.0057126,  0.04470828])
-    assert match_values(srg.error_p,   [0.01941638, 0.04404034])
+    assert match_values(srg.error_d,   [0.0057126,  0.04470508])
+    assert match_values(srg.error_p,   [0.01941744, 0.04403733])
     assert match_values(srg.epsilon_d, [0.005723591908711029, 0.04878897098061215])
     assert match_values(srg.epsilon_p, [0.02, 0.05])
 

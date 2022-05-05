@@ -8,6 +8,7 @@ def relax_structure(
     path = 'relax',
     mode = 'nexus',
     j_id = -1,
+    make_consistent = True,
     **kwargs
 ):
     jobs = relax_job(structure, path)
@@ -34,6 +35,11 @@ def relax_structure(
         return None
     #end if
     structure_relax = structure.copy(pos = pos_relax, axes = axes_relax)
+    if make_consistent:
+        structure_relax.backward()
+        structure_relax.forward()
+        print(structure_relax.pos - pos_relax)
+    #end if
     return structure_relax
 #end def
 
@@ -184,7 +190,7 @@ def plot_surrogate_bias(
     for l, ls in enumerate(surrogate.ls_list):
         f, ax = plt.subplots(tight_layout = True)
         ax.set_title('Bias: Line-search #{}'.format(l))
-        plot_one_surrogate_bias(ls, ax, **kwargs)
+        plot_one_surrogate_bias(ls, ax, label = 'ls{}'.format(l), **kwargs)
     #end for
 #end def
 
@@ -198,6 +204,8 @@ def plot_one_surrogate_bias(
     xcolor = 'k',
     ycolor = 'r',
     tcolor = 'b',
+    R_min = 0.0,
+    set_x0 = True,
     **kwargs
 ):
     grid = tls.target_grid
@@ -205,17 +213,27 @@ def plot_one_surrogate_bias(
     xgrid = linspace(grid.min(), grid.max(), 201)
     ygrid = tls.target_in(xgrid)
     bias_mix = bias_mix * tls.Lambda**0.5
-
-    R = linspace(0.0, 0.99999999*grid.max(), 51)
-    bias_x, bias_y, bias_tot = tls.compute_bias_of_R(
-         R,
-         fit_kind = fit_kind,
-         M = M,
-         bias_mix = bias_mix,
-         **kwargs)
+    R = linspace(R_min, 0.99999999*grid.max(), 51)
+    if set_x0:
+        tls.target_x0 = 0.0
+        bias_x, bias_y, bias_tot = tls.compute_bias_of(
+             R = R,
+             fit_kind = fit_kind,
+             M = M,
+             bias_mix = bias_mix,
+             **kwargs,
+        )
+        tls.target_x0 = bias_x[0]
+    #end if
+    bias_x, bias_y, bias_tot = tls.compute_bias_of(
+        R = R,
+        fit_kind = fit_kind,
+        M = M,
+        bias_mix = bias_mix,
+        **kwargs)
     ax.plot(R, bias_x, color = xcolor, linestyle = ':', label = 'x_bias ({})'.format(fit_kind))
     ax.plot(R, bias_y, color = ycolor, linestyle = '--', label = 'y_bias ({})'.format(fit_kind))
-    ax.plot(R, bias_tot, color = tcolor, linestyle = '-', label = 'tot_bias (mix: {:4f})'.format(bias_mix))
+    ax.plot(R, bias_tot, color = tcolor, linestyle = '-.', label = 'tot_bias (mix: {:4f})'.format(bias_mix))
     ax.set_xlabel('Grid extent (R)')
     ax.set_ylabel('Bias')
     ax.legend(fontsize = 10)
@@ -227,7 +245,7 @@ def optimize_surrogate(
     epsilon = None,
     **kwargs,
 ):
-    surrogate.optimize(epsilon = epsilon, **kwargs)
+    surrogate.optimize(epsilon_p = epsilon, **kwargs)
 #end def
 
 

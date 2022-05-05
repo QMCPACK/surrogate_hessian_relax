@@ -31,10 +31,11 @@ def match_to_tol(val1, val2, tol = 1e-10):
 def get_min_params(x_n, y_n, pfn = 3, **kwargs):
     pf = polyfit(x_n, y_n, pfn)
     r = roots(polyder(pf))
-    x_mins  = list(r[r.imag == 0].real)
+    x_mins  = r[r.imag == 0].real
     if len(x_mins) > 0:
-        y_mins = polyval(pf, array(x_mins))
-        imin = argmin(y_mins)
+        y_mins = polyval(pf, x_mins)
+        #imin = argmin(y_mins)  # pick the lowest energy
+        imin = argmin(abs(x_mins))  # pick the closest to center
         y0 = y_mins[imin]
         x0 = x_mins[imin]
     else:
@@ -594,6 +595,7 @@ class ParameterHessian():
 
     def init_hessian_real(self, hessian_real, structure = None):
         structure = structure if structure is not None else self.structure
+        assert structure.check_consistency(), 'Provided ParameterStructure is incomplete or inconsistent'
         jacobian = structure.jacobian()
         hessian = jacobian.T @ hessian_real @ jacobian
         self._set_hessian(hessian)
@@ -1011,7 +1013,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
     def compute_bias(self, grid = None, bias_mix = None, **kwargs):
         bias_mix = bias_mix if bias_mix is not None else self.bias_mix
         grid = grid if grid is not None else self.target_grid
-        return self._compute_bias(grid, bias_mix)
+        return self._compute_bias(grid, bias_mix, **kwargs)
     #end def
 
     def _compute_xy_bias(self, grid, **kwargs):
@@ -1360,19 +1362,15 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         AbstractTargetLineSearch.__init__(self, **kwargs)
     #end def
 
-    def compute_bias(self, bias_mix = None, **kwargs):
-        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
-        grid, M = self._figure_out_grid(**kwargs)
-        return self._compute_bias(grid = grid, bias_mix = bias_mix, **kwargs)
-    #end def
-
     def compute_bias_of(
         self,
         R = None,
         W = None,
         verbose = False,
+        bias_mix = None,
         **kwargs
     ):
+        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
         biases_x, biases_y, biases_tot = [], [], []
         if verbose:
             print((4 * '{:<10s} ').format('R', 'bias_x', 'bias_y', 'bias_tot'))
@@ -1380,8 +1378,9 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         if R is not None:
             Rs = array([R]) if isscalar(R) else R
             for R in Rs:
-                R = max(R, 1e-6)  # for numerical stability
-                bias_x, bias_y, bias_tot = self.compute_bias(R = R, **kwargs)
+                R = max(R, 1e-5)  # for numerical stability
+                grid, M = self._figure_out_grid(R = R, **kwargs)
+                bias_x, bias_y, bias_tot = self.compute_bias(grid, bias_mix = bias_mix, **kwargs)
                 biases_x.append(bias_x)
                 biases_y.append(bias_y)
                 biases_tot.append(bias_tot)
@@ -1395,8 +1394,9 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
                 print((4 * '{:<10s} ').format('W', 'bias_x', 'bias_y', 'bias_tot'))
             #end if
             for W in Ws:
-                W = max(W, 1e-6)  # for numerical stability
-                bias_x, bias_y, bias_tot = self.compute_bias(W = W, **kwargs)
+                W = max(W, 1e-5)  # for numerical stability
+                grid, M = self._figure_out_grid(W = W, **kwargs)
+                bias_x, bias_y, bias_tot = self.compute_bias(grid, bias_mix = bias_mix, **kwargs)
                 biases_x.append(bias_x)
                 biases_y.append(bias_y)
                 biases_tot.append(bias_tot)
@@ -1476,7 +1476,7 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         self.T_mat = self._generate_T_mat()
         # append the rest
         for sigma in sigmas[1:]:
-            self._insert_sigma_data(sigma, Gs = Gs, fit_kind = fit_kind)
+            self._insert_sigma_data(sigma, Gs = self.Gs, fit_kind = fit_kind)
         #end for
         self.resampled = True
     #end def
@@ -2127,7 +2127,9 @@ useful keyword arguments:
         else:
             raise AssertionError('Fixed-point kind not recognized')
         #end if
-        self.optimize_epsilon_d(epsilon_d_opt, fix_res = False)
+        kwargs_d = kwargs.copy()
+        kwargs_d.update(fix_res = False)
+        self.optimize_epsilon_d(epsilon_d_opt, **kwargs_d)
         self.epsilon_p = epsilon_p
     #end def
 
@@ -2300,9 +2302,8 @@ useful keyword arguments:
 
     def _compute_bias(self, windows, **kwargs):
         bias_d = []
-        for W, tls, target in zip(windows, self.ls_list, self.targets):
+        for W, tls in zip(windows, self.ls_list):
             assert W <= tls.W_max, 'window is larger than W_max'
-            #bias_d.append(tls.compute_bias(W = W, **kwargs)[0] - target )
             bias_d.append(tls.compute_bias(W = W, **kwargs)[0])
         #end for
         bias_d = array(bias_d)
