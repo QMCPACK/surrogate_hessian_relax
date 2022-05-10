@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import pickle
 from os import makedirs
 from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan, mean
 from numpy import random, argsort, isscalar, ndarray, polyfit, polyval
@@ -9,7 +8,8 @@ from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import broyden1
 from functools import partial
 from textwrap import indent
-from copy import deepcopy
+from copy import copy, deepcopy
+from dill import loads, dumps
 
 Bohr = 0.5291772105638411  # A
 Ry = 13.605693012183622  # eV
@@ -210,7 +210,7 @@ class ParameterStructureBase():
     #end def
 
     def set_elem(self, elem):
-        self.elem = elem
+        self.elem = array(elem)
     #end def    
 
     def set_params(self, params, params_err = None):
@@ -540,6 +540,11 @@ try:
                 })
             #end if
             Structure.__init__(self, **s_args)
+        #end def
+
+        def to_nexus_only(self):
+            self.forward_func = None
+            self.backward_func = None
         #end def
 
     #end class
@@ -1216,7 +1221,9 @@ class LineSearch(AbstractLineSearch):
         jobs = []
         for structure in self.structure_list:
             if exclude_eqm and not structure.label == 'eqm':
-                jobs += self._generate_jobs(job_func, structure, **kwargs)
+                s = structure.copy()
+                s.to_nexus_only()
+                jobs += self._generate_jobs(job_func, s, **kwargs)
             #end if
         #end for
         self.generated = True
@@ -1230,7 +1237,9 @@ class LineSearch(AbstractLineSearch):
         sigma,
         **kwargs,
     ):
-        return self._generate_jobs(job_func, self.structure, sigma = sigma, **kwargs)
+        structure = self.structure.copy()  # copy to be safe
+        structure.to_nexus_only()
+        return self._generate_jobs(job_func, structure, sigma = sigma, **kwargs)
     #end def
 
     def _make_job_path(self, path, label):
@@ -1259,6 +1268,7 @@ class LineSearch(AbstractLineSearch):
             value, error = analyze_func(self._make_job_path(path, structure.label), **kwargs)
             if add_sigma:
                 error += self.sigma
+                value += self.sigma*random.randn(1)[0]
             #end if
             structure.set_value(value, error)
             values.append(value)
@@ -1744,6 +1754,7 @@ class ParallelLineSearch():
     structure = None  # eqm structure
     structure_next = None  # next structure
     job_func = None
+    job_args = {}
     analyze_func = None
     x_unit = None
     E_unit = None
@@ -1769,6 +1780,7 @@ class ParallelLineSearch():
         E_unit = 'Ry',
         fraction = 0.025,
         job_func = None,
+        job_args = {},
         analyze_func = None,
         **kwargs,
     ):
@@ -1778,6 +1790,7 @@ class ParallelLineSearch():
         self.path = path
         self.job_func = job_func
         self.analyze_func = analyze_func
+        self.job_args = job_args
         self.set_hessian(hessian)
         self.set_structure(structure)
         self.guess_windows(windows, window_frac)
@@ -1852,16 +1865,17 @@ class ParallelLineSearch():
         return ls_list
     #end def
 
-    def copy(self, path, **kwargs):
+    def copy(self, path = '', c_noises = 1.0, **kwargs):
         ls_args = {
             'path': path,
             'structure': self.structure,
             'hessian': self.hessian,
             'windows': self.windows,
-            'noises': self.noises,
+            'noises': [noise * c_noises for noise in self.noises],
             'M': self.M,
             'fit_kind': self.fit_kind,
             'job_func': self.job_func,
+            'job_args': self.job_args,
             'analyze_func': self.analyze_func,
         }
         ls_args.update(**kwargs)
@@ -1883,13 +1897,14 @@ class ParallelLineSearch():
         assert not self.protected, 'ParallelLineSearch object is protected. Change at own risk!'
     #end def
 
-    def generate_jobs(self, job_func = None, **kwargs):
+    def generate_jobs(self, job_func = None, job_args = {}, **kwargs):
+        job_args = job_args if not job_args == {} else self.job_args
         job_func = job_func if job_func is not None else self.job_func
         sigma_min = None if not self.noisy else self.noises.min()
-        eqm_jobs = self.ls_list[0].generate_eqm_jobs(job_func, path = self.path, sigma = sigma_min, **kwargs)
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(job_func, path = self.path, sigma = sigma_min, **job_args, **kwargs)
         jobs = eqm_jobs
         for ls in self.ls_list:
-            jobs += ls.generate_jobs(job_func, path = self.path, eqm_jobs = eqm_jobs, **kwargs)
+            jobs += ls.generate_jobs(job_func, path = self.path, eqm_jobs = eqm_jobs, **job_args, **kwargs)
         #end for
         self.generated = True
         return jobs
@@ -1998,7 +2013,9 @@ class ParallelLineSearch():
 
     def write_to_disk(self, fname = 'data.p'):
         makedirs(self.path, exist_ok = True)
-        pickle.dump(self, open(self.path + fname, mode='wb'))
+        with open(self.path + fname, mode='wb') as f:
+            f.write(dumps(self))
+        #end with
     #end def
 
     def __repr__(self):
@@ -2491,7 +2508,9 @@ def dummy_job(position, path, noise, **kwargs):
 # load pickle from disk
 def load_from_disk(path):
     try:
-        data = pickle.load(open(path, mode='rb'))
+        with open(path, mode='rb') as f:
+            data = loads(f.read())
+        #end with
         return data
     except FileNotFoundError:
         return None

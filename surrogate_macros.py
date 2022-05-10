@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 
-from numpy import linspace
+from numpy import linspace, ceil
+
+default_steps = 10
+
+def init_nexus(**nx_settings):
+    from nexus import settings
+    if len(settings) == 0:
+        settings(**nx_settings)
+    #end if
+#end def
 
 def relax_structure(
     structure,
@@ -88,6 +97,24 @@ def nexus_pwscf_analyzer(path, suffix = 'scf.in', **kwargs):
 #end def
 
 
+def nexus_qmcpack_analyzer(path, qmc_idx = 1, get_var = False, suffix = '/dmc/dmc.in.xml', **kwargs):
+    from nexus import QmcpackAnalyzer
+    ai = QmcpackAnalyzer('{}/{}'.format(path, suffix))
+    ai.analyze()
+    LE = ai.qmc[qmc_idx].scalars.LocalEnergy
+    LE2 = ai.qmc[qmc_idx].scalars.LocalEnergy_sq
+    E     = LE.mean
+    Err   = LE.error
+    V     = LE2.mean - E**2
+    kappa = LE.kappa
+    if get_var:
+        return E, Err, V, kappa
+    else:
+        return E, Err
+    #end if
+#end def
+
+
 def generate_surrogate(
     structure,
     hessian,
@@ -97,6 +124,7 @@ def generate_surrogate(
     epsilon = None,
     generate = True,
     load = None,
+    analyze_func = nexus_pwscf_analyzer,
     **kwargs,
 ):
     if load is not None:
@@ -122,7 +150,7 @@ def generate_surrogate(
         if mode == 'nexus':
             from nexus import run_project
             run_project(jobs)
-            surrogate.load_results(analyze_func = nexus_pwscf_analyzer, set_target = True, **kwargs)
+            surrogate.load_results(analyze_func = analyze_func, set_target = True, **kwargs)
         else:
             print('Warning: only Nexus currently implemented')
             return None
@@ -270,15 +298,15 @@ def optimize_surrogate(
 
 
 def generate_linesearch(
-    surrogate,
-    linesearch_job,
+    surrogate = None,
+    job_func = None,
     mode = 'nexus',
     path = 'linesearch',
     load = True,
     **kwargs,
 ):
     from surrogate_classes import LineSearchIteration
-    lsi = LineSearchIteration(surrogate = surrogate, path = path, load = load, **kwargs)
+    lsi = LineSearchIteration(surrogate = surrogate, path = path, load = load, job_func = job_func, **kwargs)
     return lsi
 #end def
 
@@ -290,21 +318,79 @@ def propagate_linesearch(
     i = None,
     **kwargs,
 ):
-    pls = lsi.pls(i = i)
-    # if already computed, carry on
-    if not pls is None and pls.protected:
-        lsi.propagate(write = write)
-        return
+    # if already calculated, carry on
+    if not i is None:
+        if lsi.pls(i = i) is None: 
+            if lsi.pls(i = i - 1) is None:
+                print('Line-search #{} could not be found'.format(i))
+                return
+            #end if
+        elif lsi.pls(i = i).protected:
+            print('Line-search #{} is already done and protected'.format(i))
+            return
+        #end if
     #end if
     # else run and analyze
     if mode == 'nexus':
         from nexus import run_project
+        if lsi.pls().protected:
+            lsi.propagate(write = False)
+        #end if
         run_project(lsi.generate_jobs())
-        lsi.load_results(analyze_func = nexus_pwscf_analyzer, add_sigma = add_sigma, **kwargs)
-        pls_next = lsi.propagate(write = write)
+        lsi.load_results(add_sigma = add_sigma, **kwargs)
+        lsi.propagate(write = write)
     else:
         print('Not implemented')
-        return None
+        return
     #end if
-    return
+#end def
+
+
+def get_qmc_variance(
+    structure,
+    job_func,
+    path = 'path',
+    analyzer_func = nexus_qmcpack_analyzer,
+    suffix = '/dmc/dmc.in.xml',
+    blocks = 200,
+    walkers = 1000,
+    **kwargs
+):
+    from nexus import run_project
+    run_project(job_func(structure, path, sigma = None))
+    res = nexus_qmcpack_analyzer(path, suffix = suffix, get_var = True)
+    variance = res[2]
+    steps = dmc_steps(sigma = None)
+    kappa = res[1]**2 / res[2] * walkers * blocks * steps
+    return variance, kappa
+#end def
+
+
+def get_var_eff(
+    structure,
+    job_func,
+    path = 'path',
+    analyzer_func = nexus_qmcpack_analyzer,
+    suffix = '/dmc/dmc.in.xml',
+    equilibration = 10,
+    **kwargs
+):
+    from nexus import run_project
+    run_project(job_func(structure, path, sigma = None))
+    E, Err = nexus_qmcpack_analyzer(path, suffix = suffix, equilibration = 10)
+    var_eff = default_steps * Err**2
+    return var_eff
+#end def
+
+
+def dmc_steps(sigma, var_eff = None, variance = 1.0, blocks = 200, walkers = 1000, kappa = 1.0):
+    if sigma is None:
+        return default_steps
+    #end if
+    if var_eff is None:
+        steps = kappa * variance / sigma**2 / walkers / blocks
+    else:
+        steps = var_eff / sigma**2
+    #end if
+    return max(int(ceil(steps)), 1)
 #end def
