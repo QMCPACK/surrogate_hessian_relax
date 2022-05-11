@@ -1929,6 +1929,8 @@ class ParallelLineSearch():
         self.loaded = loaded
         if loaded:
             self.calculate_next()
+        else:
+            print('Warning: results were not loaded!')
         #end if
     #end def
 
@@ -2092,6 +2094,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
 useful keyword arguments:
   M = number of points
   N = number of points for resampling
+  bias_mix = mixing of energy bias to parameter bias
   fit_kind = fitting function
         """ 
         if windows is not None and noises is not None:
@@ -2103,16 +2106,19 @@ useful keyword arguments:
         elif epsilon_p is not None:
             self.optimize_epsilon_p(epsilon_p, **kwargs)
         else:
-            raise AssertionError('Not implemented')
+            raise AssertionError('Optimizer constraint not identified')
         #end if
     #end def
 
-    def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, **kwargs):
+    # All optimizer methods conclude here, where the final errors and key parameters are also stored to the object
+    def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, bias_mix = None, **kwargs):
         M = M if M is not None else self.M
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
+        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
         self.error_d, self.error_p = self._errors_windows_noises(windows, noises, M = M, fit_kind = fit_kind, **kwargs)
         self.M = M
         self.fit_kind = fit_kind
+        self.bias_mix = bias_mix
         self.windows = windows
         self.noises = noises
         self.optimized = True
@@ -2456,7 +2462,11 @@ class LineSearchIteration():
     #end def
 
     def _get_current_pls(self):
-        return self.pls_list[-1]
+        if len(self.pls_list) == 1:
+            return self.pls_list[0]
+        else:
+            return self.pls_list[-1]
+        #end if
     #end def
 
     def pls(self, i = None):

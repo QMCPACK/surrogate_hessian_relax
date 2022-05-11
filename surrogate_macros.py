@@ -45,9 +45,10 @@ def relax_structure(
     #end if
     structure_relax = structure.copy(pos = pos_relax, axes = axes_relax)
     if make_consistent:
-        structure_relax.backward()
         structure_relax.forward()
-        print(structure_relax.pos - pos_relax)
+        structure_relax.backward()
+        pos_diff = structure_relax.pos - pos_relax
+        print('Max pos_diff was {}'.format(abs(pos_diff).max()))
     #end if
     return structure_relax
 #end def
@@ -303,10 +304,20 @@ def generate_linesearch(
     mode = 'nexus',
     path = 'linesearch',
     load = True,
+    load_only = False,
+    shift_params = None,
     **kwargs,
 ):
     from surrogate_classes import LineSearchIteration
-    lsi = LineSearchIteration(surrogate = surrogate, path = path, load = load, job_func = job_func, **kwargs)
+    if not load_only:  # a hacky override to enable importing pre-computed modules
+        srg = surrogate.copy()
+        if not shift_params is None:
+            srg.structure.shift_params(shift_params)
+        #end if
+        lsi = LineSearchIteration(surrogate = srg, path = path, load = load, job_func = job_func, **kwargs)
+    else:
+        lsi = LineSearchIteration(path = path, load = True, **kwargs)
+    #end if
     return lsi
 #end def
 
@@ -321,7 +332,7 @@ def propagate_linesearch(
     # if already calculated, carry on
     if not i is None:
         if lsi.pls(i = i) is None: 
-            if lsi.pls(i = i - 1) is None:
+            if i > 0 and lsi.pls(i = i - 1) is None:
                 print('Line-search #{} could not be found'.format(i))
                 return
             #end if
@@ -393,4 +404,23 @@ def dmc_steps(sigma, var_eff = None, variance = 1.0, blocks = 200, walkers = 100
         steps = var_eff / sigma**2
     #end if
     return max(int(ceil(steps)), 1)
+#end def
+
+
+def surrogate_diagnostics(
+    surrogate,
+    ax = None,
+):
+    print('Surrogate diagnostics not yet implemented')
+    if not ax is None:
+        pass
+    #end if
+#end def
+
+
+def linesearch_diagnostics(
+    lsi,
+    ax = None,
+):
+    print('Linesearch diagonstics not yet implemented')
 #end def
