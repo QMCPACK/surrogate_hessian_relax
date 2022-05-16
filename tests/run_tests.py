@@ -3,24 +3,14 @@
 # add argument parser
 import argparse
 parser = argparse.ArgumentParser(description='Surrogate Hessian Relax unit tests')
-parser.add_argument('--unit',  default=True,  action='store_true', help='Run unit tests [TRUE]',)
-parser.add_argument('--integration', default=False, action='store_true', help='Run integration tests [FALSE]',)
+parser.add_argument('-R', help = 'Filter test functions:\n  unit_* for deterministic tests\n  integration_* for stochastic integration tests')
+parser.add_argument('-v', help = 'Verbose ouput for debugging:', default = False, action = 'store_true')
+parser.add_argument('-p', help = 'Pass AssertionError', default = False, action = 'store_true')
 args = parser.parse_args()
 
 if __name__=='__main__':
-    # unit tests
-    if args.unit:
-        print('Running unit tests')
-        import tools.unit
-        from testing import run_unit_tests
-        run_unit_tests()
-    #end if
-    
-    # integration tests
-    if args.integration:
-        print('\nRunning integration tests')
-        import tools.integration
-        from testing import run_integration_tests
-        run_integration_tests()
-    #end if
+    from tools import test_tools_unit, test_tools_integration
+    from classes import test_classes_unit#, test_classes_integration
+    from testing import run_all_tests
+    run_all_tests(R = args.R, verbose = args.v, pass_error = args.p)
 #end if

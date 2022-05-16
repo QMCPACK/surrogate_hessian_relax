@@ -12,20 +12,19 @@
 # Computing task: Suitable for institutional clusters
 
 # First, the user must set up Nexus according to their computing environment.
-
-from nexus import generate_pwscf, generate_qmcpack, job, obj, Structure, run_project
-from nexus import generate_pw2qmcpack, generate_physical_system, settings
+from nexus import generate_pwscf, generate_qmcpack, job, obj 
+from nexus import generate_pw2qmcpack, generate_physical_system
 
 # Modify the below variables as needed
-cores      = 24
+cores      = 8
 presub     = ''
-qeapp      = '/path/to/pw.x'
-p2qapp     = '/path/to/pw2qmcpack.x'
-qmcapp     = '/path/to/qmcpack'
-scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub,hours=2)
-p2qjob     = obj(app=p2qapp,cores=1,ppn=1,presub=presub,minutes=5)
-optjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
-dmcjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub,hours=12)
+qeapp      = 'pw.x'
+p2qapp     = 'pw2qmcpack.x'
+qmcapp     = 'qmcpack'
+scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub)
+p2qjob     = obj(app=p2qapp,cores=1,ppn=1,presub=presub)
+optjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub)
+dmcjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub)
 nx_settings = obj(
     sleep         = 3,
     pseudo_dir    = 'pseudos',
@@ -33,9 +32,11 @@ nx_settings = obj(
     results       = '',
     status_only   = 0,
     generate_only = 0,
-    machine       = 'ws24',
+    machine       = 'ws8',
     )
-settings(**nx_settings) # initiate nexus
+from surrogate_macros import init_nexus
+init_nexus(**nx_settings) # initiate nexus
+fake_sim = not __name__=='__main__'  # this is needed for object serialization
 
 # Pseudos (execute download_pseudos.sh in the working directory)
 relaxpseudos   = ['C.pbe_v1.2.uspp.F.upf', 'H.pbe_v1.4.uspp.F.upf']
@@ -50,8 +51,8 @@ scfpseudos     = ['C.upf','H.upf']
 from numpy import mean,array,sin,pi,cos,diag,linalg
 
 # Forward mapping: produce parameter values from an array of atomic positions
-def pos_to_params(pos):
-    pos = pos.reshape(-1,3) # make sure of the shape
+def forward(pos, **kwargs):
+    pos = pos.reshape(-1, 3) # make sure of the shape
     # for easier comprehension, list particular atoms
     C0 = pos[0]
     C1 = pos[1]
@@ -65,169 +66,112 @@ def pos_to_params(pos):
     H3 = pos[9]
     H4 = pos[10]
     H5 = pos[11]
-    def distance(r1,r2):
-        return sum((r1-r2)**2)**0.5
+    def distance(r1, r2):
+        return sum((r1 - r2)**2)**0.5
     #end def
     # for redundancy, calculate mean bond lengths
     # 0) from neighboring C-atoms
-    r_CC = mean([distance(C0,C1),
-                 distance(C1,C2),
-                 distance(C2,C3),
-                 distance(C3,C4),
-                 distance(C4,C5),
-                 distance(C5,C0)])
+    r_CC = mean([distance(C0, C1),
+                 distance(C1, C2),
+                 distance(C2, C3),
+                 distance(C3, C4),
+                 distance(C4, C5),
+                 distance(C5, C0)])
     # 1) from corresponding H-atoms
-    r_CH = mean([distance(C0,H0),
-                 distance(C1,H1),
-                 distance(C2,H2),
-                 distance(C3,H3),
-                 distance(C4,H4),
-                 distance(C5,H5)])
-    params = array([r_CC,r_CH])
+    r_CH = mean([distance(C0, H0),
+                 distance(C1, H1),
+                 distance(C2, H2),
+                 distance(C3, H3),
+                 distance(C4, H4),
+                 distance(C5, H5)])
+    params = array([r_CC, r_CH])
     return params
 #end def
 
 # Backward mapping: produce array of atomic positions from parameters
-axes = array([20,20,10]) # simulate in vacuum
-def params_to_pos(params):
+axes = array([20, 20, 10]) # simulate in vacuum
+def backward(params, **kwargs):
     r_CC = params[0]
     r_CH = params[1]
     # place atoms on a hexagon in the xy-directions
-    hex_xy = array([[cos( 3*pi/6), sin( 3*pi/6), 0.],
-                    [cos( 5*pi/6), sin( 5*pi/6), 0.],
-                    [cos( 7*pi/6), sin( 7*pi/6), 0.],
-                    [cos( 9*pi/6), sin( 9*pi/6), 0.],
-                    [cos(11*pi/6), sin(11*pi/6), 0.],
-                    [cos(13*pi/6), sin(13*pi/6), 0.]])
-    pos_C = axes/2+hex_xy*r_CC # C-atoms are one C-C length apart from origin
-    pos_H = axes/2+hex_xy*(r_CC+r_CH) # H-atoms one C-H length apart from C-atoms
-    pos = array([pos_C,pos_H]).flatten()
+    hex_xy = array([[cos( 3 * pi / 6), sin( 3 * pi / 6), 0.],
+                    [cos( 5 * pi / 6), sin( 5 * pi / 6), 0.],
+                    [cos( 7 * pi / 6), sin( 7 * pi / 6), 0.],
+                    [cos( 9 * pi / 6), sin( 9 * pi / 6), 0.],
+                    [cos(11 * pi / 6), sin(11 * pi / 6), 0.],
+                    [cos(13 * pi / 6), sin(13 * pi / 6), 0.]])
+    pos_C = axes / 2 + hex_xy * r_CC  # C-atoms are one C-C length apart from origin
+    pos_H = axes / 2 + hex_xy * (r_CC + r_CH)  # H-atoms one C-H length apart from C-atoms
+    pos = array([pos_C, pos_H]).flatten()
     return pos
 #end def
 
-# Guess initial parameter values
-p_init = array([2.651,2.055])
-pos_init = params_to_pos(p_init)
-elem = 6*['C']+6*['H']
-
-# Check consistency of the mappings
-from surrogate_tools import check_mapping_consistency
-if check_mapping_consistency(p_init,pos_to_params,params_to_pos):
-    print('Parameter mappings are consistent at the equilibrium!')
-#end if
-
-
-# The following data structures provide simulation inputs for each theory
-
-# relaxation job
-scf_relax_inputs = obj(
-    input_dft     = 'pbe',
-    occupations   = None,
-    nosym         = False,
-    conv_thr      = 1e-9,
-    mixing_beta   = .7,
-    identifier    = 'relax',
-    input_type    = 'relax',
-    forc_conv_thr = 1e-4,
-    pseudos       = relaxpseudos,
-    ecut          = 100,
-    ecutrho       = 300,
-    )
-# single-shot energy on the same PES as relax
-scf_pes_inputs = obj(
-    input_dft   = 'pbe',
-    occupations = None,
-    nosym       = False,
-    conv_thr    = 1e-9,
-    mixing_beta = .7,
-    identifier  = 'scf',
-    input_type  = 'scf',
-    pseudos     = relaxpseudos,
-    ecut        = 100,
-    ecutrho     = 300,
-    disk_io     = 'none',
-    )
-# SCF settings for QMC: different pseudopotential and higher ecut
-scf_qmc_inputs = obj(
-    input_dft   = 'pbe',
-    occupations = None,
-    nosym       = False,
-    conv_thr    = 1e-9,
-    mixing_beta = .7,
-    identifier  = 'scf',
-    input_type  = 'scf',
-    pseudos     = scfpseudos,
-    ecut        = 300,
-    ecutrho     = 600,
-    )
-# Inputs for QMC optimizer
-opt_inputs = obj(
-    identifier   = 'opt',
-    qmc          = 'opt',
-    input_type   = 'basic',
-    pseudos      = qmcpseudos,
-    bconds       = 'nnn',
-    J2           = True,
-    J1_size      = 6,
-    J1_rcut      = 6.0,
-    J2_size      = 8,
-    J2_rcut      = 8.0,
-    minmethod    = 'oneshift',
-    blocks       = 200,
-    substeps     = 2,
-    steps        = 1,
-    samples      = 100000,
-    minwalkers   = 0.1,
-    nonlocalpp   = True,
-    use_nonlocalpp_deriv = False,
-    )
-# Inputs for DMC
-dmc_inputs = obj(
-    identifier   = 'dmc',
-    qmc          = 'dmc',
-    input_type   = 'basic',
-    pseudos      = qmcpseudos,
-    bconds       = 'nnn',
-    jastrows     = [],
-    vmc_samples  = 1000,
-    blocks       = 200,
-    timestep     = 0.01,
-    nonlocalmoves= True,
-    ntimesteps   = 1,
-    )
-
-# construct Nexus system based on position
-
-def get_system(pos):
-    structure = Structure(
-        pos    = pos.reshape((-1,3)),
-        axes   = diag(axes),
-        dim    = 3,
-        elem   = elem,
-        units  = 'B',
-        kgrid  = (1,1,1),
-        kshift = (0,0,0),
-        )
-    return generate_physical_system(structure=structure,C=4,H=1)
-#end def
+# Let us initiate a ParameterStructure object that conforms to the above mappings
+from surrogate_classes import ParameterStructure
+params_init = array([2.651, 2.055])
+elem = 6 * ['C'] + 6 * ['H']
+structure_init = ParameterStructure(
+    forward = forward,
+    backward = backward,
+    params = params_init,
+    elem = elem,
+    kgrid = (1, 1, 1),  # needed to run plane-waves with Nexus
+    kshift = (0, 0, 0,),
+    dim = 3,
+    units = 'B',
+    axes = diag(axes),
+    periodic = False)
 
 # return a 1-item list of Nexus jobs: SCF relaxation
-def get_relax_job(pos,path,**kwargs):
-    relax     = generate_pwscf(
-        system = get_system(pos),
-        job    = job(**scfjob),
-        path   = path,
-        **scf_relax_inputs
-        )
+def scf_relax_job(structure, path, **kwargs):
+    system = generate_physical_system(structure = structure, C = 4, H = 1)
+    relax = generate_pwscf(
+        system        = system,
+        job           = job(**scfjob),
+        path          = path,
+        pseudos       = relaxpseudos,
+        identifier    = 'relax',
+        calculation   = 'relax',
+        input_type    = 'generic',
+        input_dft     = 'pbe',
+        occupations   = 'smearing',
+        smearing      = 'gaussian',
+        degauss       = 0.0001,
+        nosym         = False,
+        conv_thr      = 1e-9,
+        mixing_beta   = .7,
+        electron_maxstep = 1000,
+        ecutwfc       = 100,
+        ecutrho       = 300,
+        forc_conv_thr = 1e-4,
+        ion_dynamics  = 'bfgs',
+        fake_sim      = fake_sim,
+    )
     return [relax]
 #end def
 
-# return a 3-item list of Nexus jobs: SCF phonon calculation
+
+# LINE-SEARCH
+
+# 1) Surrogate: relaxation
+
+# Let us run a macro that computes and returns the relaxed structure
+from surrogate_macros import relax_structure
+structure_relax = relax_structure(structure = structure_init, relax_job = scf_relax_job)
+
+
+# 2 ) Surrogate: Hessian
+
+# Let us use phonon calculation to obtain the surrogate Hessian
+# First, define a 3-item list of Nexus jobs: 
+#   1: SCF single-shot calculation
+#   2: SCF phonon calculation
+#   3: Conversion to force-constant matrix
 # Since the phonon calculations are not standard in Nexus, we are providing the 
 # inputs manually by using GenericSimulation and input_template classes
-from simulation import GenericSimulation,input_template
-phjob    = obj(app_command='ph.x -in phonon.in', cores=cores,ppn=cores,presub=presub,hours=2)
-q2rjob   = obj(app_command='q2r.x -in q2r.in', cores=cores,ppn=cores,presub=presub,hours=2)
+from simulation import GenericSimulation, input_template
+phjob    = obj(app_command = 'ph.x -in phonon.in', cores = cores, ppn = cores, presub = presub, hours = 2)
+q2rjob   = obj(app_command = 'q2r.x -in q2r.in', cores = cores, ppn = cores, presub = presub, hours = 2)
 ph_input = input_template('''
 phonons at gamma
 &inputph
@@ -246,270 +190,287 @@ q2r_input = input_template('''
   fildyn='PH.dynG', zasr='zero-dim', flfrc='FC.fc'
 /
 ''')
-def get_phonon_jobs(pos,path,**kwargs):
+def get_phonon_jobs(structure, path, **kwargs):
+    system = generate_physical_system(structure = structure, C = 4, H = 1)
     scf = generate_pwscf(
-        system     = get_system(pos),
+        system     = system,
         job        = job(**scfjob),
         path       = path,
-        **scf_pes_inputs,
+        pseudos       = relaxpseudos,
+        identifier    = 'scf',
+        calculation   = 'scf',
+        input_type    = 'generic',
+        input_dft     = 'pbe',
+        occupations   = 'smearing',
+        smearing      = 'gaussian',
+        degauss       = 0.0001,
+        nosym         = False,
+        nogamma       = True,
+        mixing_beta   = .7,
+        ecutwfc       = 100,
+        ecutrho       = 300,
+        electron_maxstep = 1000,
+        fake_sim      = fake_sim,
         )
     scf.input.control.disk_io = 'low' # write charge density
     phonon = GenericSimulation(
-        system       = get_system(pos),
+        system       = system,
         job          = job(**phjob),
         path         = path,
         input        = ph_input,
         identifier   = 'phonon',
-        dependencies = (scf,'other'),
+        fake_sim     = fake_sim,
+        dependencies = (scf, 'other'),
         )
     q2r = GenericSimulation(
-        system     = get_system(pos),
-        job        = job(**q2rjob),
-        path       = path,
-        input      = q2r_input,
-        identifier = 'q2r',
-        dependencies = (phonon,'other'),
+        system       = system,
+        job          = job(**q2rjob),
+        path         = path,
+        input        = q2r_input,
+        identifier   = 'q2r',
+        fake_sim     = fake_sim,
+        dependencies = (phonon, 'other'),
         )
-    return [scf,phonon,q2r]
+    return [scf, phonon, q2r]
 #end def
 
-# return a 1-item list of Nexus jobs: single-point PES
-def get_scf_pes_job(pos,path,**kwargs):
+# Finally, use a macro to read the phonon data and convert to parameter
+# Hessian based on the structural mappings
+from surrogate_macros import compute_phonon_hessian
+hessian = compute_phonon_hessian(structure = structure_relax, phonon_job = get_phonon_jobs, path = 'phonon')
+
+
+# 3) Surrogate: Optimize line-search
+
+# Let us define an SCF PES job that is consistent with the earlier relaxation
+def scf_pes_job(structure, path, **kwargs):
+    system = generate_physical_system(
+        structure = structure,
+        C = 4,
+        H = 1,
+    )
     scf = generate_pwscf(
-        system     = get_system(pos),
-        job        = job(**scfjob),
-        path       = path,
-        **scf_pes_inputs,
-        )
+        system        = system,
+        job           = job(**scfjob),
+        path          = path,
+        pseudos       = relaxpseudos,
+        identifier    = 'scf',
+        calculation   = 'scf',
+        input_type    = 'generic',
+        input_dft     = 'pbe',
+        occupations   = 'smearing',
+        smearing      = 'gaussian',
+        degauss       = 0.0001,
+        nosym         = False,
+        mixing_beta   = .7,
+        forc_conv_thr = 1e-4,
+        ecutwfc       = 100,
+        ecutrho       = 300,
+        electron_maxstep = 1000,
+        fake_sim      = fake_sim,
+    )
     return [scf]
 #end def
 
-# return a 1-item list of Nexus jobs: single-point SCF for QMC
-def get_scf_qmc_job(pos,path,**kwargs):
+# Use a macro to generate a parallel line-search object that samples the
+# surrogate PES around the minimum along the search directions
+from surrogate_macros import generate_surrogate, plot_surrogate_pes, plot_surrogate_bias
+from matplotlib import pyplot as plt
+surrogate = generate_surrogate(
+    structure = structure_relax,
+    hessian = hessian,
+    surrogate_job = scf_pes_job,
+    path = 'surrogate/',  
+    window_frac = 0.25,  # maximum displacement relative to Lambda of each direction
+    noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
+    load = 'surrogate.p',  # try to load from disk
+    M = 15)  # number of points per direction to sample (should be more than finally intended)
+
+bias_mix = 0.1  # how much energy displacement is mixed in to assess the total bias (default: 0.0)
+M = 7  # how many points in the final line-search
+# diagnose: plot bias using different fit kinds
+if __name__=='__main__':
+    plot_surrogate_pes(surrogate)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf2', M = M, bias_mix = bias_mix)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf3', M = M, bias_mix = bias_mix)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf4', M = M, bias_mix = bias_mix)
+    plt.show()
+#end if
+
+# Set target parameter error tolerances (epsilon): 0.01 Bohr accuracy for both C-C and C-H bonds.
+# Then, optimize the surrogate line-search to meet the tolerances given the line-search
+#   main input: bias_mix, M, epsilon
+#   main output: windows, noises (per direction to meet all epsilon)
+epsilon = [0.01, 0.01]
+from surrogate_macros import optimize_surrogate
+optimize_surrogate(
+    surrogate,  # provide the surrogate object
+    epsilon = epsilon,
+    fit_kind = 'pf4',
+    bias_mix = bias_mix,
+    M = M,
+    N = 400,  # use as many points for correlated resampling of the error
+    save = 'surrogate.p',  # serialize the object to freeze the stochastic process
+    rewrite = False,)  # don't rewrite old work, if present
+
+# Diagnoze and plot the performance of the surrogate optimization
+from surrogate_macros import surrogate_diagnostics
+surrogate_diagnostics(surrogate)
+if __name__=='__main__':
+    plt.show()
+#end if
+
+# The check (optional) the performance, let us simulate a line-search on the surrogate PES.
+# It is cheaper to debug the optimizer here than later on.
+# First, generate line-search iteration object based on the surrogate
+from surrogate_macros import generate_linesearch, propagate_linesearch, nexus_pwscf_analyzer
+srg_ls = generate_linesearch(
+    surrogate,
+    scf_pes_job,  # use the surrogate PES
+    path = 'srg_ls/',
+    analyze_func = nexus_pwscf_analyzer,  # use this method to read the data
+    shift_params = [0.1, -0.1],  # shift the starting parameters
+    load = True,  # try loading the object, if present
+    load_only = fake_sim,  # WIP: override import problems
+)
+# Propagate the parallel line-search (compute values, analyze, then move on) 4 times
+#   add_sigma = True means that target errorbars are used to simulate random noise
+propagate_linesearch(srg_ls, i = 0, add_sigma = True)
+propagate_linesearch(srg_ls, i = 1, add_sigma = True)
+propagate_linesearch(srg_ls, i = 2, add_sigma = True)
+propagate_linesearch(srg_ls, i = 3, add_sigma = True)
+
+# Diagnoze and plot the line-search performance.
+from surrogate_macros import linesearch_diagnostics
+linesearch_diagnostics(surrogate)
+if __name__=='__main__':
+    plt.show()
+#end if
+
+
+# 4-5) Stochastic: Line-search
+
+
+# return a simple 4-item DMC workflow for Nexus:
+#   1: run SCF with norm-conserving ECPs to get orbitals
+#   2: convert for QMCPACK
+#   3: Optimize 2-body Jastrow coefficients
+#   4: Run DMC with enough steps/block to meet the target errorbar sigma
+#     it is important to first characterize the DMC run into var_eff
+from surrogate_macros import dmc_steps
+def dmc_pes_job(structure, path, sigma = 0.01, var_eff = 1.0, **kwargs):
+    system = generate_physical_system(
+        structure = structure,
+        C = 4,
+        H = 1,
+    )
     scf = generate_pwscf(
-        system     = get_system(pos),
-        job        = job(**scfjob),
-        path       = path,
-        **scf_qmc_inputs,
-        )
-    return [scf]
-#end def
-
-# Return a 4-item list of Nexus jobs:
-#  1) scf: orbitals
-#  2) p2q: conversion for QMCPACK
-#  3) opt: Jastrow optimization
-#  4) dmc: DMC calculation
-#
-# sigma parameter needed for target accuracy
-# if jastrow job is provided, use as a starting point
-steps_times_error2 = 1.2e-04 # (steps-1)* error**2
-def get_dmc_jobs(pos,path,sigma,jastrow=None,**kwargs):
-    system   = get_system(pos)
-    # Estimate the number of steps necessary to produce the desired accuracy
-    dmcsteps = int(steps_times_error2/sigma**2)+1
-
-    scf = generate_pwscf(
-        system     = system,
-        job        = job(**scfjob),
-        path       = path+'/scf',
-        **scf_qmc_inputs,
-        )
-
+        system        = system,
+        job           = job(**scfjob),
+        path          = path+'/scf',
+        pseudos       = scfpseudos,
+        identifier    = 'scf',
+        calculation   = 'scf',
+        input_type    = 'generic',
+        input_dft     = 'pbe',
+        nosym         = False,
+        nogamma       = True,
+        conv_thr      = 1e-9,
+        mixing_beta   = .7,
+        ecutwfc       = 300,
+        ecutrho       = 600,
+        occupations   = 'smearing',
+        smearing      = 'gaussian',
+        degauss       = 0.0001,
+        electron_maxstep = 1000,
+        fake_sim      = fake_sim,
+    )
     p2q = generate_pw2qmcpack(
         identifier   = 'p2q',
         path         = path+'/scf',
         job          = job(**p2qjob),
         dependencies = [(scf,'orbitals')],
-        )
-
+        fake_sim     = fake_sim,
+    )
     system.bconds = 'nnn'
-    if jastrow is None:
-        opt_cycles = 6
-    else:
-        opt_cycles = 3
-    #end if
     opt = generate_qmcpack(
         system       = system,
         path         = path+'/opt',
         job          = job(**optjob),
         dependencies = [(p2q,'orbitals')],
-        cycles       = opt_cycles,
-        **opt_inputs
+        cycles       = 8,
+        identifier   = 'opt',
+        qmc          = 'opt',
+        input_type   = 'basic',
+        pseudos      = qmcpseudos,
+        bconds       = 'nnn',
+        J2           = True,
+        J1_size      = 6,
+        J1_rcut      = 6.0,
+        J2_size      = 8,
+        J2_rcut      = 8.0,
+        minmethod    = 'oneshift',
+        blocks       = 200,
+        substeps     = 2,
+        steps        = 1,
+        samples      = 100000,
+        minwalkers   = 0.1,
+        nonlocalpp   = True,
+        use_nonlocalpp_deriv = False,
+        fake_sim     = fake_sim,
         )
-    if not jastrow is None:
-        opt.depends((jastrow,'jastrow'))
-    #end if
-
+    dmcsteps = dmc_steps(sigma, var_eff = var_eff)
     dmc = generate_qmcpack(
         system       = system,
         path         = path+'/dmc',
         job          = job(**dmcjob),
         dependencies = [(p2q,'orbitals'),(opt,'jastrow') ],
         steps        = dmcsteps,
-        **dmc_inputs
+        identifier   = 'dmc',
+        qmc          = 'dmc',
+        input_type   = 'basic',
+        pseudos      = qmcpseudos,
+        bconds       = 'nnn',
+        jastrows     = [],
+        vmc_samples  = 1000,
+        blocks       = 200,
+        timestep     = 0.01,
+        nonlocalmoves= True,
+        ntimesteps   = 1,
+        fake_sim     = fake_sim,
         )
     return [scf,p2q,opt,dmc]
 #end def
 
+# Run a macro that runs a DMC test job and returns effective variance w.r.t the number of steps/block
+from surrogate_macros import get_var_eff
+var_eff = get_var_eff(
+    structure_relax,
+    dmc_pes_job,
+    path = 'dmc_test',
+    suffix = '/dmc/dmc.in.xml',
+)
 
-# LINE-SEARCH
+# Finally, use a macro to generate a parallel line-seach iteration object based on the DMC PES
+from surrogate_macros import nexus_qmcpack_analyzer
+dmc_ls = generate_linesearch(
+    surrogate,
+    dmc_pes_job,
+    path = 'dmc_ls/',
+    load = True,
+    load_only = fake_sim,  # WIP: override import problems
+    job_args = {'var_eff': var_eff},  # provide DMC job with var_eff
+    c_noises = 0.5,  # WIP: convert noises from Ry (SCF) to Ha (QMCPACK)
+    analyze_func = nexus_qmcpack_analyzer,  # use this function to analyze the energies
+)
+# Propagate the line-search 3 times
+propagate_linesearch(dmc_ls, i = 0)
+propagate_linesearch(dmc_ls, i = 1)
+propagate_linesearch(dmc_ls, i = 2)
 
-# 1) Surrogate: relaxation
-
-from surrogate_tools import print_relax,get_relax_structure
-
-relax_dir = 'relax'
-run_project(get_relax_job(pos_init,path=relax_dir)) # run relax job with Nexus
-# Analyze and store pos_relax for future use
-pos_relax = get_relax_structure(
-        path       = relax_dir,
-        suffix     = 'relax.in',
-        pos_units  = 'B',
-        )
-params_relax = pos_to_params(pos_relax) # also store the relaxed parameters
-print_relax(elem,pos_relax,params_relax) # print output
-
-# 2) Surrogate: Hessian
-
-from surrogate_tools import load_gamma_k,compute_hessian,print_hessian_delta
-
-phonon_dir = 'phonon'
-run_project(get_phonon_jobs(pos_relax,path=phonon_dir)) # next, run phonon job
-
-# load the real-space Hessian from the phonon calculation output
-hessian_real  = load_gamma_k(phonon_dir+'/FC.fc',len(elem))
-# convert to parameter hessian
-hessian = compute_hessian(
-        pos           = pos_relax,
-        hessian_pos   = hessian_real,
-        pos_to_params = pos_to_params,
-        params_to_pos = params_to_pos,
-        )
-# obtain optimal search directions
-Lambda,U    = linalg.eig(hessian)
-directions  = U.T # we consider the directions transposed
-print_hessian_delta(hessian,directions,Lambda) # print output
-
-# 3) Surrogate: Optimize line-search
-
-from matplotlib import pyplot as plt
-from surrogate_error_scan import IterationData,error_scan_diagnostics,load_W_max,scan_error_data,load_of_epsilon,optimize_window_sigma,optimize_epsilond_heuristic_cost
-
-scan_dir = 'scan_error'
-scan_windows = Lambda/4
-pfn = 3
-pts = 7
-epsilon = [0.01,0.01]
-
-# Generate line-search object (IterationData) to manage the displacements and data
-scan_data = IterationData(
-        n             = 0, 
-        pos           = pos_relax, 
-        hessian       = hessian, 
-        get_jobs      = get_scf_pes_job,
-        pos_to_params = pos_to_params,
-        params_to_pos = params_to_pos,
-        windows       = scan_windows,
-        fraction      = 0.025,
-        pts           = 21,
-        path          = scan_dir,
-        type          = 'scf',
-        load_postfix  = '/scf.in',
-        colors        = ['r','b'],
-        targets       = params_relax,
-        )
-# For later convenience: try loading the object from the disk.
-#   If not there yet, generate and write. This ensures that it won't change due to statistical fluctuations.
-data_load = scan_data.load_from_file()
-if data_load is None:
-    scan_data.shift_positions() # shift positions according to instructions
-    run_project(scan_data.get_job_list()) # execute a list of Nexus jobs
-    scan_data.load_results() # once executed, load results
-    # estimate the maximum windows/direction that are relevant to meet the epsilon-targets
-    W_max = load_W_max(
-            scan_data,
-            epsilon = epsilon, 
-            pts     = pts,
-            pfn     = pfn,
-            )
-    # use correlated resampling of the fits to construct a 2D-mesh of the fitting error
-    scan_error_data(
-            scan_data,
-            pts       = pts,
-            pfn       = pfn,
-            generate  = 1000,
-            W_num     = 16,
-            W_max     = W_max, # constrain the maximum window
-            sigma_num = 16,
-            sigma_max = 0.1,
-            )
-    # based on the 2D-mesh of fitting errors, load the cost-optimal values for a range of epsilon-targets
-    #   then store the trends in simple polynomial fits
-    load_of_epsilon(scan_data,show_plot=True)
-    # optimize the mixing of line-search errors to produce the lowest overall cost
-    optimize_window_sigma(
-            scan_data,
-            optimizer = optimize_epsilond_heuristic_cost,
-            epsilon   = epsilon,
-            show_plot=True)
-    # finally freeze the result by writing to file
-    scan_data.write_to_file()
+# Diagnoze and plot the line-search performance
+from surrogate_macros import linesearch_diagnostics
+linesearch_diagnostics(dmc_ls)
+if __name__=='__main__':
     plt.show()
-else:
-    scan_data = data_load
 #end if
-
-
-# print output
-error_scan_diagnostics(scan_data,steps_times_error2)
-
-
-# 4-5) Stochastic: Line-search
-
-from surrogate_relax import surrogate_diagnostics,average_params,run_linesearch
-
-# store common line-search settings
-ls_settings = obj(
-    get_jobs      = get_dmc_jobs,
-    pos_to_params = pos_to_params,
-    params_to_pos = params_to_pos,
-    type          = 'qmc',
-    load_postfix  = '/dmc/dmc.in.xml',
-    qmc_idx       = 1,
-    qmc_j_idx     = 2,
-    path          = 'dmc/',
-    pfn           = scan_data.pfn,
-    pts           = scan_data.pts,
-    windows       = scan_data.windows,
-    noises        = array(scan_data.noises)/2, # from Ry to Ha
-    colors        = ['r','b'],
-    )
-
-# first iteration
-data = IterationData( 
-        n       = 0, 
-        hessian = hessian,
-        pos     = pos_relax, # start from SCF relaxed position
-        **ls_settings,
-        )
-
-# Run line-search up to n_max iterations, return list of line-search objects
-#   run_linesearch function implements standard steps of the stochastic
-#   line-search, including saving and loading restart files
-data_ls = run_linesearch(data,n_max=3,ls_settings=ls_settings)
-
-params_final, p_errs_final = average_params(
-        data_ls, # input list of line-searches
-        transient = 1, # take average from all steps beyond the first
-        )
-
-data_ls[0].targets = params_final
-print('Final parameters:')
-for p,err in zip(params_final,p_errs_final):
-    print('{} +/- {}'.format(p,err))
-#end for
-
-# print and plot standard output of the iteration
-surrogate_diagnostics(data_ls)
-plt.show()

@@ -9,7 +9,7 @@ from surrogate_tools import W_to_R, get_min_params
 from surrogate_tools import get_fraction_error
 
 
-# Class for line-search iteration
+# Class for line-search iteration (LEGACY)
 
 class IterationData():
 
@@ -412,7 +412,7 @@ class IterationData():
                 Gs        = random.randn(self.generate, self.pts)
                 PES_fit   = polyval(polyfit(shifts, PES, self.pfn), shifts)
                 for G in Gs:
-                    PES_row = PES_fit + PES_err * G
+                    PES_row = PES_fit + PES_err * G[0:len(PES_fit)]
                     if trust > 0:
                         Emin, Dmin, pf = get_min_params(
                             shifts,

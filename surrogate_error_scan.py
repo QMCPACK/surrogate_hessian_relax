@@ -25,6 +25,7 @@ def load_W_max(
     pts,
     W_min   = 1.0e-3,
     verbose = False,
+    energy_mix = 0.0,
 ):
     if isscalar(epsilon):
         epsilon = data.D * [epsilon]
@@ -57,9 +58,9 @@ def load_W_max(
         xB_in = interp1d(Ws, xBs - xBs[0], kind = 'cubic')
         yB_in = interp1d(Ws, yBs - yBs[0], kind = 'cubic')
         if verbose:
-            print('W        bias      energy bias')
+            print('W        bias      energy bias       mix')
             for W in Ws:
-                print('{:10f} {:10f} {:10f}'.format(W, xB_in(W), yB_in(W)))
+                print('{:10f} {:10f} {:10f} {:10f}'.format(W, xB_in(W), yB_in(W), xB_in(W) + energy_mix * yB_in(W)))
             #end for
         #end if
         Wmax = 0.0
