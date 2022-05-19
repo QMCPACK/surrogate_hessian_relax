@@ -197,16 +197,23 @@ class ParameterStructureBase():
         self.check_consistency()
     #end def
 
-    def set_axes(self, axes):
+    def set_axes(self, axes, check = True):
         if array(axes).size == self.dim:
-            self.axes = diag(axes)
+            axes = diag(axes)
         else:
             axes = array(axes)
             assert axes.size == self.dim**2, 'Axes vector inconsistent with {} dimensions!'.format(self.dim)
-            self.axes = array(axes).reshape(self.dim, self.dim)
+            axes = array(axes).reshape(self.dim, self.dim)
         #end if
-        self.unset_value()  # setting aces will unset value
-        self.check_consistency()
+        try:
+            self.reset_axes(axes)  # use nexus method to get kaxes
+        except AttributeError:
+            self.axes = axes
+        #end try
+        self.unset_value()  # setting axes will unset value
+        if check:
+            self.check_consistency()
+        #end if
     #end def
 
     def set_elem(self, elem):
@@ -267,10 +274,9 @@ class ParameterStructureBase():
         else:
             self.params = params
         #end if
+        self.pos, axes = self._backward(params)
         if self.periodic:
-            self.pos, self.axes = self._backward(params)
-        else:
-            self.pos, axes = self._backward(params)  # no update
+            self.set_axes(axes, check = False)  # enable checkups but avoid recursion loop
         #end if
     #end def
 
@@ -591,7 +597,7 @@ class ParameterHessian():
     #end def
 
     def init_hessian_structure(self, structure):
-        assert structure.isinstance(ParameterStructure), 'Provided argument is not ParameterStructure'
+        assert isinstance(structure, ParameterStructure), 'Provided argument is not ParameterStructure'
         assert structure.check_consistency(), 'Provided ParameterStructure is incomplete or inconsistent'
         hessian = diag(len(structure.params) * [1.0])
         self._set_hessian(hessian)
