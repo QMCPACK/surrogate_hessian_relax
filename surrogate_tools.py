@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array, zeros, ones, dot, diag, transpose, sqrt, repeat
+from numpy import array, zeros, ones, dot, diag, transpose, sqrt, repeat, where
 from numpy import linalg, meshgrid, polyfit, polyval, argmin, linspace, ceil
 from numpy import pi, isnan, nan, mean, isscalar, roots, polyder, savetxt
 from numpy import flipud, median, arccos
@@ -743,15 +743,15 @@ def analyze_fdiff_jobs(
                     #end if
                     ids = ids & (abs(diffs[:, p]) < 1e-10)
                 #end for
-                XY = diffs[ids]
-                E = energies[ids]
+                XY = array(diffs)[where(ids)]
+                E = array(energies)[where(ids)]
                 X = XY[:, 0]
                 Y = XY[:, 1]
                 pf = bipolyfit(X, Y, E, 2, 2)
                 hessian[p0, p1] = pf[4]
                 hessian[p1, p0] = pf[4]
-                pfs[p0].append(2 * pf[2])
-                pfs[p1].append(2 * pf[6])
+                pfs[p0].append(2 * pf[6])
+                pfs[p1].append(2 * pf[2])
             #end for
         #end for
         for p0 in range(P):

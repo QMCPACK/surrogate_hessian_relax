@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from numpy import linspace, ceil
+from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
+from surrogate_tools import bipolyfit
 
 default_steps = 10
 
@@ -17,7 +18,9 @@ def relax_structure(
     path = 'relax',
     mode = 'nexus',
     j_id = -1,
+    c_pos = 1.0, 
     make_consistent = True,
+    allow_translate = True,
     **kwargs
 ):
     jobs = relax_job(structure, path)
@@ -33,9 +36,10 @@ def relax_structure(
             print('Not implemented')
             return None
         #end if
-        pos_relax = ai.structures[len(ai.structures) - 1].positions
+        pos_relax = ai.structures[len(ai.structures) - 1].positions * c_pos
         try:
             axes_relax = ai.structures[len(ai.structures) - 1].axes
+            axes_relax *= structure.params[0]
         except AttributeError:
             axes_relax = None
         #end try
@@ -48,6 +52,9 @@ def relax_structure(
         structure_relax.forward()
         structure_relax.backward()
         pos_diff = structure_relax.pos - pos_relax
+        if allow_translate:
+            pos_diff -= pos_diff.mean(axis = 0)
+        #end if
         print('Max pos_diff was {}'.format(abs(pos_diff).max()))
     #end if
     return structure_relax
@@ -62,7 +69,7 @@ def compute_phonon_hessian(
     kind = 'qe',
     mode = 'nexus',
     **kwargs
-    ):
+):
     jobs = phonon_job(structure, path)
     if mode == 'nexus':
         from nexus import run_project
@@ -85,6 +92,113 @@ def compute_phonon_hessian(
     # TODO: set target energy
     hessian = ParameterHessian(structure = structure, hessian_real = hessian_real, x_unit = x_unit, E_unit = E_unit)
     return hessian
+#end def
+
+
+def compute_fdiff_hessian(
+    structure,
+    job_func,
+    path = 'fdiff',
+    dp = 0.01,
+    **kwargs,
+):
+    params = structure.params
+    P = len(params)
+    dps = array(P * [dp]) if isscalar(dp) else dp
+
+    def shift_params(id_ls, dp_ls):
+        dparams = array(P * [0.0])
+        string = 'scf'
+        for p, dp in zip(id_ls, dp_ls):
+            dparams[p] += dp
+            string += '_p{}'.format(p)
+            if dp > 0:
+                string += '+'
+            #end if
+            string += '{}'.format(dp)
+        #end def
+        structure_new = structure.copy()
+        structure_new.shift_params(dparams)
+        return job_func(structure_new, path = path + string), dparams
+    #end def
+
+    eqm = shift_params([], [])
+    jobs = eqm[0]
+    pdiffs = [eqm[1]]
+
+    # construct shifts
+    for p0, (param0, dp0) in enumerate(zip(params, dps)):
+        job, pdiff = shift_params([p0], [+dp0])
+        jobs += job
+        pdiffs += [pdiff]
+        job, pdiff = shift_params([p0], [-dp0])
+        jobs += job
+        pdiffs += [pdiff]
+        for p1, (param1, dp1) in enumerate(zip(params, dps)):
+            if p1 <= p0:
+                continue
+            #end if
+            job, pdiff = shift_params([p0, p1], [+dp0, +dp1])
+            jobs += job
+            pdiffs += [pdiff]
+            job, pdiff = shift_params([p0, p1], [+dp0, -dp1])
+            jobs += job
+            pdiffs += [pdiff]
+            job, pdiff = shift_params([p0, p1], [-dp0, +dp1])
+            jobs += job
+            pdiffs += [pdiff]
+            job, pdiff = shift_params([p0, p1], [-dp0, -dp1])
+            jobs += job
+            pdiffs += [pdiff]
+        #end for
+    #end for
+    from nexus import run_project
+    run_project(jobs)
+
+    from nexus import PwscfAnalyzer
+    Es = []
+    for job in jobs:
+        E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
+        Es.append(E)
+    #end for
+    energies = array(Es)
+
+    if P == 1:  # for 1-dimensional problems
+        pf = polyfit(pdiffs[:, 0], energies, 2)
+        hessian = array([[pf[0]]])
+    else:
+        hessian = zeros((P, P))
+        pfs = [[] for p in range(P)]
+        for p0, param0 in enumerate(params):
+            for p1, param1 in enumerate(params):
+                if p1 <= p0:
+                    continue
+                #end if
+                # filter out the values where other parameters were altered
+                ids = ones(len(pdiffs), dtype=bool)
+                for p in range(P):
+                    if p == p0 or p == p1:
+                        continue
+                    #end if
+                    ids = ids & (abs(pdiffs[:, p]) < 1e-10)
+                #end for
+                XY = array(pdiffs)[where(ids)]
+                E = array(energies)[where(ids)]
+                X = XY[:, 0]
+                Y = XY[:, 1]
+                pf = bipolyfit(X, Y, E, 2, 2)
+                hessian[p0, p1] = pf[4]
+                hessian[p1, p0] = pf[4]
+                pfs[p0].append(2 * pf[6])
+                pfs[p1].append(2 * pf[2])
+            #end for
+        #end for
+        for p0 in range(P):
+            hessian[p0, p0] = mean(pfs[p0])
+        #end for
+    #end if
+    from surrogate_classes import ParameterHessian
+    return ParameterHessian(structure = structure, hessian = hessian)
 #end def
 
 
