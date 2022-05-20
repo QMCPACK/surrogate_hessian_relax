@@ -1051,6 +1051,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         grid = grid if grid is not None else self.grid
         errors = errors if errors is not None else self.errors
         errorbar_x, errorbar_y = self._compute_errorbar(grid, errors, **kwargs)
+        return errorbar_x, errorbar_y
     #end def
 
     # dvalues is an array of value fluctuations: 'errors * Gs' or 'noise * Gs'
@@ -1872,12 +1873,17 @@ class ParallelLineSearch():
     #end def
 
     def copy(self, path = '', c_noises = 1.0, **kwargs):
+        if self.noises is None:
+            noises = None
+        else:
+            noises = [noise * c_noises for noise in self.noises]
+        #end if
         ls_args = {
             'path': path,
             'structure': self.structure,
             'hessian': self.hessian,
             'windows': self.windows,
-            'noises': [noise * c_noises for noise in self.noises],
+            'noises': noises,
             'M': self.M,
             'fit_kind': self.fit_kind,
             'job_func': self.job_func,
@@ -1969,7 +1975,7 @@ class ParallelLineSearch():
         params_next = self._calculate_params_next(self.get_params(), self.get_directions(), self.get_shifts())
         #stochastic
         if self.noisy:
-            params_next_err = self._calculate_params_next_err(self.get_params(), self.get_directions(), params_next, **kwargs)
+            params_next_err = self._calculate_params_next_error(self.get_params(), self.get_directions(), params_next, **kwargs)
         else:
             params_next_err = array(self.D * [0.0])
         #end if
@@ -2005,7 +2011,7 @@ class ParallelLineSearch():
         return params + shifts @ directions
     #end def
 
-    def _calculate_params_next_err(self, params, directions, params_next, N = 200, fraction = 0.025, **kwargs):
+    def _calculate_params_next_error(self, params, directions, params_next, N = 200, fraction = 0.025, **kwargs):
         x0s_d = self._get_x0_distributions(N = N)
         params_d = []
         for x0s in x0s_d:
@@ -2120,11 +2126,9 @@ useful keyword arguments:
     def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, bias_mix = None, **kwargs):
         M = M if M is not None else self.M
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
-        bias_mix = bias_mix if bias_mix is not None else self.bias_mix
-        self.error_d, self.error_p = self._errors_windows_noises(windows, noises, M = M, fit_kind = fit_kind, **kwargs)
+        self.error_d, self.error_p = self._errors_windows_noises(windows, noises, M = M, fit_kind = fit_kind, bias_mix = bias_mix, **kwargs)
         self.M = M
         self.fit_kind = fit_kind
-        self.bias_mix = bias_mix
         self.windows = windows
         self.noises = noises
         self.optimized = True
@@ -2336,15 +2340,12 @@ useful keyword arguments:
         bias_d = []
         for W, tls in zip(windows, self.ls_list):
             assert W <= tls.W_max, 'window is larger than W_max'
-            bias_d.append(tls.compute_bias(W = W, **kwargs)[0])
+            grid = tls._figure_out_grid(W = W)[0]
+            bias_d.append(tls.compute_bias(grid, **kwargs)[0])
         #end for
         bias_d = array(bias_d)
         bias_p = self._calculate_params_next(self.get_params(), self.get_directions(), bias_d) - self.get_params()
         return bias_d, bias_p
-    #end def
-
-    def _calculate_error(self, windows, errors, **kwargs):
-        return self._calculate_params_next_error(windows, errors, **kwargs)
     #end def
 
     # based on windows, noises
