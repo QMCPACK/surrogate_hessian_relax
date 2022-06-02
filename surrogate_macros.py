@@ -18,13 +18,27 @@ def relax_structure(
     path = 'relax',
     mode = 'nexus',
     j_id = -1,
-    c_pos = 1.0, 
+    c_pos = 1.0,
+    pos_file = None,
     make_consistent = True,
     allow_translate = True,
     **kwargs
 ):
+    # try to load from file
+    if pos_file is not None:
+        from surrogate_classes import load_xyz
+        try:
+            pos_relax = load_xyz('{}/{}'.format(path, pos_file))
+            axes_relax = None
+            mode = 'load'
+        except OSError:
+            print('File {} not found'.format(pos_file))
+        #end try
+    #end if
     jobs = relax_job(structure, path)
-    if mode == 'nexus':
+    if mode == 'load':
+        pass
+    elif mode == 'nexus':
         from nexus import run_project
         run_project(jobs)
         job = jobs[j_id]
@@ -100,6 +114,7 @@ def compute_fdiff_hessian(
     job_func,
     path = 'fdiff',
     dp = 0.01,
+    mode = 'pwscf',
     **kwargs,
 ):
     params = structure.params
@@ -155,12 +170,19 @@ def compute_fdiff_hessian(
     from nexus import run_project
     run_project(jobs)
 
-    from nexus import PwscfAnalyzer
-    Es = []
-    for job in jobs:
-        E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
-        Es.append(E)
-    #end for
+    if mode == 'pwscf':
+        Es = []
+        for job in jobs:
+            E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
+            Es.append(E)
+        #end for
+    elif mode == 'gamess':
+        Es = []
+        for job in jobs:
+            E, Err = nexus_gamess_analyzer(path = job.locdir, suffix = job.infile)
+            Es.append(E)
+        #end for
+    #end if
     energies = array(Es)
 
     if P == 1:  # for 1-dimensional problems
@@ -207,6 +229,16 @@ def nexus_pwscf_analyzer(path, suffix = 'scf.in', **kwargs):
     ai = PwscfAnalyzer('{}/{}'.format(path, suffix))
     ai.analyze()
     E = ai.E
+    Err = 0.0
+    return E, Err
+#end def
+
+
+def nexus_gamess_analyzer(path, suffix = 'uhf.inp', **kwargs):
+    from nexus import GamessAnalyzer
+    ai = GamessAnalyzer('{}/{}'.format(path, suffix))
+    ai.analyze()
+    E = ai.energy.total
     Err = 0.0
     return E, Err
 #end def
@@ -367,7 +399,7 @@ def plot_one_surrogate_bias(
     xgrid = linspace(grid.min(), grid.max(), 201)
     ygrid = tls.target_in(xgrid)
     bias_mix = bias_mix * tls.Lambda**0.5
-    R = linspace(R_min, 0.99999999*grid.max(), 51)
+    R = linspace(R_min, 0.99999999*tls.R_max, 51)
     if set_x0:
         tls.target_x0 = 0.0
         bias_x, bias_y, bias_tot = tls.compute_bias_of(

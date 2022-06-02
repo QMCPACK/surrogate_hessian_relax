@@ -222,7 +222,7 @@ def test_abstractlinesearch_class():
 
     # test setting wrong number of values
     with raises(AssertionError):
-        ls.set_values(ls.values[:-2])
+        ls.set_values(values = ls.values[:-2])
     #end with
 
     # test _search method

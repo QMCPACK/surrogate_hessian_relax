@@ -2,7 +2,7 @@
 
 from os import makedirs
 from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan, mean
-from numpy import random, argsort, isscalar, ndarray, polyfit, polyval
+from numpy import random, argsort, isscalar, ndarray, polyfit, polyval, loadtxt
 from numpy import insert, append, where, polyder, argmin, median, argmax
 from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import broyden1
@@ -741,7 +741,7 @@ class AbstractLineSearch():
             self.set_grid(grid)
         #end if
         if values is not None:
-            self.set_values(values, errors, also_search = (self.grid is not None))
+            self.set_values(grid, values, errors, also_search = (self.grid is not None))
         #end if
     #end def
 
@@ -772,25 +772,23 @@ class AbstractLineSearch():
         return func, func_p
     #end def
 
-    def set_data(self, grid, values, errors = None, also_search = True):
-        self.set_grid(grid)
-        self.set_values(values, errors, also_search = also_search)
-    #end def
-
     def set_grid(self, grid):
         assert len(grid) > 2, 'Number of grid points must be greater than 2'
         self.reset()
         self.grid = array(grid)
     #end def
 
-    def set_values(self, values, errors = None, also_search = True):
-        assert len(values) == len(self.grid), 'Number of values does not match the grid'
+    def set_values(self, grid = None, values = None, errors = None, also_search = True):
+        grid = grid if not grid is None else self.grid
+        assert not values is None, 'must set values'
+        assert len(values) == len(grid), 'Number of values does not match the grid'
         self.reset()
         if errors is None or all(array(errors) == None):
             self.errors = None
         else:
             self.errors = array(errors)
         #end if
+        self.set_grid(grid)
         self.values = array(values)
         if also_search:
             self.search()
@@ -860,12 +858,12 @@ class AbstractLineSearch():
 
     def _pf_search(
         self,
-        shifts,
+        grid,
         values,
         pfn,
         **kwargs,
     ):
-        return get_min_params(shifts, values, pfn, **kwargs)
+        return get_min_params(grid, values, pfn, **kwargs)
     #end def
 
     def reset(self):
@@ -1008,6 +1006,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
         if self.target_y0 is None:
             self.target_y0 = self.target_values.min()  # approximation
         #end if
+        self.set_grid(grid)
         self.target_xlim = [grid.min(), grid.max()]
         if interpolate_kind == 'pchip':
             self.target_in = PchipInterpolator(grid, values, extrapolate = False)
@@ -1269,31 +1268,40 @@ class LineSearch(AbstractLineSearch):
 
     # analyzer fuctions must accept 0: path
     #   return energy, errorbar
-    def analyze_jobs(self, analyze_func, path = '', add_sigma = False, **kwargs):
-        values, errors = [], []
-        for structure in self.structure_list:
+    def analyze_jobs(self, analyze_func, path = '', add_sigma = False, prune0 = True, **kwargs):
+        grid, values, errors = [], [], []
+        for shift, structure in zip(self.grid, self.structure_list):
             value, error = analyze_func(self._make_job_path(path, structure.label), **kwargs)
             if add_sigma:
                 error += self.sigma
                 value += self.sigma*random.randn(1)[0]
             #end if
             structure.set_value(value, error)
-            values.append(value)
-            errors.append(error)
+            if prune0 and value == 0:
+                print('Skipped shift={}, value {}'.format(shift, value))
+            else:
+                grid.append(shift)
+                values.append(value)
+                errors.append(error)
+            #end if
         #end for
-        return values, errors
+        return array(grid), array(values), array(errors)
     #end def
 
-    def load_results(self, analyze_func = None, values = None, errors = None, **kwargs):
+    def load_results(self, analyze_func = None, grid = None, values = None, errors = None, **kwargs):
         if analyze_func is not None:
-            values, errors = self.analyze_jobs(analyze_func, **kwargs)
+            grid, values, errors = self.analyze_jobs(analyze_func, **kwargs)
+        else:
+            # allow to input only values, not grid
+            grid = grid if grid is not None else self.grid
         #end if
-        self.loaded = self.set_results(values, errors, **kwargs)
+        self.loaded = self.set_results(grid, values, errors, **kwargs)
         return self.loaded
     #end def
 
     def set_results(
         self,
+        grid,
         values,
         errors = None,
         **kwargs
@@ -1301,7 +1309,7 @@ class LineSearch(AbstractLineSearch):
         if values is None:
             return False
         #end if
-        self.set_values(values, errors, also_search = True)
+        self.set_values(grid, values, errors, also_search = True)
         return True
     #end def
 
@@ -1429,12 +1437,13 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
     #end def
 
     # overrides method in LineSearch class with option to set target PES
-    def set_results(self, values, errors, set_target = False, **kwargs):
+    def set_results(self, grid, values, errors, set_target = False, **kwargs):
         if set_target:
-            self.set_target(self.grid, values, **kwargs)
+            self.set_target(grid, values, **kwargs)
             self._set_RW_max()
+            return False  # to avoid calculate_next
         else:
-            LineSearch.set_results(self, values, errors, **kwargs)
+            return LineSearch.set_results(self, grid, values, errors, **kwargs)
         #end if
     #end def
 
@@ -2532,6 +2541,12 @@ def load_from_disk(path):
     except FileNotFoundError:
         return None
     #end try
+#end def
+
+
+def load_xyz(fname):
+    e, x, y, z = loadtxt(fname, dtype = str, unpack = True, skiprows = 2)
+    return array([x, y, z], dtype = float).T
 #end def
 
 
