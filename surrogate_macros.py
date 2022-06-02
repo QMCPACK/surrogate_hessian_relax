@@ -555,10 +555,23 @@ def dmc_steps(sigma, var_eff = None, variance = 1.0, blocks = 200, walkers = 100
 
 def surrogate_diagnostics(
     surrogate,
-    ax = None,
+    show_plot = True,
 ):
-    print('Surrogate diagnostics not yet implemented')
-    if not ax is None:
+    print('Surrogate diagnostics:')
+    for l,ls in enumerate(surrogate.ls_list):
+        print('  line-search #{}:'.format(ls.d))
+        print('    Lambda:     {}'.format(ls.Lambda))
+        print('    fit_kind:   {}'.format(ls.fit_kind))
+        print('    M:          {}'.format(ls.M))
+        print('    W:          {}'.format(ls.W))
+        print('    R:          {}'.format(ls.R))
+        print('    epsilon:    {}'.format(ls.epsilon))
+        print('    W_opt:      {}'.format(ls.W_opt))
+        print('    sigma_opt:  {}'.format(ls.sigma_opt))
+    #end for
+
+    print('Error scan:')
+    if show_plot:
         pass
     #end if
 #end def
@@ -566,7 +579,7 @@ def surrogate_diagnostics(
 
 def linesearch_diagnostics(
     lsi,
-    ax = None,
+    show_plot = True,
 ):
     print('Linesearch diagonstics not yet implemented')
 #end def

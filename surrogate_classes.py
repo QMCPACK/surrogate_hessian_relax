@@ -4,6 +4,7 @@ from os import makedirs
 from numpy import array, diag, linalg, linspace, savetxt, roots, nan, isnan, mean
 from numpy import random, argsort, isscalar, ndarray, polyfit, polyval, loadtxt
 from numpy import insert, append, where, polyder, argmin, median, argmax
+from numpy import concatenate
 from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import broyden1
 from functools import partial
@@ -1114,6 +1115,7 @@ class AbstractTargetLineSearch(AbstractLineSearch):
 class LineSearch(AbstractLineSearch):
     structure = None  # eqm structure
     structure_list = None  # list of LineSearchStructure objects
+    jobs_list = None  # boolean list for bookkeeping of jobs
     d = None  # direction count
     W = None
     R = None
@@ -1194,12 +1196,22 @@ class LineSearch(AbstractLineSearch):
 
     def shift_structures(self):
         structure_list = []
+        jobs_list = []
         for shift in self.grid:
             structure = self._shift_structure(shift)
             structure_list.append(structure)
+            jobs_list.append(False)
         #end for
         self.structure_list = structure_list
+        self.jobs_list = jobs_list
         self.shifted = True
+    #end def
+
+    def add_shift(self, shift):
+        structure = self._shift_structure(shift)
+        self.structure_list.append(structure)
+        self.jobs_list.append(False)
+        self.grid = concatenate([self.grid, [shift]])
     #end def
 
     def _shift_structure(self, shift, roundi = 4):
@@ -1225,7 +1237,12 @@ class LineSearch(AbstractLineSearch):
     ):
         assert self.shifted, 'Must shift parameters first before generating jobs'
         jobs = []
-        for structure in self.structure_list:
+        for si, structure in enumerate(self.structure_list):
+            if self.jobs_list[si]:
+                continue
+            else:
+                self.jobs_list[si] = True
+            #end if
             if exclude_eqm and not structure.label == 'eqm':
                 s = structure.copy()
                 s.to_nexus_only()
@@ -1243,6 +1260,9 @@ class LineSearch(AbstractLineSearch):
         sigma,
         **kwargs,
     ):
+        if self.generated:
+            return []
+        #end if
         structure = self.structure.copy()  # copy to be safe
         structure.to_nexus_only()
         return self._generate_jobs(job_func, structure, sigma = sigma, **kwargs)
