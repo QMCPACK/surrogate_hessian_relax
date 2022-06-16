@@ -115,6 +115,7 @@ def compute_fdiff_hessian(
     path = 'fdiff',
     dp = 0.01,
     mode = 'pwscf',
+    skip_jobs = 0,  # skip as many jobs before analyzing
     **kwargs,
 ):
     params = structure.params
@@ -167,18 +168,30 @@ def compute_fdiff_hessian(
             pdiffs += [pdiff]
         #end for
     #end for
+    pdiffs = array(pdiffs)
     from nexus import run_project
     run_project(jobs)
 
+    jobi = 0
     if mode == 'pwscf':
         Es = []
         for job in jobs:
+            if jobi < skip_jobs:
+                jobi += 1
+                continue
+            #end if
+            jobi = 0
             E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
             Es.append(E)
         #end for
     elif mode == 'gamess':
         Es = []
         for job in jobs:
+            if jobi < skip_jobs:
+                jobi += 1
+                continue
+            #end if
+            jobi = 0
             E, Err = nexus_gamess_analyzer(path = job.locdir, suffix = job.infile)
             Es.append(E)
         #end for
@@ -204,10 +217,10 @@ def compute_fdiff_hessian(
                     #end if
                     ids = ids & (abs(pdiffs[:, p]) < 1e-10)
                 #end for
-                XY = array(pdiffs)[where(ids)]
+                XY = pdiffs[where(ids)]
                 E = array(energies)[where(ids)]
-                X = XY[:, 0]
-                Y = XY[:, 1]
+                X = XY[:, p0]
+                Y = XY[:, p1]
                 pf = bipolyfit(X, Y, E, 2, 2)
                 hessian[p0, p1] = pf[4]
                 hessian[p1, p0] = pf[4]
@@ -558,7 +571,7 @@ def surrogate_diagnostics(
     show_plot = True,
 ):
     print('Surrogate diagnostics:')
-    for l,ls in enumerate(surrogate.ls_list):
+    for l, ls in enumerate(surrogate.ls_list):
         print('  line-search #{}:'.format(ls.d))
         print('    Lambda:     {}'.format(ls.Lambda))
         print('    fit_kind:   {}'.format(ls.fit_kind))
@@ -568,11 +581,23 @@ def surrogate_diagnostics(
         print('    epsilon:    {}'.format(ls.epsilon))
         print('    W_opt:      {}'.format(ls.W_opt))
         print('    sigma_opt:  {}'.format(ls.sigma_opt))
+        print('    bias:       {}'.format(surrogate.get_biases_d()[l]))
     #end for
 
     print('Error scan:')
+    for p, param in enumerate(surrogate.structure.params):
+        print('  parameter #{}:'.format(p))
+        print('    value:      {}'.format(param))
+        print('    Lambda:     {}'.format(surrogate.hessian.hessian[p, p]))
+        if not surrogate.epsilon_p is None:
+            print('    epsilon:    {}'.format(surrogate.epsilon_p[p]))
+        #end if
+        print('    errors:     {}'.format(surrogate.error_p[p]))
+        print('    bias:       {}'.format(surrogate.get_biases_p()[p]))
+    #end for
+
     if show_plot:
-        pass
+        pass  # WIP
     #end if
 #end def
 
@@ -581,5 +606,21 @@ def linesearch_diagnostics(
     lsi,
     show_plot = True,
 ):
-    print('Linesearch diagonstics not yet implemented')
+    print('Linesearch diagnostics:\n')
+
+    print('Parameter convergence:')
+    params, params_err = lsi.get_params()
+    for i, (param, param_err) in enumerate(zip(params, params_err)):
+        fmt = 'pls{}  '
+        pedata = []
+        for p, pe in zip(param, param_err):
+            fmt += ' {:<6f} +/- {:<6f}'
+            pedata += [p, pe]
+        #end for
+        print(fmt.format(i, *tuple(pedata)))
+    #end for
+
+    if show_plot:
+        pass  # WIP
+    #end if
 #end def

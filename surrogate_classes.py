@@ -406,6 +406,7 @@ class ParameterStructureBase():
     def copy(
         self,
         params = None,
+        params_err = None,
         label = None,
         pos = None,
         axes = None,
@@ -413,7 +414,7 @@ class ParameterStructureBase():
     ):
         structure = deepcopy(self)
         if params is not None:
-            structure.set_params(params)
+            structure.set_params(params, params_err)
         #end if
         if pos is not None:
             structure.set_pos(pos)
@@ -2002,7 +2003,7 @@ class ParallelLineSearch():
         structure = self.structure
         # deterministic
         params_next = self._calculate_params_next(self.get_params(), self.get_directions(), self.get_shifts())
-        #stochastic
+        # stochastic
         if self.noisy:
             params_next_err = self._calculate_params_next_error(self.get_params(), self.get_directions(), params_next, **kwargs)
         else:
@@ -2013,6 +2014,15 @@ class ParallelLineSearch():
 
     def get_params(self):
         return self.structure.params
+    #end def
+
+    def get_params_err(self):
+        err = self.structure.params_err
+        if err is None:
+            return self.structure.params * 0.0
+        else:
+            return err
+        #end if
     #end def
 
     def get_shifted_params(self, i = None):
@@ -2037,7 +2047,11 @@ class ParallelLineSearch():
     #end def
 
     def _calculate_params_next(self, params, directions, shifts):
-        return params + shifts @ directions
+        return params + self._calculate_shifts(directions, shifts)
+    #end def
+
+    def _calculate_shifts(self, directions, shifts):
+        return shifts @ directions
     #end def
 
     def _calculate_params_next_error(self, params, directions, params_next, N = 200, fraction = 0.025, **kwargs):
@@ -2429,6 +2443,17 @@ useful keyword arguments:
         return windows, noises
     #end def
 
+    def get_biases_d(self, windows = None):
+        windows = windows if not windows is None else self.windows
+        biases_d = array([ls.compute_bias_of(W = ls.W_opt)[0][0] for ls in self.ls_list])
+        return biases_d
+    #end def
+
+    def get_biases_p(self, windows = None):
+        biases_p = self._calculate_shifts(self.directions, self.get_biases_d(windows = windows))
+        return biases_p
+    #end def
+
 #end class
 
 
@@ -2543,12 +2568,33 @@ class LineSearchIteration():
         self.pls_list.append(pls_next)
     #end
 
+    def get_params(self, p = None, get_errs = True):
+        params = [list(self.pls(0).get_params())]
+        params_err = [list(self.pls(0).get_params_err())]
+        for pls in self.pls_list:
+            params.append(list(pls.structure_next.params))
+            params_err.append(list(pls.structure_next.params_err))
+        #end for
+        if not p is None:
+            params = array(params)[:, p]
+            params_err = array(params_err)[:, p]
+        else:
+            params = array(params)
+            params_err = array(params_err)
+        #end if
+        if get_errs:
+            return params, params_err
+        else:
+            return params
+        #end if
+    #end def
+
 #end class
 
 
 # Dummy job function
-def dummy_job(position, path, noise, **kwargs):
-    pass
+def dummy_job(position, path, sigma, **kwargs):
+    return []
 #end def
 
 # load pickle from disk
@@ -2571,8 +2617,22 @@ def load_xyz(fname):
 
 
 # Minimal function for writing line-search structures
-def write_xyz_noise(position, path, noise, **kwargs):
+def write_xyz_noise(structure, path, sigma, **kwargs):
     makedirs(path, exist_ok = True)
-    savetxt('{}/structure.xyz'.format(path), position.to_xyz())
-    savetxt('{}/noise'.format(path), noise)
+    structure.write_xyz('{}/structure.xyz'.format(path))
+    if not sigma is None:
+        savetxt('{}/noise'.format(path), [sigma])
+    #end if
+    return []
 #end def
+
+# Minimal function for writing line-search structures
+def write_xsf_noise(structure, path, sigma, **kwargs):
+    makedirs(path, exist_ok = True)
+    structure.write_xsf('{}/structure.xsf'.format(path))
+    if not sigma is None:
+        savetxt('{}/noise'.format(path), [sigma])
+    #end if
+    return []
+#end def
+
