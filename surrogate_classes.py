@@ -107,20 +107,86 @@ class StructuralParameter():
 #end class
 
 
-class ParameterStructureBase():
+class ParameterSet():
+    """Base class for representing a set of parameters to optimize"""
+    params = None
+    params_err = None
+    value = None  # energy value
+    error = None  # errorbar
+    label = None  # label for identification
+
+    def __init__(
+        self,
+        params = None,
+        params_err = None,
+        value = None,
+        value_err = None,
+        label = None,
+    ):
+        self.label = label
+        if params is not None:
+            self.set_params(params, params_err)
+        #end if
+        if value is not None:
+            self.set_value(value, error)
+        #end if
+    #end def
+
+    def set_params(self, params, params_err = None):
+        self.params = array(params).flatten()
+        self.params_err = params_err
+        self.unset_value()
+    #end def
+
+    def set_value(self, value, error = None):
+        assert self.params is not None, 'Cannot assign value to abstract structure, set params first'
+        self.value = value
+        self.error = error
+    #end def
+
+    def unset_value(self):
+        self.value = None
+        self.error = None
+    #end def
+
+    def shift_params(self, dparams):
+        assert self.params is not None, 'params has not been set'
+        self.params += dparams
+        self.unset_value()
+    #end def
+
+    def copy(
+        self,
+        params = None,
+        params_err = None,
+        label = None,
+        **kwargs,
+    ):
+        structure = deepcopy(self)
+        if params is not None:
+            structure.set_params(params, params_err)
+        #end if
+        if label is not None:
+            structure.label = label
+        #end if
+        return structure
+    #end def
+
+    def check_consistency(self):
+        return True
+    #end def
+#end class
+
+
+class ParameterStructureBase(ParameterSet):
     """Base class for representing a mapping between reducible positions (pos, axes) and irreducible parameters."""
     forward_func = None  # mapping function from pos to params
     backward_func = None  # mapping function from params to pos
     pos = None  # real-space position
     axes = None  # cell axes
-    params = None  # reduced parameters
-    params_err = None  # store parameter uncertainties
     dim = None  # dimensionality
     elem = None  # list of elements
     unit = None  # position units
-    value = None  # energy value
-    error = None  # errorbar
-    label = None  # label for identification
     # TODO: parameter trust intervals
     # FLAGS
     periodic = False  # is the line-search periodic; will axes be supplied to forward_func
@@ -232,7 +298,7 @@ class ParameterStructureBase():
     #end def
 
     def set_value(self, value, error = None):
-        assert self.params is not None or self.pos is not None, 'Assigning value to abstract structure, set params or pos first'
+        assert self.params is not None or self.pos is not None, 'Cannot assign value to abstract structure, set params or pos first'
         self.value = value
         self.error = error
     #end def
@@ -594,12 +660,12 @@ class ParameterHessian():
     #end def
 
     def set_structure(self, structure):
-        assert isinstance(structure, ParameterStructure), 'Structure must be ParameterStructure object'
+        assert isinstance(structure, ParameterSet), 'Structure must be ParameterSet object'
         self.structure = structure
     #end def
 
     def init_hessian_structure(self, structure):
-        assert isinstance(structure, ParameterStructure), 'Provided argument is not ParameterStructure'
+        assert isinstance(structure, ParameterSet), 'Provided argument is not ParameterSet'
         assert structure.check_consistency(), 'Provided ParameterStructure is incomplete or inconsistent'
         hessian = diag(len(structure.params) * [1.0])
         self._set_hessian(hessian)
@@ -988,7 +1054,9 @@ class AbstractTargetLineSearch(AbstractLineSearch):
     ):
         AbstractLineSearch.__init__(self, **kwargs)
         self.target_x0 = target_x0
-        self.target_y0 = target_y0
+        if not target_y0 is None:  # FIXME: refactor set_target
+            self.target_y0 = target_y0
+        #end if
         self.bias_mix = bias_mix
         if target_grid is not None and target_values is not None:
             self.set_target(target_grid, target_values, **kwargs)
@@ -1117,6 +1185,8 @@ class LineSearch(AbstractLineSearch):
     structure = None  # eqm structure
     structure_list = None  # list of LineSearchStructure objects
     jobs_list = None  # boolean list for bookkeeping of jobs
+    pes_func = None  # function handle for evaluating the PES
+    mode = None  # mode of evaluating the PES: (jobs|pes)
     d = None  # direction count
     W = None
     R = None
@@ -1137,18 +1207,27 @@ class LineSearch(AbstractLineSearch):
         d,
         sigma = 0.0,
         grid = None,
+        mode = 'jobs',
+        pes_func = None,
         **kwargs,
     ):
+        assert mode in ['jobs', 'pes'], 'Requested mode {} is not supported'.format(mode)
         self.sigma = sigma
+        self.mode = mode
+        self.pes_func = pes_func
         self.set_structure(structure)
         self.set_hessian(hessian, d)
         self.figure_out_grid(grid = grid, **kwargs)
         AbstractLineSearch.__init__(self, grid = self.grid, **kwargs)
-        self.shift_structures()
+        self.shift_structures()  # shift
+        # if viable, go on and evaluate
+        if self.mode == 'pes' and not self.pes_func is None:
+            self.evaluate_pes(**kwargs)
+        #end if
     #end def
 
     def set_structure(self, structure):
-        assert isinstance(structure, ParameterStructure), 'provided structure is not a ParameterStructure object'
+        assert isinstance(structure, ParameterSet), 'provided structure is not a ParameterSet object'
         assert structure.check_consistency(), 'Provided structure is not a consistent mapping'
         self.structure = structure
     #end def
@@ -1230,6 +1309,22 @@ class LineSearch(AbstractLineSearch):
         return structure
     #end def
 
+    def evaluate_pes(
+        self,
+        pes_func = None,
+        **kwargs,
+    ):
+        pes_func = pes_func if not pes_func is None else self.pes_func
+        grid, values, errors = [], [], []
+        for shift, structure in zip(self.grid, self.structure_list):
+            value, error = pes_func(structure, sigma = self.sigma)
+            grid.append(shift)
+            values.append(value)
+            errors.append(error)
+        #end for
+        self.load_results(grid = array(grid), values = array(values), errors = array(errors), **kwargs)
+    #end def
+
     def generate_jobs(
         self,
         job_func,
@@ -1254,7 +1349,7 @@ class LineSearch(AbstractLineSearch):
         return jobs
     #end def
 
-    # job must accept 0: position, 1: path, 2: noise
+    # job must accept 0: position, 1: path, 2: sigma
     def generate_eqm_jobs(
         self,
         job_func,
@@ -1395,6 +1490,9 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
         W = None,  # characteristic window
         R = None,  # max displacement
         grid = None,  # manual set of shifts
+        mode = 'jobs',
+        pes_func = None,
+        set_target = False,
         **kwargs,
     ):
         LineSearch.__init__(
@@ -1406,9 +1504,12 @@ class TargetLineSearch(AbstractTargetLineSearch, LineSearch):
             W = W,
             R = R,
             grid = grid,
+            mode = mode,
+            pes_func = pes_func,
+            set_target = set_target,
         )
         self._set_RW_max()
-        AbstractTargetLineSearch.__init__(self, **kwargs)
+        AbstractTargetLineSearch.__init__(self, set_target = set_target, **kwargs)
     #end def
 
     def compute_bias_of(
@@ -1819,6 +1920,8 @@ class ParallelLineSearch():
         job_func = None,
         job_args = {},
         analyze_func = None,
+        mode = 'jobs',
+        pes_func = None,
         **kwargs,
     ):
         self.x_unit = x_unit
@@ -1834,7 +1937,11 @@ class ParallelLineSearch():
         self.set_noises(noises)
         self.M = M
         self.fit_kind = fit_kind
-        self.ls_list = self._generate_ls_list(**kwargs)
+        self.ls_list = self._generate_ls_list(mode = mode, pes_func = pes_func, **kwargs)
+        if mode == 'pes' and not pes_func is None:
+            self.loaded = True
+            self.calculate_next(**kwargs)
+        #end if
     #end def
 
     def set_hessian(self, hessian):
@@ -1854,7 +1961,7 @@ class ParallelLineSearch():
 
     def set_structure(self, structure):
         self._protected()
-        assert isinstance(structure, ParameterStructure), 'Structure must be ParameterStructure object'
+        assert isinstance(structure, ParameterSet), 'Structure must be ParameterSet object'
         self.structure = structure.copy(label = 'eqm')
     #end def
 
@@ -2587,6 +2694,15 @@ class LineSearchIteration():
         else:
             return params
         #end if
+    #end def
+
+    def __repr__(self):
+        string = self.__class__.__name__
+        for p, pls in enumerate(self.pls_list):
+            string += '\n  #{} '.format(p)
+        #end for
+        # TODO
+        return string
     #end def
 
 #end class

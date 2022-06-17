@@ -111,7 +111,7 @@ def compute_phonon_hessian(
 
 def compute_fdiff_hessian(
     structure,
-    job_func,
+    func,  # (job_func|pes_func) depending on the mode
     path = 'fdiff',
     dp = 0.01,
     mode = 'pwscf',
@@ -135,7 +135,11 @@ def compute_fdiff_hessian(
         #end def
         structure_new = structure.copy()
         structure_new.shift_params(dparams)
-        return job_func(structure_new, path = path + string), dparams
+        if mode == 'pes':
+            return [func(structure_new, sigma = 0.0)[0]], dparams  # return list of the energy, parameter displacements
+        else:
+            return func(structure_new, path = path + string), dparams
+        #end if
     #end def
 
     eqm = shift_params([], [])
@@ -169,34 +173,38 @@ def compute_fdiff_hessian(
         #end for
     #end for
     pdiffs = array(pdiffs)
-    from nexus import run_project
-    run_project(jobs)
 
-    jobi = 0
-    if mode == 'pwscf':
-        Es = []
-        for job in jobs:
-            if jobi < skip_jobs:
-                jobi += 1
-                continue
-            #end if
-            jobi = 0
-            E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
-            Es.append(E)
-        #end for
-    elif mode == 'gamess':
-        Es = []
-        for job in jobs:
-            if jobi < skip_jobs:
-                jobi += 1
-                continue
-            #end if
-            jobi = 0
-            E, Err = nexus_gamess_analyzer(path = job.locdir, suffix = job.infile)
-            Es.append(E)
-        #end for
+    if mode == 'pes':
+        energies = array(jobs)
+    else:
+        from nexus import run_project
+        run_project(jobs)
+        jobi = 0
+        if mode == 'pwscf':
+            Es = []
+            for job in jobs:
+                if jobi < skip_jobs:
+                    jobi += 1
+                    continue
+                #end if
+                jobi = 0
+                E, Err = nexus_pwscf_analyzer(path = job.locdir, suffix = job.infile)
+                Es.append(E)
+            #end for
+        elif mode == 'gamess':
+            Es = []
+            for job in jobs:
+                if jobi < skip_jobs:
+                    jobi += 1
+                    continue
+                #end if
+                jobi = 0
+                E, Err = nexus_gamess_analyzer(path = job.locdir, suffix = job.infile)
+                Es.append(E)
+            #end for
+        #end if
+        energies = array(Es)
     #end if
-    energies = array(Es)
 
     if P == 1:  # for 1-dimensional problems
         pf = polyfit(pdiffs[:, 0], energies, 2)
@@ -278,9 +286,9 @@ def nexus_qmcpack_analyzer(path, qmc_idx = 1, get_var = False, suffix = '/dmc/dm
 def generate_surrogate(
     structure,
     hessian,
-    surrogate_job,
+    func,  # (job_func|pes_func)
     mode = 'nexus',
-    path = 'surrogate',
+    path = 'surrogate/',
     epsilon = None,
     generate = True,
     load = None,
@@ -298,22 +306,34 @@ def generate_surrogate(
         #end if
     #end if
     from surrogate_classes import TargetParallelLineSearch
-    surrogate = TargetParallelLineSearch(
-        structure = structure,
-        targets = structure.params,
-        hessian = hessian,
-        job_func = surrogate_job,
-        path = path,
-        **kwargs)
-    if generate:
-        jobs = surrogate.generate_jobs()
-        if mode == 'nexus':
-            from nexus import run_project
-            run_project(jobs)
-            surrogate.load_results(analyze_func = analyze_func, set_target = True, **kwargs)
-        else:
-            print('Warning: only Nexus currently implemented')
-            return None
+    if mode == 'pes':
+        surrogate = TargetParallelLineSearch(
+            structure = structure,
+            targets = structure.params,
+            hessian = hessian,
+            path = path,
+            mode = 'pes',
+            pes_func = func,
+            set_target = True,
+            **kwargs)
+    else:
+        surrogate = TargetParallelLineSearch(
+            structure = structure,
+            targets = structure.params,
+            hessian = hessian,
+            job_func = func,
+            path = path,
+            **kwargs)
+        if generate:
+            jobs = surrogate.generate_jobs()
+            if mode == 'nexus':
+                from nexus import run_project
+                run_project(jobs)
+                surrogate.load_results(analyze_func = analyze_func, set_target = True, **kwargs)
+            else:
+                print('Warning: only Nexus currently implemented')
+                return None
+            #end if
         #end if
     #end if
     if epsilon is not None:
@@ -459,9 +479,7 @@ def optimize_surrogate(
 
 def generate_linesearch(
     surrogate = None,
-    job_func = None,
-    mode = 'nexus',
-    path = 'linesearch',
+    path = 'linesearch/',
     load = True,
     load_only = False,
     shift_params = None,
@@ -473,7 +491,7 @@ def generate_linesearch(
         if not shift_params is None:
             srg.structure.shift_params(shift_params)
         #end if
-        lsi = LineSearchIteration(surrogate = srg, path = path, load = load, job_func = job_func, **kwargs)
+        lsi = LineSearchIteration(surrogate = srg, path = path, load = load, **kwargs)
     else:
         lsi = LineSearchIteration(path = path, load = True, **kwargs)
     #end if
@@ -498,10 +516,13 @@ def propagate_linesearch(
         elif lsi.pls(i = i).protected:
             print('Line-search #{} is already done and protected'.format(i))
             return
+        #else:  #FIXME: treat i = i case properly
         #end if
     #end if
     # else run and analyze
-    if mode == 'nexus':
+    if mode == 'pes':
+        lsi.propagate(mode = mode, **kwargs)
+    elif mode == 'nexus':
         from nexus import run_project
         if lsi.pls().protected:
             lsi.propagate(write = False)
@@ -510,7 +531,7 @@ def propagate_linesearch(
         lsi.load_results(add_sigma = add_sigma, **kwargs)
         lsi.propagate(write = write)
     else:
-        print('Not implemented')
+        print('Propagation mode {} not implemented'.format(mode))
         return
     #end if
 #end def
