@@ -1938,7 +1938,7 @@ class ParallelLineSearch():
         self.M = M
         self.fit_kind = fit_kind
         self.ls_list = self._generate_ls_list(mode = mode, pes_func = pes_func, **kwargs)
-        if mode == 'pes' and not pes_func is None:
+        if mode == 'pes' and not pes_func is None and not 'set_target' in kwargs:  # FIXME: refactor set_target
             self.loaded = True
             self.calculate_next(**kwargs)
         #end if
