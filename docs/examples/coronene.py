@@ -16,6 +16,7 @@ from nexus import generate_pwscf, generate_qmcpack, job, obj
 from nexus import generate_pw2qmcpack, generate_physical_system
 
 # Modify the below variables as needed
+base_dir   = 'coronene/'
 cores      = 8
 presub     = ''
 qeapp      = 'pw.x'
@@ -41,7 +42,7 @@ fake_sim = not __name__=='__main__'  # this is needed for object serialization
 # Pseudos (execute download_pseudos.sh in the working directory)
 relaxpseudos   = ['C.pbe_v1.2.uspp.F.upf', 'H.pbe_v1.4.uspp.F.upf']
 qmcpseudos     = ['C.ccECP.xml','H.ccECP.xml']
-scfpseudos     = ['C.upf','H.upf']
+scfpseudos     = ['C.ccECP.upf','H.ccECP.upf']
 
 
 # Implement the following parametric mappings for benzene
@@ -173,7 +174,11 @@ def scf_relax_job(structure, path, **kwargs):
 
 # Let us run a macro that computes and returns the relaxed structure
 from surrogate_macros import relax_structure
-structure_relax = relax_structure(structure = structure_init, relax_job = scf_relax_job)
+structure_relax = relax_structure(
+    structure = structure_init, 
+    relax_job = scf_relax_job,
+    path = base_dir + 'relax/'
+)
 
 
 # 2 ) Surrogate: Hessian
@@ -253,7 +258,11 @@ def get_phonon_jobs(structure, path, **kwargs):
 # Finally, use a macro to read the phonon data and convert to parameter
 # Hessian based on the structural mappings
 from surrogate_macros import compute_phonon_hessian
-hessian = compute_phonon_hessian(structure = structure_relax, phonon_job = get_phonon_jobs, path = 'phonon')
+hessian = compute_phonon_hessian(
+    structure = structure_relax,
+    phonon_job = get_phonon_jobs,
+    path = base_dir + 'phonon'
+)
 
 
 # 3) Surrogate: Optimize line-search
@@ -295,8 +304,8 @@ from matplotlib import pyplot as plt
 surrogate = generate_surrogate(
     structure = structure_relax,
     hessian = hessian,
-    surrogate_job = scf_pes_job,
-    path = 'surrogate/',  
+    func = scf_pes_job,
+    path = base_dir + 'surrogate/',  
     window_frac = 0.25,  # maximum displacement relative to Lambda of each direction
     noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
     load = 'surrogate.p',  # try to load from disk
@@ -342,8 +351,8 @@ if __name__=='__main__':
 from surrogate_macros import generate_linesearch, propagate_linesearch, nexus_pwscf_analyzer
 srg_ls = generate_linesearch(
     surrogate,
-    scf_pes_job,  # use the surrogate PES
-    path = 'srg_ls/',
+    job_func = scf_pes_job,  # use the surrogate PES
+    path = base_dir + 'srg_ls/',
     analyze_func = nexus_pwscf_analyzer,  # use this method to read the data
     shift_params = [0.1, -0.1, 0.1, -0.1, 0.1, -0.1],  # shift the starting parameters
     load = True,  # try loading the object, if present
@@ -358,7 +367,7 @@ propagate_linesearch(srg_ls, i = 3, add_sigma = True)
 
 # Diagnoze and plot the line-search performance.
 from surrogate_macros import linesearch_diagnostics
-linesearch_diagnostics(surrogate)
+linesearch_diagnostics(srg_ls)
 if __name__=='__main__':
     plt.show()
 #end if
@@ -463,7 +472,7 @@ from surrogate_macros import get_var_eff
 var_eff = get_var_eff(
     structure_relax,
     dmc_pes_job,
-    path = 'dmc_test',
+    path = base_dir + 'dmc_test',
     suffix = '/dmc/dmc.in.xml',
 )
 
@@ -471,8 +480,8 @@ var_eff = get_var_eff(
 from surrogate_macros import nexus_qmcpack_analyzer
 dmc_ls = generate_linesearch(
     surrogate,
-    dmc_pes_job,
-    path = 'dmc_ls/',
+    job_func = dmc_pes_job,
+    path = base_dir + 'dmc_ls/',
     load = True,
     load_only = fake_sim,  # WIP: override import problems
     job_args = {'var_eff': var_eff},  # provide DMC job with var_eff
