@@ -545,11 +545,12 @@ def get_qmc_variance(
     suffix = '/dmc/dmc.in.xml',
     blocks = 200,
     walkers = 1000,
+    analyzer_args = {},
     **kwargs
 ):
     from nexus import run_project
     run_project(job_func(structure, path, sigma = None))
-    res = nexus_qmcpack_analyzer(path, suffix = suffix, get_var = True)
+    res = nexus_qmcpack_analyzer(path, suffix = suffix, get_var = True, **analyzer_args)
     variance = res[2]
     steps = dmc_steps(sigma = None)
     kappa = res[1]**2 / res[2] * walkers * blocks * steps
@@ -564,11 +565,12 @@ def get_var_eff(
     analyzer_func = nexus_qmcpack_analyzer,
     suffix = '/dmc/dmc.in.xml',
     equilibration = 10,
+    analyzer_args = {},
     **kwargs
 ):
     from nexus import run_project
     run_project(job_func(structure, path, sigma = None))
-    E, Err = nexus_qmcpack_analyzer(path, suffix = suffix, equilibration = 10)
+    E, Err = nexus_qmcpack_analyzer(path, suffix = suffix, equilibration = 10, **analyzer_args)
     var_eff = default_steps * Err**2
     return var_eff
 #end def

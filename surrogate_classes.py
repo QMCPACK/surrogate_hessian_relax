@@ -31,18 +31,20 @@ def match_to_tol(val1, val2, tol = 1e-10):
 # Important function to resolve the local minimum of a curve
 def get_min_params(x_n, y_n, pfn = 3, **kwargs):
     pf = polyfit(x_n, y_n, pfn)
-    r = roots(polyder(pf))
-    x_mins  = r[r.imag == 0].real
+    pfd = polyder(pf)
+    r = roots(pfd)
+    d = polyval(polyder(pfd), r)
+    x_mins  = r[where((r.imag == 0) & (d > 0))].real  # filter real maxime
     if len(x_mins) > 0:
         y_mins = polyval(pf, x_mins)
-        #imin = argmin(y_mins)  # pick the lowest energy
         imin = argmin(abs(x_mins))  # pick the closest to center
-        y0 = y_mins[imin]
-        x0 = x_mins[imin]
     else:
-        y0 = nan
-        x0 = nan
+        x_mins = [min(x_n), max(x_n)]
+        y_mins = polyval(pf, x_mins)
+        imin = argmin(y_mins)  # pick the lowest energy
     #end if
+    y0 = y_mins[imin]
+    x0 = x_mins[imin]
     return x0, y0, pf
 #end def
 
@@ -2679,8 +2681,10 @@ class LineSearchIteration():
         params = [list(self.pls(0).get_params())]
         params_err = [list(self.pls(0).get_params_err())]
         for pls in self.pls_list:
-            params.append(list(pls.structure_next.params))
-            params_err.append(list(pls.structure_next.params_err))
+            if pls.calculated:
+                params.append(list(pls.structure_next.params))
+                params_err.append(list(pls.structure_next.params_err))
+            #end if
         #end for
         if not p is None:
             params = array(params)[:, p]
