@@ -6,7 +6,7 @@ from testing import match_values, add_integration_test
 
 
 def int_get_fraction_error():
-    from surrogate_tools import get_fraction_error
+    from surrogate_classes import get_fraction_error
     # test normal distribution
     sigma = 1.0
     mu = 5.0

@@ -9,8 +9,16 @@ parser.add_argument('-p', help = 'Pass AssertionError', default = False, action 
 args = parser.parse_args()
 
 if __name__=='__main__':
-    from tools import test_tools_unit, test_tools_integration
-    from classes import test_classes_unit#, test_classes_integration
+    from unit_tests import test_util
+    from unit_tests import test_parameters
+    from unit_tests import test_hessian
+    from unit_tests import test_linesearch
+    from unit_tests import test_targetlinesearch
+    from unit_tests import test_targetparallellinesearch
+    from unit_tests import test_parallellinesearch
+    from unit_tests import test_linesearchiteration
+    from integration_tests import test_util
+
     from testing import run_all_tests
     run_all_tests(R = args.R, verbose = args.v, pass_error = args.p)
 #end if

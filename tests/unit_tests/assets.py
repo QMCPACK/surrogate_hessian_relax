@@ -3,8 +3,7 @@
 
 from numpy import array, sin, cos, pi, exp, diag, mean
 
-from surrogate_classes import ParameterStructure, ParameterHessian, TargetParallelLineSearch
-from surrogate_tools import mean_distances, bond_angle, distance
+from surrogate_classes import mean_distances, bond_angle, distance
 
 harmonic_a = lambda p,a: p[1]*(a-p[0])**2
 # from Nexus
@@ -39,9 +38,11 @@ def alt_pes_H2(params):  # inaccurate; for testing
     return V
 #end def
 def get_structure_H2():
+    from surrogate_classes import ParameterStructure
     return ParameterStructure(forward = forward_H2, backward = backward_H2, pos = pos_H2, elem = elem_H2)
 #end def
 def get_hessian_H2():
+    from surrogate_classes import ParameterHessian
     return ParameterHessian(hessian = hessian_H2)
 #end def
 
@@ -87,9 +88,11 @@ def pes_H2O(params):
     return V
 #end def
 def get_structure_H2O():
+    from surrogate_classes import ParameterStructure
     return ParameterStructure(forward = forward_H2O, backward = backward_H2O, pos = pos_H2O, elem = elem_H2O)
 #end def
 def get_hessian_H2O():
+    from surrogate_classes import ParameterHessian
     return ParameterHessian(hessian = hessian_H2O)
 #end def
 def job_H2O_pes(structure, path, sigma, **kwargs):
@@ -106,6 +109,7 @@ def analyze_H2O_pes(path, job_data = None, **kwargs):
     return None
 #end def
 def get_surrogate_H2O():
+    from surrogate_classes import TargetParallelLineSearch
     srg = TargetParallelLineSearch(
         structure = get_structure_H2O(),
         hessian = get_hessian_H2O(),
