@@ -73,3 +73,72 @@ def R_to_W(R, H):
     W = 0.5 * H * R**2
     return W
 #end def
+
+
+# courtesy of Jaron Krogel
+# XYp = x**0 y**0, x**0 y**1, x**0 y**2, ...
+def bipolynomials(X, Y, nx, ny):
+    X = X.flatten()
+    Y = Y.flatten()
+    Xp = [0 * X + 1.0]
+    Yp = [0 * Y + 1.0]
+    for n in range(1, nx + 1):
+        Xp.append(X**n)
+    #end for
+    for n in range(1, ny + 1):
+        Yp.append(Y**n)
+    #end for
+    XYp = []
+    for Xn in Xp:
+        for Yn in Yp:
+            XYp.append(Xn * Yn)
+        #end for
+    #end for
+    return XYp
+#end def bipolynomials
+
+
+# courtesy of Jaron Krogel
+def bipolyfit(X, Y, Z, nx, ny):
+    XYp = bipolynomials(X, Y, nx, ny)
+    p, r, rank, s = linalg.lstsq(array(XYp).T, Z.flatten(), rcond = None)
+    return p
+#end def bipolyfit
+
+
+# courtesy of Jaron Krogel
+def bipolyval(p, X, Y, nx, ny):
+    shape = X.shape
+    XYp = bipolynomials(X, Y, nx, ny)
+    Z = 0 * X.flatten()
+    for pn, XYn in zip(p, XYp):
+        Z += pn * XYn
+    #end for
+    Z.shape = shape
+    return Z
+#end def bipolyval
+
+
+# courtesy of Jaron Krogel
+def bipolymin(p, X, Y, nx, ny, itermax = 6, shrink = 0.1, npoints = 10):
+    for i in range(itermax):
+        Z = bipolyval(p, X, Y, nx, ny)
+        X = X.ravel()
+        Y = Y.ravel()
+        Z = Z.ravel()
+        imin = Z.argmin()
+        xmin = X[imin]
+        ymin = Y[imin]
+        zmin = Z[imin]
+        dx = shrink * (X.max() - X.min())
+        dy = shrink * (Y.max() - Y.min())
+        xi = linspace(xmin - dx / 2, xmin + dx / 2, npoints)
+        yi = linspace(ymin - dy / 2, ymin + dy / 2, npoints)
+        X, Y = meshgrid(xi, yi)
+        X = X.T
+        Y = Y.T
+    #end for
+    return xmin, ymin, zmin
+#end def bipolymin
+
+

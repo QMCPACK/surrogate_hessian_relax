@@ -1,9 +1,37 @@
 #!/usr/bin/env python3
 
 from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
-from surrogate_tools import bipolyfit
+from surrogate_classes import bipolyfit
 
 default_steps = 10
+
+
+def load_xyz(fname):
+    e, x, y, z = loadtxt(fname, dtype = str, unpack = True, skiprows = 2)
+    return array([x, y, z], dtype = float).T
+#end def
+
+
+# Minimal function for writing line-search structures
+def write_xyz_noise(structure, path, sigma, **kwargs):
+    makedirs(path, exist_ok = True)
+    structure.write_xyz('{}/structure.xyz'.format(path))
+    if not sigma is None:
+        savetxt('{}/noise'.format(path), [sigma])
+    #end if
+    return []
+#end def
+
+# Minimal function for writing line-search structures
+def write_xsf_noise(structure, path, sigma, **kwargs):
+    makedirs(path, exist_ok = True)
+    structure.write_xsf('{}/structure.xsf'.format(path))
+    if not sigma is None:
+        savetxt('{}/noise'.format(path), [sigma])
+    #end if
+    return []
+#end def
+
 
 def init_nexus(**nx_settings):
     from nexus import settings
@@ -11,6 +39,7 @@ def init_nexus(**nx_settings):
         settings(**nx_settings)
     #end if
 #end def
+
 
 def relax_structure(
     structure,
@@ -26,7 +55,6 @@ def relax_structure(
 ):
     # try to load from file
     if pos_file is not None:
-        from surrogate_classes import load_xyz
         try:
             pos_relax = load_xyz('{}/{}'.format(path, pos_file))
             axes_relax = None
@@ -75,6 +103,30 @@ def relax_structure(
 #end def
 
 
+# Load FC matrix in QE format
+def load_force_constants_qe(fname, num_prt, dim = 3):
+    K = zeros((dim * num_prt, dim * num_prt))
+    with open(fname) as f:
+        line = f.readline()
+        while line:
+            line_spl = line.split()
+            if len(line_spl) == 4 and len(line_spl[3]) < 3:  # stupid way to check for integer?
+                dim1 = int(line_spl[0])
+                dim2 = int(line_spl[1])
+                prt1 = int(line_spl[2])
+                prt2 = int(line_spl[3])
+                line = f.readline().split()  # gamma point is the first line
+                i = (prt1 - 1) * dim + dim1 - 1
+                j = (prt2 - 1) * dim + dim2 - 1
+                K[i, j] = float(line[3])
+            #end if
+            line = f.readline()
+        #end if
+    #end with
+    return K
+#end def
+
+
 def compute_phonon_hessian(
     structure,
     phonon_job,
@@ -92,7 +144,6 @@ def compute_phonon_hessian(
         print('Warning: only Nexus currently implemented')
     #end if
     if kind == 'qe':
-        from surrogate_tools import load_force_constants_qe
         num_elem = len(structure.pos)
         fname = '{}/{}'.format(path, fc_file)
         hessian_real = load_force_constants_qe(fname, num_elem)
