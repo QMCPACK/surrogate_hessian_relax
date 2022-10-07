@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
+from numpy import loadtxt, savetxt
+from os import makedirs, path
 from surrogate_classes import bipolyfit
 
 default_steps = 10
@@ -30,6 +32,22 @@ def write_xsf_noise(structure, path, sigma, **kwargs):
         savetxt('{}/noise'.format(path), [sigma])
     #end if
     return []
+#end def
+
+
+# Minimal function for loading energies from disk
+def load_E_err(dir, sigma = 0.0, suffix = 'energy.dat'):
+    fname = dir + '/' + suffix
+    if not path.exists(fname):
+        print('skipped {}'.format(fname))
+        return None, None
+    #end if
+    data = loadtxt(fname)
+    if isscalar(data):
+        return data, sigma
+    else:
+        return data[0], data[1]
+    #end if
 #end def
 
 
@@ -337,13 +355,11 @@ def nexus_qmcpack_analyzer(path, qmc_idx = 1, get_var = False, suffix = '/dmc/dm
 def generate_surrogate(
     structure,
     hessian,
-    func,  # (job_func|pes_func)
+    pes_func,
     mode = 'nexus',
-    path = 'surrogate/',
-    epsilon = None,
-    generate = True,
+    path = 'surrogate',
     load = None,
-    analyze_func = nexus_pwscf_analyzer,
+    load_func = nexus_pwscf_analyzer,
     **kwargs,
 ):
     if load is not None:
@@ -364,31 +380,20 @@ def generate_surrogate(
             hessian = hessian,
             path = path,
             mode = 'pes',
-            pes_func = func,
             set_target = True,
+            pes_func = pes_func,
+            load_func = load_func,
             **kwargs)
     else:
         surrogate = TargetParallelLineSearch(
             structure = structure,
             targets = structure.params,
             hessian = hessian,
-            job_func = func,
+            mode = mode,
             path = path,
+            pes_func = pes_func,
+            load_func = load_func,
             **kwargs)
-        if generate:
-            jobs = surrogate.generate_jobs()
-            if mode == 'nexus':
-                from nexus import run_project
-                run_project(jobs)
-                surrogate.load_results(analyze_func = analyze_func, set_target = True, **kwargs)
-            else:
-                print('Warning: only Nexus currently implemented')
-                return None
-            #end if
-        #end if
-    #end if
-    if epsilon is not None:
-        pass
     #end if
     return surrogate
 #end def
@@ -534,6 +539,7 @@ def generate_linesearch(
     load = True,
     load_only = False,
     shift_params = None,
+    mode = 'nexus',
     **kwargs,
 ):
     from surrogate_classes import LineSearchIteration
@@ -564,7 +570,7 @@ def propagate_linesearch(
                 print('Line-search #{} could not be found'.format(i))
                 return
             #end if
-        elif lsi.pls(i = i).protected:
+        elif lsi.pls(i = i).status.protected:
             print('Line-search #{} is already done and protected'.format(i))
             return
         #else:  #FIXME: treat i = i case properly
@@ -575,10 +581,10 @@ def propagate_linesearch(
         lsi.propagate(mode = mode, **kwargs)
     elif mode == 'nexus':
         from nexus import run_project
-        if lsi.pls().protected:
+        if lsi.pls().status.protected:
             lsi.propagate(write = False)
         #end if
-        run_project(lsi.generate_jobs())
+        run_project(lsi.generate_jobs(**kwargs))
         lsi.load_results(add_sigma = add_sigma, **kwargs)
         lsi.propagate(write = write)
     else:

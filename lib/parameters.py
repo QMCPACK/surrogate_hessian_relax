@@ -100,7 +100,7 @@ class ParameterSet():
 
     def set_params(self, params, params_err = None):
         self.params = array(params).flatten()
-        self.params_err = params_err
+        self.params_err = params_err if params_err is not None else self.params * 0.0
         self.unset_value()
     #end def
 
@@ -254,12 +254,10 @@ class ParameterStructureBase(ParameterSet):
     #end def 
 
     def set_params(self, params, params_err = None):
-        self.params = array(params).flatten()
-        self.params_err = params_err
+        ParameterSet.set_params(self, params, params_err)
         if self.backward_func is not None:
             self.backward()
         #end if
-        self.unset_value()
         self.check_consistency()
     #end def
 
@@ -287,6 +285,7 @@ class ParameterStructureBase(ParameterSet):
         #end if
         assert not self.periodic or self.axes is not None, 'Must supply axes for periodic forward mappings'
         self.params = self._forward(pos, axes)
+        self.params_err = 0.0 * self.params
     #end def
 
     def _forward(self, pos, axes = None):
@@ -341,9 +340,10 @@ class ParameterStructureBase(ParameterSet):
                 consistent = self._check_consistency(self.params, self.pos, self.axes, tol)
             #end if
             self.consistent = consistent
-            if consistent:
-                self.forward()
-                self.backward()
+            # TODO: why is this here? It vanishes params_err for no reason?
+            #if consistent:
+            #    self.forward()
+            #    self.backward()
             #end if
         else:
             consistent = self._check_consistency(params, pos, axes, tol)

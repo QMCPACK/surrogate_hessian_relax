@@ -13,6 +13,7 @@ from unit_tests.assets import morse, Gs_N200_M7
 # test TargetParallelLineSearch class
 def test_targetparallellinesearch_class():
     from surrogate_classes import TargetParallelLineSearch
+    from surrogate_classes import ParameterSet
     s = get_structure_H2O()
     h = get_hessian_H2O()
     srg = TargetParallelLineSearch(
@@ -46,8 +47,8 @@ def test_targetparallellinesearch_class():
     assert match_values(params0, params0_ref)
     assert match_values(params1, params1_ref)
 
-    values0 = [pes_H2O(p) for p in params0]
-    values1 = [pes_H2O(p) for p in params1]
+    values0 = [pes_H2O(ParameterSet(p))[0] for p in params0]
+    values1 = [pes_H2O(ParameterSet(p))[0] for p in params1]
     values0_ref = [0.34626073187519557, -0.3652007349305562, -0.49999956687591435, -0.4396197672411492, -0.33029670717647247]
     values1_ref = [-0.31777610098060916, -0.4523302132096337, -0.49999956687591435, -0.4456834605043901, -0.2662664861469014]
     assert match_values(values0, values0_ref)

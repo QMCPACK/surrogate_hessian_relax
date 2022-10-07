@@ -12,38 +12,14 @@
 # Computing task: Suitable for institutional clusters
 
 # First, the user must set up Nexus according to their computing environment.
-from nexus import generate_pwscf, generate_qmcpack, job, obj 
+from nexus import generate_pwscf, generate_qmcpack, job, obj
 from nexus import generate_pw2qmcpack, generate_physical_system
-
-# Modify the below variables as needed
-base_dir   = 'benzene/'
-cores      = 8
-presub     = ''
-qeapp      = 'pw.x'
-p2qapp     = 'pw2qmcpack.x'
-qmcapp     = 'qmcpack'
-scfjob     = obj(app=qeapp, cores=cores,ppn=cores,presub=presub)
-p2qjob     = obj(app=p2qapp,cores=1,ppn=1,presub=presub)
-optjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub)
-dmcjob     = obj(app=qmcapp,cores=cores,ppn=cores,presub=presub)
-nx_settings = obj(
-    sleep         = 3,
-    pseudo_dir    = 'pseudos',
-    runs          = '',
-    results       = '',
-    status_only   = 0,
-    generate_only = 0,
-    machine       = 'ws8',
-    )
-from surrogate_macros import init_nexus
-init_nexus(**nx_settings) # initiate nexus
-fake_sim = not __name__=='__main__'  # this is needed for object serialization
+from nxs import scfjob, p2qjob, optjob, dmcjob, cores, presub
 
 # Pseudos (execute download_pseudos.sh in the working directory)
 relaxpseudos   = ['C.pbe_v1.2.uspp.F.upf', 'H.pbe_v1.4.uspp.F.upf']
 qmcpseudos     = ['C.ccECP.xml','H.ccECP.xml']
 scfpseudos     = ['C.ccECP.upf','H.ccECP.upf']
-
 
 # Implement the following parametric mappings for benzene
 #   p0: C-C distance
@@ -146,13 +122,13 @@ def scf_relax_job(structure, path, **kwargs):
         ecutrho       = 300,
         forc_conv_thr = 1e-4,
         ion_dynamics  = 'bfgs',
-        fake_sim      = fake_sim,
     )
     return [relax]
 #end def
 
 
 # LINE-SEARCH
+base_dir   = 'benzene/'
 
 # 1) Surrogate: relaxation
 
@@ -215,7 +191,6 @@ def get_phonon_jobs(structure, path, **kwargs):
         ecutwfc       = 100,
         ecutrho       = 300,
         electron_maxstep = 1000,
-        fake_sim      = fake_sim,
         )
     scf.input.control.disk_io = 'low' # write charge density
     phonon = GenericSimulation(
@@ -224,7 +199,6 @@ def get_phonon_jobs(structure, path, **kwargs):
         path         = path,
         input        = ph_input,
         identifier   = 'phonon',
-        fake_sim     = fake_sim,
         dependencies = (scf, 'other'),
         )
     q2r = GenericSimulation(
@@ -233,7 +207,6 @@ def get_phonon_jobs(structure, path, **kwargs):
         path         = path,
         input        = q2r_input,
         identifier   = 'q2r',
-        fake_sim     = fake_sim,
         dependencies = (phonon, 'other'),
         )
     return [scf, phonon, q2r]
@@ -276,7 +249,6 @@ def scf_pes_job(structure, path, **kwargs):
         ecutwfc       = 100,
         ecutrho       = 300,
         electron_maxstep = 1000,
-        fake_sim      = fake_sim,
     )
     return [scf]
 #end def
@@ -284,45 +256,47 @@ def scf_pes_job(structure, path, **kwargs):
 # Use a macro to generate a parallel line-search object that samples the
 # surrogate PES around the minimum along the search directions
 from surrogate_macros import generate_surrogate, plot_surrogate_pes, plot_surrogate_bias
+from surrogate_macros import nexus_pwscf_analyzer
 from matplotlib import pyplot as plt
 surrogate = generate_surrogate(
     structure = structure_relax,
-    hessian = hessian,
-    func = scf_pes_job,
+    hessian =  hessian,
+    pes_func = scf_pes_job,
+    load_func = nexus_pwscf_analyzer,
+    mode = 'nexus',
     path = base_dir + 'surrogate/',  
     window_frac = 0.25,  # maximum displacement relative to Lambda of each direction
     noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
     load = 'surrogate.p',  # try to load from disk
     M = 15)  # number of points per direction to sample (should be more than finally intended)
+surrogate.run_jobs()
+surrogate.load_results(set_target = True)
 
-bias_mix = 0.1  # how much energy displacement is mixed in to assess the total bias (default: 0.0)
-M = 7  # how many points in the final line-search
 # diagnose: plot bias using different fit kinds
 if __name__=='__main__':
     plot_surrogate_pes(surrogate)
-    plot_surrogate_bias(surrogate, fit_kind = 'pf2', M = M, bias_mix = bias_mix)
-    plot_surrogate_bias(surrogate, fit_kind = 'pf3', M = M, bias_mix = bias_mix)
-    plot_surrogate_bias(surrogate, fit_kind = 'pf4', M = M, bias_mix = bias_mix)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf2', M = 7)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf3', M = 7)
+    plot_surrogate_bias(surrogate, fit_kind = 'pf4', M = 7)
     plt.show()
 #end if
 
 # Set target parameter error tolerances (epsilon): 0.01 Bohr accuracy for both C-C and C-H bonds.
 # Then, optimize the surrogate line-search to meet the tolerances given the line-search
-#   main input: bias_mix, M, epsilon
+#   main input: M, epsilon
 #   main output: windows, noises (per direction to meet all epsilon)
-epsilon = [0.01, 0.01]
-from surrogate_macros import optimize_surrogate
-optimize_surrogate(
-    surrogate,  # provide the surrogate object
-    epsilon = epsilon,
-    fit_kind = 'pf4',
-    bias_mix = bias_mix,
-    M = M,
-    N = 400,  # use as many points for correlated resampling of the error
-    save = 'surrogate.p',  # serialize the object to freeze the stochastic process
-    rewrite = False,)  # don't rewrite old work, if present
+epsilon_p = [0.02, 0.02]
+if not surrogate.optimized:
+    surrogate.optimize(
+        epsilon_p = epsilon_p,
+        fit_kind = 'pf4',
+        M = 7,
+        N = 400,  # use as many points for correlated resampling of the error
+        )
+    surrogate.write_to_disk('surrogate.p')
+#end if
 
-# Diagnoze and plot the performance of the surrogate optimization
+# Diagnose and plot the performance of the surrogate optimization
 from surrogate_macros import surrogate_diagnostics
 surrogate_diagnostics(surrogate)
 if __name__=='__main__':
@@ -331,25 +305,27 @@ if __name__=='__main__':
 
 # The check (optional) the performance, let us simulate a line-search on the surrogate PES.
 # It is cheaper to debug the optimizer here than later on.
-# First, generate line-search iteration object based on the surrogate
-from surrogate_macros import generate_linesearch, propagate_linesearch, nexus_pwscf_analyzer
-srg_ls = generate_linesearch(
-    surrogate,
-    job_func = scf_pes_job,  # use the surrogate PES
-    path = base_dir + 'srg_ls/',
-    analyze_func = nexus_pwscf_analyzer,  # use this method to read the data
-    shift_params = [0.1, -0.1],  # shift the starting parameters
-    load = True,  # try loading the object, if present
-    load_only = fake_sim,  # WIP: override import problems
+# First, shift parameters for the show
+surrogate_shifted = surrogate.copy()
+surrogate_shifted.structure.shift_params([0.1, -0.1])
+# Then generate line-search iteration object based on the shifted surrogate
+from surrogate_classes import LineSearchIteration
+srg_ls = LineSearchIteration(
+    surrogate = surrogate_shifted,
+    mode = 'nexus',
+    path = base_dir + 'srg_ls',
+    pes_func = scf_pes_job,  # use the surrogate PES
+    load_func = nexus_pwscf_analyzer,  # use this method to read the data
 )
 # Propagate the parallel line-search (compute values, analyze, then move on) 4 times
 #   add_sigma = True means that target errorbars are used to simulate random noise
-propagate_linesearch(srg_ls, i = 0, add_sigma = True)
-propagate_linesearch(srg_ls, i = 1, add_sigma = True)
-propagate_linesearch(srg_ls, i = 2, add_sigma = True)
-propagate_linesearch(srg_ls, i = 3, add_sigma = True)
-
-# Diagnoze and plot the line-search performance.
+from surrogate_macros import propagate_linesearch
+for i in range(4):
+    srg_ls.pls(i).run_jobs()
+    srg_ls.pls(i).load_results(add_sigma = True)
+    srg_ls.propagate(i)
+#end for
+## Diagnoze and plot the line-search performance.
 from surrogate_macros import linesearch_diagnostics
 linesearch_diagnostics(srg_ls)
 if __name__=='__main__':
@@ -392,14 +368,12 @@ def dmc_pes_job(structure, path, sigma = 0.01, var_eff = 1.0, **kwargs):
         smearing      = 'gaussian',
         degauss       = 0.0001,
         electron_maxstep = 1000,
-        fake_sim      = fake_sim,
     )
     p2q = generate_pw2qmcpack(
         identifier   = 'p2q',
         path         = path+'/scf',
         job          = job(**p2qjob),
         dependencies = [(scf,'orbitals')],
-        fake_sim     = fake_sim,
     )
     system.bconds = 'nnn'
     opt = generate_qmcpack(
@@ -426,7 +400,6 @@ def dmc_pes_job(structure, path, sigma = 0.01, var_eff = 1.0, **kwargs):
         minwalkers   = 0.1,
         nonlocalpp   = True,
         use_nonlocalpp_deriv = False,
-        fake_sim     = fake_sim,
         )
     dmcsteps = dmc_steps(sigma, var_eff = var_eff)
     dmc = generate_qmcpack(
@@ -446,7 +419,6 @@ def dmc_pes_job(structure, path, sigma = 0.01, var_eff = 1.0, **kwargs):
         timestep     = 0.01,
         nonlocalmoves= True,
         ntimesteps   = 1,
-        fake_sim     = fake_sim,
         )
     return [scf,p2q,opt,dmc]
 #end def
@@ -462,20 +434,21 @@ var_eff = get_var_eff(
 
 # Finally, use a macro to generate a parallel line-seach iteration object based on the DMC PES
 from surrogate_macros import nexus_qmcpack_analyzer
-dmc_ls = generate_linesearch(
-    surrogate,
-    job_func = dmc_pes_job,
-    path = base_dir + 'dmc_ls/',
-    load = True,
-    load_only = fake_sim,  # WIP: override import problems
-    job_args = {'var_eff': var_eff},  # provide DMC job with var_eff
+dmc_ls = LineSearchIteration(
+    surrogate = surrogate,
     c_noises = 0.5,  # WIP: convert noises from Ry (SCF) to Ha (QMCPACK)
-    analyze_func = nexus_qmcpack_analyzer,  # use this function to analyze the energies
+    mode = 'nexus',
+    path = base_dir + 'dmc_ls',
+    pes_func = dmc_pes_job,
+    pes_args = {'var_eff': var_eff},  # provide DMC job with var_eff
+    load_func = nexus_qmcpack_analyzer,
+    load_args = {'suffix': 'dmc/dmc.in.xml', 'qmc_id': 1},
 )
-# Propagate the line-search 3 times
-propagate_linesearch(dmc_ls, i = 0)
-propagate_linesearch(dmc_ls, i = 1)
-propagate_linesearch(dmc_ls, i = 2)
+for i in range(3):
+    dmc_ls.pls(i).run_jobs()
+    dmc_ls.pls(i).load_results()
+    dmc_ls.propagate(i)
+#end for
 
 # Diagnoze and plot the line-search performance
 from surrogate_macros import linesearch_diagnostics

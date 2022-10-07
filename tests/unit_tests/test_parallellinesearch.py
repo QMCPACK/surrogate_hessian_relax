@@ -12,28 +12,30 @@ from unit_tests.assets import morse, Gs_N200_M7
 
 def test_parallellinesearch_class():
     from surrogate_classes import ParallelLineSearch
+    from surrogate_classes import ParameterSet
+
+    # nexus mode
+    pls = ParallelLineSearch(mode='nexus')
+    assert pls.get_status() == '000000'
     s = get_structure_H2O()
     s.shift_params([0.2, 0.2])
+    pls.set_structure(s)
+    assert pls.get_status() == '000000'
     h = get_hessian_H2O()
-    pls = ParallelLineSearch(
-        hessian = h,
-        structure = s,
-        M = 9,
-        window_frac = 0.1,
-        noise_frac = 0.0)
-    assert not pls.protected
-    assert not pls.generated
-    assert not pls.loaded
-    assert not pls.calculated
+    pls.set_hessian(h)
+    assert pls.get_status() == '100000'
+    pls.guess_windows(windows = None, window_frac = 0.1)
+    pls.M = 9
+    pls.reset_ls_list()
 
     ls0 = pls.ls_list[0]
     ls1 = pls.ls_list[1]
 
     # test grid
     ls0_grid_ref = array('''-0.4396967  -0.32977252 -0.21984835 -0.10992417  0.          0.10992417
-  0.21984835  0.32977252  0.4396967 '''.split(), dtype=float)
+    0.21984835  0.32977252  0.4396967 '''.split(), dtype=float)
     ls1_grid_ref = array('''-0.55231563 -0.41423672 -0.27615782 -0.13807891  0.          0.13807891
-  0.27615782  0.41423672  0.55231563'''.split(), dtype=float)
+    0.27615782  0.41423672  0.55231563'''.split(), dtype=float)
     assert match_values(ls0.grid, ls0_grid_ref)
     assert match_values(ls1.grid, ls1_grid_ref)
     # test params
@@ -64,21 +66,25 @@ def test_parallellinesearch_class():
     assert match_values(params0, params0_ref)
     assert match_values(params1, params1_ref)
     # test PES
-    values0 = [pes_H2O(params) for params in params0]
-    values1 = [pes_H2O(params) for params in params1]
+    values0 = [pes_H2O(ParameterSet(params))[0] for params in params0]
+    values1 = [pes_H2O(ParameterSet(params))[0] for params in params1]
     values0_ref = array('''-0.35429145 -0.4647814  -0.49167476 -0.47112498 -0.42546898 -0.36820753
- -0.30724027 -0.24695829 -0.18959033'''.split(), dtype = float)
+   -0.30724027 -0.24695829 -0.18959033'''.split(), dtype = float)
     values1_ref = array('''-0.3056267  -0.3616872  -0.40068042 -0.42214136 -0.42546898 -0.40989479
- -0.37444477 -0.31789329 -0.23870716'''.split(), dtype = float)
+   -0.37444477 -0.31789329 -0.23870716'''.split(), dtype = float)
     assert match_values(values0, values0_ref)
     assert match_values(values1, values1_ref)
 
-    # test loading without function
-    pls.load_results()
-    assert not pls.loaded
+    pls.status.generated = True
+    pls.load_results()  # loading with empty data does not work
+    assert pls.get_status() == '111000'
     # manually enter values
     pls.load_results(values=[values0, values1])
-    assert pls.loaded
+    assert pls.get_status() == '111110'
+    # propagate
+    pls_next = pls.propagate()
+    assert pls.get_status() == '111111'
+    assert pls_next.get_status() == '110000'
 
     ls0_x0_ref = -0.19600534, 0.0
     ls0_y0_ref = -0.48854587, 0.0
@@ -92,17 +98,17 @@ def test_parallellinesearch_class():
     next_params_ref = [0.98723545, 104.21430094]
     assert match_values(pls.get_next_params(), next_params_ref)
 
-    # test init from hessian array, also switch units
+    # test init from hessian array, also switch units, do pes mode
     pls = ParallelLineSearch(
         structure = s,
         hessian = hessian_H2O,
+        pes_func = pes_H2O,
         M = 5,
         x_unit = 'B',
         E_unit = 'Ha',
+        mode = 'pes',
         window_frac = 0.1,
-        noise_frac = 0.0)
+        noises = None,)
     assert match_values(pls.Lambdas, [0.074919, 0.030092], tol = 1e-5)
-    # TODO:
 #end def
 add_unit_test(test_parallellinesearch_class)
-

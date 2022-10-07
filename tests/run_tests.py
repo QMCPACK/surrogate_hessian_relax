@@ -17,7 +17,7 @@ if __name__=='__main__':
     from unit_tests import test_targetparallellinesearch
     from unit_tests import test_parallellinesearch
     from unit_tests import test_linesearchiteration
-    from integration_tests import test_util
+    from integration_tests import test_int_util
 
     from testing import run_all_tests
     run_all_tests(R = args.R, verbose = args.v, pass_error = args.p)

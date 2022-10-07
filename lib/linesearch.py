@@ -78,14 +78,14 @@ class LineSearchBase():
         assert values is not None, 'must set values'
         assert len(values) == len(grid), 'Number of values does not match the grid'
         self.reset()
-        if errors is None or all(array(errors) is None):
+        if errors is None:
             self.errors = None
         else:
             self.errors = array(errors)
         #end if
         self.set_grid(grid)
         self.values = array(values)
-        if also_search:
+        if also_search and not all(array(values) == None):
             self.search()
         #end if
     #end def
@@ -105,6 +105,7 @@ class LineSearchBase():
         self.x0_err = res[1]
         self.y0_err = res[3]
         self.fit = res[4]
+        self.analyzed = True
     #end def
 
     def _search(
@@ -265,8 +266,6 @@ class LineSearch(LineSearchBase):
     structure = None  # eqm structure
     structure_list = None  # list of LineSearchStructure objects
     jobs_list = None  # boolean list for bookkeeping of jobs
-    pes_func = None  # function handle for evaluating the PES
-    mode = None  # mode of evaluating the PES: (jobs|pes)
     d = None  # direction count
     W = None
     R = None
@@ -286,23 +285,14 @@ class LineSearch(LineSearchBase):
         d,
         sigma = 0.0,
         grid = None,
-        mode = 'jobs',
-        pes_func = None,
         **kwargs,
     ):
-        assert mode in ['jobs', 'pes'], 'Requested mode {} is not supported'.format(mode)
-        self.sigma = sigma
-        self.mode = mode
-        self.pes_func = pes_func
+        self.sigma = sigma if sigma is not None else 0.0
         self.set_structure(structure)
         self.set_hessian(hessian, d)
         self.figure_out_grid(grid = grid, **kwargs)
         LineSearchBase.__init__(self, grid = self.grid, **kwargs)
         self.shift_structures()  # shift
-        # if viable, go on and evaluate
-        if self.mode == 'pes' and self.pes_func is not None:
-            self.evaluate_pes(**kwargs)
-        #end if
     #end def
 
     def set_structure(self, structure):
@@ -390,10 +380,9 @@ class LineSearch(LineSearchBase):
 
     def evaluate_pes(
         self,
-        pes_func = None,
+        pes_func,
         **kwargs,
     ):
-        pes_func = pes_func if pes_func is not None else self.pes_func
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
             value, error = pes_func(structure, sigma = self.sigma)
@@ -401,7 +390,7 @@ class LineSearch(LineSearchBase):
             values.append(value)
             errors.append(error)
         #end for
-        self.load_results(grid = array(grid), values = array(values), errors = array(errors), **kwargs)
+        return array(grid), array(values), array(errors)
     #end def
 
     def generate_jobs(
@@ -431,7 +420,7 @@ class LineSearch(LineSearchBase):
     # job must accept 0: position, 1: path, 2: sigma
     def generate_eqm_jobs(
         self,
-        job_func,
+        pes_func,
         sigma,
         **kwargs,
     ):
@@ -440,17 +429,17 @@ class LineSearch(LineSearchBase):
         #end if
         structure = self.structure.copy()  # copy to be safe
         structure.to_nexus_only()
-        return self._generate_jobs(job_func, structure, sigma = sigma, **kwargs)
+        return self._generate_jobs(pes_func, structure, sigma = sigma, **kwargs)
     #end def
 
     def _make_job_path(self, path, label):
-        return '{}/{}'.format(path, label)
+        return '{}{}'.format(path, label)
     #end def
 
-    # job_func must accept 0: structure, 1: path, 2: sigma
+    # pes_func must accept 0: structure, 1: path, 2: sigma
     def _generate_jobs(
         self,
-        job_func,
+        pes_func,
         structure,
         sigma = None,
         path = '',
@@ -458,22 +447,22 @@ class LineSearch(LineSearchBase):
     ):
         sigma = sigma if sigma is not None else self.sigma
         path = self._make_job_path(path, structure.label)
-        return job_func(structure, path = path, sigma = sigma, **kwargs)
+        return pes_func(structure, path = path, sigma = sigma, **kwargs)
     #end def
 
     # analyzer fuctions must accept 0: path
     #   return energy, errorbar
-    def analyze_jobs(self, analyze_func, path = '', add_sigma = False, prune0 = True, **kwargs):
+    def analyze_jobs(self, load_func, load_args = {}, path = '', add_sigma = False, prune0 = True, **kwargs):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = analyze_func(self._make_job_path(path, structure.label), **kwargs)
+            value, error = load_func(self._make_job_path(path, structure.label), **load_args)
             if add_sigma:
                 error += self.sigma
                 value += self.sigma * random.randn(1)[0]
             #end if
             structure.set_value(value, error)
             if prune0 and value == 0:
-                print('Skipped shift={}, value {}'.format(shift, value))
+                print('Skipped shift = {}, value {}'.format(shift, value))
             else:
                 grid.append(shift)
                 values.append(value)
@@ -483,9 +472,9 @@ class LineSearch(LineSearchBase):
         return array(grid), array(values), array(errors)
     #end def
 
-    def load_results(self, analyze_func = None, grid = None, values = None, errors = None, **kwargs):
-        if analyze_func is not None:
-            grid, values, errors = self.analyze_jobs(analyze_func, **kwargs)
+    def load_results(self, load_func = None, grid = None, values = None, errors = None, **kwargs):
+        if load_func is not None:
+            grid, values, errors = self.analyze_jobs(load_func, **kwargs)
         else:
             # allow to input only values, not grid
             grid = grid if grid is not None else self.grid
@@ -501,10 +490,17 @@ class LineSearch(LineSearchBase):
         errors = None,
         **kwargs
     ):
-        if values is None:
+        if values is None or all(array(values) == None):
             return False
         #end if
         self.set_values(grid, values, errors, also_search = True)
+        if errors is None:
+            errors = 0.0 * array(values)
+        #end if
+        for s, v, e in zip(self.structure_list, values, errors):
+            s.value = v
+            s.value_err = e
+        #end for
         return True
     #end def
 

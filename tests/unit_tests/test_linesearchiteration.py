@@ -28,22 +28,23 @@ def test_linesearchiteration_class():
         path = test_dir,
         hessian = h,
         structure = s,
-        job_func = job_H2O_pes,
-        analyze_func = analyze_H2O_pes,
+        mode = 'nexus',
+        pes_func = job_H2O_pes,
+        load_func = analyze_H2O_pes,
         windows = [0.05, 1.0],
         load = False)
     job_data = lsi.generate_jobs()
-    lsi.load_results(job_data = job_data)
+    lsi.load_results(load_args={'job_data': job_data})
     lsi.propagate(write = True)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.89725537, 104.12804938])
     # second iteration
     job_data = lsi.generate_jobs()
-    lsi.load_results(job_data = job_data)
+    lsi.load_results(load_args={'job_data': job_data})
     lsi.propagate(write = True)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93244294, 104.1720672 ])
     # third iteration
     job_data = lsi.generate_jobs()
-    lsi.load_results(job_data = job_data)
+    lsi.load_results(load_args={'job_data': job_data})
     lsi.propagate(write = False)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
     # start over and load until second iteration
@@ -51,7 +52,7 @@ def test_linesearchiteration_class():
     assert len(lsi.pls_list) == 2
     lsi.propagate(write = False)
     lsi.generate_jobs()
-    lsi.load_results(job_data = job_data)
+    lsi.load_results(load_args={'job_data': job_data})
     lsi.propagate(write = False)
     assert match_values(lsi.pls_list[-1].structure.params, [  0.93703957, 104.20617541])
     rmtree(test_dir)
@@ -64,10 +65,11 @@ def test_linesearchiteration_class():
     lsi = LineSearchIteration(
         path = test_dir,
         surrogate = srg,
-        job_func = job_H2O_pes,
-        analyze_func = analyze_H2O_pes)
+        pes_func = job_H2O_pes,
+        load_func = analyze_H2O_pes,
+        mode= 'nexus')
     job_data = lsi.generate_jobs()
-    lsi.load_results(job_data = job_data)
+    lsi.load_results(load_args={'job_data': job_data})
     lsi.propagate(write = True)
     grid0_ref = [-0.432306, -0.216153, 0., 0.216153, 0.432306]
     grid1_ref = [-0.482330, -0.241165, 0., 0.241165, 0.482330]

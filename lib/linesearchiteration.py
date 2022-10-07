@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-from numpy import array
+from numpy import array, mean
 from dill import loads
 
+from lib.util import directorize
 from lib.parameters import ParameterStructure
 from lib.hessian import ParameterHessian
 from lib.parallellinesearch import ParallelLineSearch
@@ -36,22 +37,22 @@ class LineSearchIteration():
         hessian = None,
         load = True,
         n_max = 0,  # no limit
-        **kwargs,  # e.g. windows, noises, targets, units, job_func, analyze_func ...
+        **kwargs,  # e.g. windows, noises, targets, units, pes_func, pes_args, load_func, load_args ...
     ):
-        self.path = path
+        self.path = directorize(path)
         self.pls_list = []
         # try to load pickles
         if load:
-            self._load_until_failure()
+            self.load_pls()
         #end if
         if len(self.pls_list) == 0:  # if no iterations loaded, try to initialize
             # try to load from surrogate ParallelLineSearch object
             if surrogate is not None:
-                self.init_from_surrogate(surrogate, **kwargs)
+                self.init_from_surrogate(surrogate = surrogate, **kwargs)
             #end if
             # when present, manually provided mappings, parameters and positions override those from a surrogate
             if hessian is not None and structure is not None:
-                self.init_from_hessian(structure, hessian, **kwargs)
+                self.init_from_hessian(structure = structure, hessian = hessian, **kwargs)
             #end if
         #end if
     #end def
@@ -87,6 +88,8 @@ class LineSearchIteration():
     #end def
 
     def _get_current_pls(self):
+        if len(self.pls_list) == 0:
+            return None
         if len(self.pls_list) == 1:
             return self.pls_list[0]
         else:
@@ -104,12 +107,12 @@ class LineSearchIteration():
         #end if
     #end def
 
-    def _load_until_failure(self):
+    def load_pls(self):
         pls_list = []
         load_failed = False
         i = 0
         while not load_failed:
-            path = '{}/data.p'.format(self._get_pls_path(i))
+            path = '{}data.p'.format(self._get_pls_path(i))
             pls = self._load_linesearch_pickle(path)
             if pls is not None and pls.check_integrity():
                 pls_list.append(pls)
@@ -127,20 +130,29 @@ class LineSearchIteration():
         return load_from_disk(path)
     #end def
 
-    def propagate(self, **kwargs):
+    def propagate(self, i = None, **kwargs):
+        if i is not None and i < len(self.pls_list) - 1:
+            return
+        #end if
         pls_next = self._get_current_pls().propagate(path = self._get_pls_path(len(self.pls_list)), **kwargs)
         self.pls_list.append(pls_next)
     #end
 
     def get_params(self, p = None, get_errs = True):
-        params = [list(self.pls(0).get_params())]
-        params_err = [list(self.pls(0).get_params_err())]
+        params = []
+        params_err = []
         for pls in self.pls_list:
-            if pls.calculated:
-                params.append(list(pls.structure_next.params))
-                params_err.append(list(pls.structure_next.params_err))
+            if pls.status.setup:
+                params.append(list(pls.structure.params))
+                params_err.append(list(pls.structure.params_err))
             #end if
         #end for
+        # the last part, not (yet) propagated
+        pls = self.pls()
+        if pls.status.analyzed:
+            params.append(list(pls.structure_next.params))
+            params_err.append(list(pls.structure_next.params_err))
+        #end if
         if p is not None:
             params = array(params)[:, p]
             params_err = array(params_err)[:, p]
@@ -155,12 +167,40 @@ class LineSearchIteration():
         #end if
     #end def
 
+    def get_average_params(self, p = None, get_errs = True, transient = 1):
+        params, params_err = self.get_params(p = p, get_errs = True)
+        params_ave = mean(params[transient:], axis = 0)
+        params_ave_err = mean(params_err[transient:]**2, axis = 0)**0.5
+        if get_errs:
+            return params_ave, params_ave_err
+        else:
+            return params_ave
+        #end if
+    #end def
+
     def __repr__(self):
         string = self.__class__.__name__
-        for p, pls in enumerate(self.pls_list):
-            string += '\n  #{} '.format(p)
-        #end for
-        # TODO
+        if len(self.pls_list) > 0:
+            fmt = '\n  {:<4d} {}    {:<8f} +/- {:<8f}' + self.pls().D * '   {:<8f} +/- {:<8f}'
+            fmts = '\n  {:<4s} {}    {:<8s} +/- {:<8s}' + self.pls().D * '   {:<8s} +/- {:<8s}'
+            plabels = ['pls', 'status', 'Energy', '']
+            for p in range(self.pls().D):
+                plabels += ['p' + str(p)]
+                plabels += ['']
+            #end for
+            string += fmts.format(*tuple(plabels))
+            for p, pls in enumerate(self.pls_list):
+                data = [pls.structure.value, pls.structure.value_err]
+                data[0] = data[0] if not data[0] is None else 0.0
+                data[1] = data[1] if not data[1] is None else 0.0
+                for param, perr in zip(pls.structure.params, pls.structure.params_err):
+                    data.append(param)
+                    data.append(perr)
+                #end for
+                string += fmt.format(p, pls.status.value(), *tuple(array(data).round(5)))
+            #end for
+        #end if
+        # TODO add parameter and energy printouts
         return string
     #end def
 

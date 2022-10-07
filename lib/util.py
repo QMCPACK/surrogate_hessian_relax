@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from numpy import polyfit, polyder, polyval, roots, where, argmin, median, array, isnan
+from numpy import polyfit, polyder, polyval, roots, where, argmin, median, array, isnan, linalg, linspace
+from numpy import meshgrid
 
 Bohr = 0.5291772105638411  # A
 Ry = 13.605693012183622  # eV
@@ -141,4 +142,9 @@ def bipolymin(p, X, Y, nx, ny, itermax = 6, shrink = 0.1, npoints = 10):
     return xmin, ymin, zmin
 #end def bipolymin
 
-
+def directorize(path):
+    if len(path) > 0 and not path[-1] == '/':
+        path += '/'
+    #end if
+    return path
+#end def

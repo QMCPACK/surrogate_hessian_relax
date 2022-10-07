@@ -29,10 +29,12 @@ class TargetParallelLineSearch(ParallelLineSearch):
     ):
         ParallelLineSearch.__init__(self, structure = structure, hessian = hessian, **kwargs)
         self.set_targets(targets)
-        self.ls_list = self._generate_tls_list(**kwargs)
     #end def
 
     def set_targets(self, targets):
+        if not self.status.setup:
+            return
+        #end if
         # whether target or not
         if targets is None:
             targets = self.D * [0.0]
@@ -71,6 +73,10 @@ useful keyword arguments:
   fit_kind = fitting function
         """
         if windows is not None and noises is not None:
+            for w, s, ls in zip(windows, noises, self.ls_list):
+                ls.W_opt = w
+                ls.sigma_opt = s
+            #end for
             self.optimize_windows_noises(windows, noises, **kwargs)
         elif temperature is not None:
             self.optimize_thermal(temperature, **kwargs)
@@ -263,13 +269,12 @@ useful keyword arguments:
         return [(temperature / Lambda)**0.5 for Lambda in self.hessian.diagonal]
     #end def
 
-    # Important: overrides ls_list generator
-    def _generate_ls_list(self, **kwargs):
-        return None
-    #end def
-
-    def _generate_tls_list(self, **kwargs):
+    # override parent method
+    def reset_ls_list(self, **kwargs):
+        self._avoid_protected()
+        self._require_shifted()
         noises = self.noises if self.noisy else self.D * [None]
+        self.targets = self.targets if not self.targets is None else self.D * [0.0]
         ls_list = []
         for d, window, noise, target in zip(range(self.D), self.windows, noises, self.targets):
             tls = TargetLineSearch(
@@ -277,12 +282,19 @@ useful keyword arguments:
                 hessian = self.hessian,
                 d = d,
                 W = window,
+                M = self.M,
+                fit_kind = self.fit_kind,
                 sigma = noise,
                 target = target,
                 **kwargs)
             ls_list.append(tls)
         #end for
-        return ls_list
+        self.ls_list = ls_list
+        if self.mode == 'pes':
+            self.cascade()
+            self.load_results()
+        #end if
+        self.cascade()
     #end def
 
     def compute_bias_p(self, **kwargs):

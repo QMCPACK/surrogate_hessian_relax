@@ -2,6 +2,7 @@
 
 
 from numpy import array, sin, cos, pi, exp, diag, mean
+from numpy.random import randn
 
 from surrogate_classes import mean_distances, bond_angle, distance
 
@@ -80,12 +81,12 @@ hessian_real_H2O = array('''
 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.5 0.0
 0.0 0.0 0.0 0.0 0.0 0.0 3.0 0.0 0.2
 '''.split(), dtype = float).reshape(9, 9)
-def pes_H2O(params):
-    r, a = tuple(params)
-    V = 0.0
+def pes_H2O(structure, sigma= 0.0):
+    r, a = tuple(structure.params)
+    V = sigma * randn(1)[0]
     V += morse([0.95789707, 0.5, 0.5, 0.0], r)
     V += harmonic_a([104.119, 0.5], a)
-    return V
+    return V, sigma
 #end def
 def get_structure_H2O():
     from surrogate_classes import ParameterStructure
@@ -96,20 +97,20 @@ def get_hessian_H2O():
     return ParameterHessian(hessian = hessian_H2O)
 #end def
 def job_H2O_pes(structure, path, sigma, **kwargs):
-    p = structure.params
-    value = pes_H2O(p)
+    value = pes_H2O(structure)
     return [(path, value, sigma)]
 #end def
 def analyze_H2O_pes(path, job_data = None, **kwargs):
     for row in job_data:
         if path == row[0]:
-            return row[1], row[2]
+            return row[1]
         #end if
     #end for
     return None
 #end def
 def get_surrogate_H2O():
     from surrogate_classes import TargetParallelLineSearch
+    from surrogate_classes import ParameterSet
     srg = TargetParallelLineSearch(
         structure = get_structure_H2O(),
         hessian = get_hessian_H2O(),
@@ -117,8 +118,8 @@ def get_surrogate_H2O():
         window_frac = 0.5)
     params0 = srg.get_shifted_params(0)
     params1 = srg.get_shifted_params(1)
-    values0 = [pes_H2O(p) for p in params0]
-    values1 = [pes_H2O(p) for p in params1]
+    values0 = [pes_H2O(ParameterSet(p))[0] for p in params0]
+    values1 = [pes_H2O(ParameterSet(p))[0] for p in params1]
     srg.load_results(values = [values0, values1], set_target = True)
     return srg
 #end def
