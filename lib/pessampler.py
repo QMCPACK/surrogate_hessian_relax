@@ -15,7 +15,7 @@ class CascadeStatus():
     #end def
 
     def value(self):
-        return self.__repr__()
+        return self.__str__()
     #end def
 
     def __str__(self):

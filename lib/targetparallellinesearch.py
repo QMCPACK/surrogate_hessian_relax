@@ -295,7 +295,7 @@ useful keyword arguments:
     #end def
 
     # override parent method
-    def reset_ls_list(self, **kwargs):
+    def reset_ls_list(self, set_target = True, **kwargs):
         self._avoid_protected()
         self._require_shifted()
         noises = self.noises if self.noisy else self.D * [None]
@@ -317,7 +317,7 @@ useful keyword arguments:
         self.ls_list = ls_list
         if self.mode == 'pes':
             self.cascade()
-            self.load_results()
+            self.load_results(set_target = set_target)
         #end if
         self.cascade()
     #end def
