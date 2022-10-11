@@ -450,16 +450,22 @@ class LineSearch(LineSearchBase):
         return pes_func(structure, path = path, sigma = sigma, **kwargs)
     #end def
 
+    def analyze_job(self, label, load_func, load_args = {}, path = '', add_sigma = False, sigma = None, **kwargs):
+        value, error = load_func(self._make_job_path(path, label), **load_args)
+        sigma = sigma if sigma is not None else self.sigma
+        if add_sigma:
+            error += sigma
+            value += sigma * random.randn(1)[0]
+        #end if
+        return value, error
+    #end def
+
     # analyzer fuctions must accept 0: path
     #   return energy, errorbar
-    def analyze_jobs(self, load_func, load_args = {}, path = '', add_sigma = False, prune0 = True, **kwargs):
+    def analyze_jobs(self, load_func, prune0 = True, **kwargs):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = load_func(self._make_job_path(path, structure.label), **load_args)
-            if add_sigma:
-                error += self.sigma
-                value += self.sigma * random.randn(1)[0]
-            #end if
+            value, error = self.analyze_job(structure.label, load_func = load_func, **kwargs)
             structure.set_value(value, error)
             if prune0 and value == 0:
                 print('Skipped shift = {}, value {}'.format(shift, value))
@@ -481,6 +487,15 @@ class LineSearch(LineSearchBase):
         #end if
         self.loaded = self.set_results(grid, values, errors, **kwargs)
         return self.loaded
+    #end def
+
+    def load_eqm_results(self, load_func = None, values = None, errors = None, **kwargs):
+        if load_func is not None:
+            value, error = self.analyze_job('eqm', load_func, **kwargs)
+        else:
+            value, error = values, errors
+        #end if
+        return value, error
     #end def
 
     def set_results(

@@ -9,13 +9,16 @@ class CascadeStatus():
     loaded = False
     analyzed = False
     protected = False
+
     def __init__(self):
         pass
     #end def
+
     def value(self):
         return self.__repr__()
     #end def
-    def __repr__(self):
+
+    def __str__(self):
         string = ''
         for s in [self.setup, self.shifted, self.generated, self.loaded, self.analyzed, self.protected]:
             string += '1' if s else '0'
@@ -32,7 +35,7 @@ class PesSampler():
     pes_func = None
     pes_args = {}
     load_func = None
-    load_args ={}
+    load_args = {}
     status = None
     # error messages / instructions
     msg_setup = 'Setup: required but not done'
@@ -141,7 +144,6 @@ class PesSampler():
     def _protected(self):
         return False
     #end def
-
 
     def _require_setup(self):
         assert self.status.setup, self.msg_setup

@@ -17,7 +17,7 @@ def test_linesearchiteration_class():
     from shutil import rmtree
     s = get_structure_H2O()
     s.shift_params([0.2, -0.2])
-    params_ref = s._forward(pos_H2O)
+    params_ref = s.forward(pos_H2O)
     h = get_hessian_H2O()
     # must make global for pickling
 

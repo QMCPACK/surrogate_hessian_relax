@@ -87,7 +87,7 @@ class ParallelLineSearch(PesSampler):
         # check windows
         if self.windows is None or not len(self.windows) == self.D or self.M is None:
             return False
-        #end if 
+        #end if
         # check noises
         if self.noisy and self.noises is None:
             return False
@@ -132,7 +132,7 @@ class ParallelLineSearch(PesSampler):
         self._avoid_protected()
         if structure is None:
             return
-        #end if 
+        #end if
         assert isinstance(structure, ParameterSet), 'Structure must be ParameterSet object'
         self.structure = structure.copy(label = 'eqm')
         self.cascade()
@@ -258,32 +258,46 @@ class ParallelLineSearch(PesSampler):
         eqm_jobs = self.ls_list[0].generate_eqm_jobs(pes_func, path = self.path, sigma = sigma_min, **pes_args, **kwargs)
         jobs = eqm_jobs
         for ls in self.ls_list:
-             jobs += ls.generate_jobs(pes_func, path = self.path, eqm_jobs = eqm_jobs, **pes_args, **kwargs)
+            jobs += ls.generate_jobs(pes_func, path = self.path, eqm_jobs = eqm_jobs, **pes_args, **kwargs)
         #end for
         self.status.generated = True
         return jobs
     #end def
 
-    def run_jobs(self, interactive = True, **kwargs):
+    def generate_eqm_jobs(self, pes_func = None, pes_args = {}, **kwargs):
+        pes_args = pes_args if not pes_args == {} else self.pes_args
+        pes_func = pes_func if pes_func is not None else self.pes_func
+        sigma_min = None if not self.noisy else self.noises.min()
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(pes_func, path = self.path, sigma = sigma_min, **pes_args, **kwargs)
+        return eqm_jobs
+    #end def
+
+    def run_jobs(self, interactive = True, eqm_only = False, **kwargs):
         from nexus import run_project
-        jobs = self.generate_jobs(**kwargs)
+        if eqm_only:
+            jobs = self.generate_eqm_jobs(**kwargs)
+        else:
+            jobs = self.generate_jobs(**kwargs)
+        #end if
         if jobs is None or jobs == []:
             return
         #end if
         if interactive:
-            print('About to run:')
+            print('About to submit the following new jobs:')
+            any_new = False
             for job in jobs:
-                #print(job)
-                print('  {}'.format(job.path))
+                if not job.submitted:
+                    print('  {}'.format(job.path))
+                    any_new = True
+                #end if
             #end for
-            if input('proceed? (Y/n) ') in ['n', 'N']:
-                exit()
-            else:
-                run_project(jobs)    
+            if any_new:
+                if input('proceed? (Y/n) ') in ['n', 'N']:
+                    exit()
+                #end if
             #end if
-        else:
-            run_project(jobs)    
         #end if
+        run_project(jobs)
     #end def
 
     # can either load based on analyze_func or by providing values/errors
@@ -323,8 +337,19 @@ class ParallelLineSearch(PesSampler):
         self.cascade()
     #end def
 
+    def load_eqm_results(self, load_func = None, **kwargs):
+        if self.status.protected:
+            return
+        #end if
+        load_func = load_func if load_func is not None else self.load_func
+        sigma_min = self.noises.min()
+        E, err = self.ls_list[0].load_eqm_results(load_func = load_func, path = self.path, sigma = sigma_min, **kwargs)
+        self.structure.value = E
+        self.structure.value_err = err
+    #end def
+
     def find_eqm_value(self):
-        E, Err = None, None
+        E, err = None, None
         for ls in self.ls_list:
             for s in ls.structure_list:
                 if sum((self.structure.params - s.params)**2) < 1e-10:
@@ -429,7 +454,7 @@ class ParallelLineSearch(PesSampler):
 
     def write_to_disk(self, fname = 'data.p', overwrite = False):
         if path.exists(self.path + fname) and not overwrite:
-            #print('File {} exists. To overwrite, run with overwrite = True'.format(self.path + fname))
+            print('File {} exists. To overwrite, run with overwrite = True'.format(self.path + fname))
             return
         #end if
         makedirs(self.path, exist_ok = True)

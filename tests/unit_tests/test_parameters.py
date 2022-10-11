@@ -27,27 +27,14 @@ def test_parameter_tools():
 add_unit_test(test_parameter_tools)
 
 
-# Test ParameterBase class
-def test_parameterbase_class():
-    from surrogate_classes import ParameterBase
-    # test defaults
-    p = ParameterBase(0.74)
-    assert p.value == 0.74
-    assert p.kind == ''
-    assert p.label == 'p'
-    assert p.unit == ''
-    return True
-#end def
-add_unit_test(test_parameterbase_class)
-
-
 # Test Parameter class
 def test_parameter_class():
     # TODO: add features, add meaningful tests
     from surrogate_classes import Parameter
     # test defaults
-    p = Parameter(0.74, 'kind', 'test', 'unit')
+    p = Parameter(0.74, 0.01, 'kind', 'test', 'unit')
     assert p.value == 0.74
+    assert p.error == 0.01
     assert p.kind == 'kind'
     assert p.label == 'test'
     assert p.unit == 'unit'
@@ -87,8 +74,6 @@ def test_parameterstructurebase_class():
     s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])  # set another pos
     s.set_forward(forward_H2)  # then set forward mapping
     assert match_values(s.params, 1.6, tol = 1e-5)  # params computed automatically
-    assert not s.check_consistency()  # pos is not translated in this order
-    s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])  # this time translate position by default
     assert s.check_consistency()  # finally consistent
     assert s.check_consistency(params = [1.3])  # also consistent at another point
     assert s.check_consistency(pos = pos_H2)  # also consistent at another point
@@ -109,7 +94,7 @@ def test_parameterstructurebase_class():
     assert s.check_consistency()
 
     # test another set of parameters
-    s.backward([1.0, 120.0])
+    s.set_params([1.0, 120.0])
     pos2_ref = [[ 0.,          0.,          0. ],
                 [ 0.,          0.8660254,   0.5],
                 [ 0.,         -0.8660254,   0.5]]

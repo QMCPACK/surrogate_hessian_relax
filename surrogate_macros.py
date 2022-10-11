@@ -109,8 +109,8 @@ def relax_structure(
     #end if
     structure_relax = structure.copy(pos = pos_relax, axes = axes_relax)
     if make_consistent:
-        structure_relax.forward()
-        structure_relax.backward()
+        structure_relax._forward(pos_relax)
+        structure_relax._backward(structure_relax.params)
         pos_diff = structure_relax.pos - pos_relax
         if allow_translate:
             pos_diff -= pos_diff.mean(axis = 0)
@@ -353,18 +353,13 @@ def nexus_qmcpack_analyzer(path, qmc_idx = 1, get_var = False, suffix = '/dmc/dm
 
 
 def generate_surrogate(
-    structure,
-    hessian,
-    pes_func,
-    mode = 'nexus',
     path = 'surrogate',
-    load = None,
-    load_func = nexus_pwscf_analyzer,
+    fname = None,
     **kwargs,
 ):
-    if load is not None:
+    if fname is not None:
         from surrogate_classes import load_from_disk
-        fname = '{}/{}'.format(path, load)
+        fname = '{}/{}'.format(path, fname)
         surrogate = load_from_disk(fname)
         if surrogate is not None:
             return surrogate
@@ -373,28 +368,7 @@ def generate_surrogate(
         #end if
     #end if
     from surrogate_classes import TargetParallelLineSearch
-    if mode == 'pes':
-        surrogate = TargetParallelLineSearch(
-            structure = structure,
-            targets = structure.params,
-            hessian = hessian,
-            path = path,
-            mode = 'pes',
-            set_target = True,
-            pes_func = pes_func,
-            load_func = load_func,
-            **kwargs)
-    else:
-        surrogate = TargetParallelLineSearch(
-            structure = structure,
-            targets = structure.params,
-            hessian = hessian,
-            mode = mode,
-            path = path,
-            pes_func = pes_func,
-            load_func = load_func,
-            **kwargs)
-    #end if
+    surrogate = TargetParallelLineSearch(path = path, **kwargs)
     return surrogate
 #end def
 

@@ -32,51 +32,46 @@ def mean_distances(pairs):
 #end def
 
 
-class ParameterBase():
+class Parameter():
     """Base class for representing an optimizable parameter"""
     kind = None
     value = None
+    error = None
     label = None
     unit = None
 
     def __init__(
         self,
         value,
+        error = 0.0,
         kind = '',
         label = 'p',
         unit = '',
     ):
         self.value = value
+        self.error = error
         self.kind = kind
         self.label = label
         self.unit = unit
     #end def
 
-    def __repr__(self):
-        return '{:>10s}: {:<10f} {:6s} ({})'.format(self.label, self.value, self.unit, self.kind)
+    def print_value(self):
+        if self.error is None:
+            print('{:<8.6f}             '.format(self.value))
+        else:
+            print('{:<8.6f} +/- {:<8.6f}'.format(self.value, self.error))
+        #end if
     #end def
-#end class
 
-
-class Parameter(ParameterBase):
-    """Class for representing an optimizable parameter"""
-
-    def __init__(
-        self,
-        value,
-        kind = '',
-        label = 'p',
-        unit = '',
-    ):
-        ParameterBase.__init__(self, value, kind, label, unit)
+    def __str__(self):
+        return '{:>10s}: {:<10f} {:6s} ({})'.format(self.label, self.value, self.unit, self.kind)
     #end def
 #end class
 
 
 class ParameterSet():
     """Base class for representing a set of parameters to optimize"""
-    params = None
-    params_err = None
+    p_list = []  # list of Parameter objects
     value = None  # energy value
     error = None  # errorbar
     label = None  # label for identification
@@ -84,23 +79,61 @@ class ParameterSet():
     def __init__(
         self,
         params = None,
-        params_err = None,
         value = None,
         error = None,
         label = None,
+        **kwargs,  # params_err, units, kinds
     ):
         self.label = label
         if params is not None:
-            self.set_params(params, params_err)
+            self.init_params(params, **kwargs)
         #end if
         if value is not None:
             self.set_value(value, error)
         #end if
     #end def
 
+    def init_params(self, params, params_err = None, units = None, labels = None, kinds = None, **kwargs):
+        if params_err is None:
+            params_err = len(params) * [params_err]
+        else:
+            assert len(params_err) == len(params)
+        #end if
+        if units is None or isinstance(units, str):
+            units = len(params) * [units]
+        else:
+            assert len(units) == len(params)
+        #end if
+        if kinds is None or isinstance(kinds, str):
+            kinds = len(params) * [kinds]
+        else:
+            assert len(kinds) == len(params)
+        #end if
+        if labels is None:
+            labels = len(params) * [labels]
+        else:
+            assert len(labels) == len(labels)
+        #end if
+        p_list = []
+        for p, (param, param_err, unit, label, kind) in enumerate(zip(params, params_err, units, labels, kinds)):
+            lab = label if label is not None else 'p{}'.format(p)
+            parameter = Parameter(param, param_err, unit = unit, label = lab, kind = kind)
+            p_list.append(parameter)
+        #end for
+        self.p_list = p_list
+    #end def
+
     def set_params(self, params, params_err = None):
-        self.params = array(params).flatten()
-        self.params_err = params_err if params_err is not None else self.params * 0.0
+        if self.params is None:
+            self.init_params(params, params_err)
+        #end if
+        if params_err is None:
+            params_err = len(params) * [0.0]
+        #end if
+        for sparam, param, param_err in zip(self.p_list, params, params_err):
+            sparam.value = param
+            sparam.error = param_err
+        #end for
         self.unset_value()
     #end def
 
@@ -115,9 +148,29 @@ class ParameterSet():
         self.error = None
     #end def
 
+    @property
+    def params(self):
+        if self.p_list == []:
+            return None
+        else:
+            return array([p.value for p in self.p_list])
+        #end if
+    #end def
+
+    @property
+    def params_err(self):
+        if self.p_list == []:
+            return None
+        else:
+            return array([p.error for p in self.p_list])
+        #end if
+    #end def
+
     def shift_params(self, dparams):
-        assert self.params is not None, 'params has not been set'
-        self.params += dparams
+        assert not self.p_list == [], 'params has not been set'
+        for p, d in zip(self.p_list, dparams):
+            p.value += d
+        #end for
         self.unset_value()
     #end def
 
@@ -141,6 +194,7 @@ class ParameterSet():
     def check_consistency(self):
         return True
     #end def
+
 #end class
 
 
@@ -175,7 +229,7 @@ class ParameterStructureBase(ParameterSet):
         unit = None,
         dim = 3,
         translate = True,  # attempt to translate pos
-        **kwargs,
+        **kwargs,  # kinds, labels, units
     ):
         self.dim = dim
         self.periodic = periodic
@@ -189,7 +243,8 @@ class ParameterStructureBase(ParameterSet):
             self.set_axes(axes)
         #end if
         if params is not None:
-            self.set_params(params, params_err)
+            self.init_params(params, params_err, **kwargs)
+            self.set_params(self.params)
         #end if
         if value is not None:
             self.set_value(value, error)
@@ -202,17 +257,17 @@ class ParameterStructureBase(ParameterSet):
     def set_forward(self, forward):
         self.forward_func = forward
         if self.pos is not None:
-            self.forward()
+            self._forward(self.pos)
         #end if
-        self.check_consistency()
+        self._check_consistency()
     #end def
 
     def set_backward(self, backward):
         self.backward_func = backward
         if self.params is not None:
-            self.backward()
+            self._backward(self.params)
         #end if
-        self.check_consistency()
+        self._check_consistency()
     #end def
 
     # similar but alternative to Nexus function set_pos()
@@ -221,13 +276,13 @@ class ParameterStructureBase(ParameterSet):
         assert pos.size % self.dim == 0, 'Position vector inconsistent with {} dimensions!'.format(self.dim)
         self.pos = array(pos).reshape(-1, self.dim)
         if self.forward_func is not None:
-            self.forward()
+            self._forward(pos)
             if translate and self.backward_func is not None:
-                self.backward()
+                self._backward(self.params)
             #end if
         #end if
         self.unset_value()  # setting pos will unset value
-        self.check_consistency()
+        self._check_consistency()
     #end def
 
     def set_axes(self, axes, check = True):
@@ -245,24 +300,24 @@ class ParameterStructureBase(ParameterSet):
         #end try
         self.unset_value()  # setting axes will unset value
         if check:
-            self.check_consistency()
+            self._check_consistency()
         #end if
     #end def
 
     def set_elem(self, elem):
         self.elem = array(elem)
-    #end def 
+    #end def
 
     def set_params(self, params, params_err = None):
         ParameterSet.set_params(self, params, params_err)
         if self.backward_func is not None:
-            self.backward()
+            self._backward(self.params)
         #end if
-        self.check_consistency()
+        self._check_consistency()
     #end def
 
     def set_value(self, value, error = None):
-        assert self.params is not None or self.pos is not None, 'Cannot assign value to abstract structure, set params or pos first'
+        assert not self.p_list == [] or self.pos is not None, 'Cannot assign value to abstract structure, set params or pos first'
         self.value = value
         self.error = error
     #end def
@@ -272,48 +327,35 @@ class ParameterStructureBase(ParameterSet):
         self.error = None
     #end def
 
-    def forward(self, pos = None, axes = None):
+    def _forward(self, pos, axes = None):
         """Propagate current structure from pos, axes (current, unless provided) to params"""
-        assert self.forward_func is not None, 'Forward mapping has not been supplied'
-        if pos is None:
-            assert self.pos is not None, 'Must supply position for forward mapping'
-            pos = self.pos
-            axes = self.axes
-        else:
-            self.pos = pos
-            self.axes = axes
-        #end if
-        assert not self.periodic or self.axes is not None, 'Must supply axes for periodic forward mappings'
-        self.params = self._forward(pos, axes)
-        self.params_err = 0.0 * self.params
+        self.set_params(self.forward(pos, axes))
     #end def
 
-    def _forward(self, pos, axes = None):
+    def forward(self, pos = None, axes = None):
         """Perform forward mapping: return new params"""
+        assert self.forward_func is not None, 'Forward mapping has not been supplied'
+        pos = pos if pos is not None else self.pos
         if self.periodic:
+            axes = axes if axes is not None else self.axes
             return array(self.forward_func(array(pos), axes))
         else:
             return array(self.forward_func(array(pos)))
         #end if
     #end def
 
-    def backward(self, params = None):
+    def _backward(self, params):
         """Propagate current structure from params (current, unless provided) to pos, axes"""
-        assert self.backward_func is not None, 'Backward mapping has not been supplied'
-        if params is None:
-            assert self.params is not None, 'Must supply params for backward mapping'
-            params = self.params
-        else:
-            self.params = params
-        #end if
-        self.pos, axes = self._backward(params)
+        self.pos, axes = self.backward(params)
         if self.periodic:
             self.set_axes(axes, check = False)  # enable checkups but avoid recursion loop
         #end if
     #end def
 
-    def _backward(self, params):
+    def backward(self, params = None):
         """Perform backward mapping: return new pos, axes"""
+        assert self.backward_func is not None, 'Backward mapping has not been supplied'
+        params = params if params is not None else self.params
         if self.periodic:
             pos, axes = self.backward_func(array(params))
             return array(pos).reshape(-1, 3), array(axes).reshape(-1, 3)
@@ -322,84 +364,56 @@ class ParameterStructureBase(ParameterSet):
         #end if
     #end def
 
-    def check_consistency(
-        self,
-        params = None,
-        pos = None,
-        axes = None,
-        tol = 1e-7,
-        verbose = False,
-    ):
-        """Check consistency of the current or provided set of positions and params."""
-        if pos is None and params is None:
-            # if neither params nor pos are given, check and store internal consistency
-            if self.pos is None and self.params is None:
-                # without either set of coordinates the mapping is inconsistent
-                consistent = False
-            else:
-                consistent = self._check_consistency(self.params, self.pos, self.axes, tol)
-            #end if
-            self.consistent = consistent
-            # TODO: why is this here? It vanishes params_err for no reason?
-            #if consistent:
-            #    self.forward()
-            #    self.backward()
-            #end if
-        else:
-            consistent = self._check_consistency(params, pos, axes, tol)
-        #end if
-        return consistent
+    def _check_consistency(self):
+        """Check and store consistency status of the present mappings."""
+        self.consistent = self.check_consistency()
     #end def
 
-    def _check_consistency(self, params, pos, axes, tol = 1e-7):
+    def check_consistency(self, params = None, pos = None, axes = None, tol = 1e-7):
         """Check consistency of present forward-backward mapping.
         If params or pos/axes are supplied, check at the corresponding points. If not, check at the present point.
         """
         if self.forward_func is None or self.backward_func is None:
             return False
         #end if
-        if pos is None and params is None:
-            return False
-        elif pos is not None and params is not None:
-            # if both params and pos are given, check their internal consistency
-            pos = array(pos)
-            params = array(params)
-            axes = array(axes)
-            params_new = self._forward(pos, axes)
-            pos_new, axes_new = self._backward(params)
+        axes = axes if axes is not None else self.axes
+        if pos is None and params is not None:
+            return self._check_params_consistency(array(params), tol)
+        elif pos is not None and params is None:
+            return self._check_pos_consistency(array(pos), array(axes), tol)
+        #end if
+        # if both params and pos are given, check their internal consistency
+        pos = array(pos) if pos is not None else self.pos
+        params = array(params) if params is not None else self.params
+        if pos is not None and params is not None:
+            params_new = array(self.forward(pos, axes))
+            pos_new, axes_new = self.backward(params)
             if self.periodic:
                 return match_to_tol(params, params_new, tol) and match_to_tol(pos, pos_new, tol) and match_to_tol(axes, axes_new, tol)
             else:
                 return match_to_tol(params, params_new, tol) and match_to_tol(pos, pos_new, tol)
             #end if
-        elif params is not None:
-            return self._check_params_consistency(array(params), tol)
-        else:  # pos is not None
-            return self._check_pos_consistency(array(pos), array(axes), tol)
+        else:
+            return False
         #end if
     #end def
 
     def _check_pos_consistency(self, pos, axes, tol = 1e-7):
         if self.periodic:
-            params = self._forward(pos, axes)
-            pos_new, axes_new = self._backward(params)
+            params = self.forward(pos, axes)
+            pos_new, axes_new = self.backward(params)
             consistent = match_to_tol(pos, pos_new, tol) and match_to_tol(axes, axes_new, tol)
         else:
-            params = self._forward(pos, axes)
-            pos_new, axes_new = self._backward(params)
+            params = self.forward(pos, axes)
+            pos_new, axes_new = self.backward(params)
             consistent = match_to_tol(pos, pos_new, tol)
         #end if
         return consistent
     #end def
 
     def _check_params_consistency(self, params, tol = 1e-7):
-        if self.periodic:
-            pos, axes = self._backward(params)
-            params_new = self._forward(pos, axes)
-        else:
-            pos, axes = self._backward(params)
-            params_new = self._forward(pos, axes)
-        #end if
+        pos, axes = self.backward(params)
+        params_new = self.forward(pos, axes)
         return match_to_tol(params, params_new, tol)
     #end def
 
@@ -415,24 +429,14 @@ class ParameterStructureBase(ParameterSet):
     def shift_pos(self, dpos):
         assert self.pos is not None, 'position has not been set'
         self.pos = self._shift_pos(dpos)
-        self.forward()
+        self._forward(self.pos)
         self.check_consistency()
-    #end def
-
-    def _shift_params(self, dparams):
-        if isscalar(dparams):
-            return self.params + dparams
-        #end if
-        dparams = array(dparams)
-        assert self.params.size == dparams.size
-        return self.params + dparams
     #end def
 
     def shift_params(self, dparams):
-        assert self.params is not None, 'params has not been set'
-        self.params = self._shift_params(dparams)
-        self.backward()
-        self.check_consistency()
+        ParameterSet.shift_params(self, dparams)
+        self._backward(self.params)
+        self._check_consistency()
     #end def
 
     def copy(
@@ -449,7 +453,7 @@ class ParameterStructureBase(ParameterSet):
             structure.set_params(params, params_err)
         #end if
         if pos is not None:
-            structure.set_pos(pos)
+            structure.set_position(pos)
         #end if
         if axes is not None:
             structure.set_axes(axes)
@@ -471,14 +475,14 @@ class ParameterStructureBase(ParameterSet):
         for p in range(len(self.params)):
             params_this = self.params.copy()
             params_this[p] += dp
-            pos, axes = self._backward(params_this)
+            pos, axes = self.backward(params_this)
             dpos = self.pos_difference(pos)
             jacobian.append(dpos.flatten() / dp)
         #end for
         return array(jacobian).T
     #end def
 
-    def __repr__(self):
+    def __str__(self):
         string = self.__class__.__name__
         if self.label is not None:
             string += ' ({})'.format(self.label)

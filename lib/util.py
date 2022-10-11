@@ -142,6 +142,7 @@ def bipolymin(p, X, Y, nx, ny, itermax = 6, shrink = 0.1, npoints = 10):
     return xmin, ymin, zmin
 #end def bipolymin
 
+
 def directorize(path):
     if len(path) > 0 and not path[-1] == '/':
         path += '/'

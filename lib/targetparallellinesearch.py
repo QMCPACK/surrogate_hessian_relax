@@ -106,9 +106,12 @@ useful keyword arguments:
         return self._resample_errors(windows, noises, Gs = Gs_d, M = M, fit_kind = fit_kind, **kwargs)
     #end def
 
-    def optimize_thermal(self, temperature, **kwargs):
+    def optimize_thermal(self, temperature, verbose = True, **kwargs):
         assert temperature > 0, 'Temperature must be positive'
-        self.optimize_epsilon_d(self._get_thermal_epsilon_d(temperature), **kwargs)
+        if verbose:
+            print('Optimizing to T={} by thermal equipartition:'.format(temperature))
+        #end if
+        self.optimize_epsilon_d(self._get_thermal_epsilon_d(temperature), verbose = verbose, **kwargs)
     #end def
 
     # TODO: fixed-point method, also need to init error matrices
@@ -116,13 +119,20 @@ useful keyword arguments:
         self,
         epsilon_p,
         kind = 'ls',  # try line-search by default
+        verbose = True,
         **kwargs,
     ):
-        epsilon_d0 = epsilon_p.copy()  # TODO: fix
+        if verbose:
+            fmt = (1 + len(epsilon_p)) * '  {:<8s}'
+            print('Optimizing to parameter tolerances using the {:s} method'.format(kind))
+            strings = tuple([str(round(e, 4)) for e in epsilon_p])
+            print(fmt.format('epsilon_p:', *strings))
+        #end if
+        epsilon_d0 = abs(self.get_directions() @ epsilon_p)
         if kind == 'ls':
-            epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, **kwargs)
+            epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, verbose = verbose, **kwargs)
         elif kind == 'thermal':
-            epsilon_d_opt = self._optimize_epsilon_p_thermal(epsilon_p, **kwargs)
+            epsilon_d_opt = self._optimize_epsilon_p_thermal(epsilon_p, verbose = verbose, **kwargs)
         elif kind == 'broyden1':
             # Current: broyden1, probably fails to converge
             validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
@@ -132,7 +142,7 @@ useful keyword arguments:
         #end if
         kwargs_d = kwargs.copy()
         kwargs_d.update(fix_res = False)
-        self.optimize_epsilon_d(epsilon_d_opt, **kwargs_d)
+        self.optimize_epsilon_d(epsilon_d_opt, verbose = verbose, **kwargs_d)
         self.epsilon_p = epsilon_p
     #end def
 
@@ -166,44 +176,53 @@ useful keyword arguments:
         epsilon_d0,
         thr = None,
         it_max = 10,
+        verbose = True,
         **kwargs
     ):
-        thr = thr if thr is not None else mean(epsilon_p) / 20
+        thr = thr if thr is not None else mean(epsilon_p) / 10
 
         def cost(derror_p):
             return sum(derror_p**2)**0.5
         #end def
+
         epsilon_d_opt = array(epsilon_d0)
+        fix_res = True
         for it in range(it_max):
             coeff = 0.5**(it + 1)
             epsilon_d_old = epsilon_d_opt.copy()
             # sequential line-search from d0...dD
             for d in range(len(epsilon_d_opt)):
                 epsilon_d = epsilon_d_opt.copy()
-                epsilons = linspace(epsilon_d[d] * (1 - coeff), (1 + coeff) * epsilon_d[d], 10)
+                epsilons = linspace(epsilon_d[d] * (1 - coeff), (1 + coeff) * epsilon_d[d], 6)
                 costs = []
                 for s in epsilons:
                     epsilon_d[d] = s
-                    derror_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, fix_res = False, **kwargs)
+                    derror_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, fix_res = fix_res, verbose = verbose, **kwargs)
                     costs.append(cost(derror_p))
                 #end for
                 epsilon_d_opt[d] = epsilons[argmin(costs)]
             #end for
-            derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, **kwargs)
+            derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, verbose = verbose, **kwargs)
             cost_it = cost(derror_p)
-            # scale down
-            if cost_it < thr or sum(abs(epsilon_d_old - epsilon_d_opt)) < thr / 100:
+            fix_res = False  # allow to fix_res on the first round
+            if cost_it < thr or sum(abs(epsilon_d_old - epsilon_d_opt)) < thr / 10:
                 break
             #end if
         #end for
+        # scale down
         for c in range(100):
             if any(derror_p > 0.0):
                 epsilon_d_opt = [e * 0.99 for e in epsilon_d_opt]
-                derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, **kwargs)
+                derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, verbose = verbose, **kwargs)
             else:
                 break
             #end if
         #end for
+        if verbose:
+            fmt = (1 + len(epsilon_p)) * '  {:<8s}'
+            strings = tuple([str(round(e, 4)) for e in ((derror_p + epsilon_p) / epsilon_p * 100)])
+            print(fmt.format('epsilon_p tolerances met: (%):', *strings))
+        #end if
         return epsilon_d_opt
     #end def
 
@@ -211,17 +230,23 @@ useful keyword arguments:
         self,
         epsilon_d,
         Gs = None,
+        verbose = True,
         **kwargs,
     ):
         Gs_d = Gs if Gs is not None else self.D * [None]
         assert len(Gs_d) == self.D, 'Must provide list of Gs equal to the number of directions'
+        if verbose:
+            fmt = (1 + len(epsilon_d)) * '  {:<8s}'
+            strings = tuple([str(round(e, 4)) for e in epsilon_d])
+            print(fmt.format('epsilon_d:', *strings))
+        #end if
         windows, noises = [], []
         for epsilon, ls, Gs in zip(epsilon_d, self.ls_list, Gs_d):
-            ls.optimize(epsilon, Gs = Gs, **kwargs)
+            ls.optimize(epsilon, Gs = Gs, verbose = verbose, **kwargs)
             windows.append(ls.W_opt)
             noises.append(ls.sigma_opt)
         #end for
-        self.optimize_windows_noises(windows, noises, Gs = Gs_d, **kwargs)
+        self.optimize_windows_noises(windows, noises, Gs = Gs_d, verbose = verbose, **kwargs)
         self.epsilon_d = epsilon_d
     #end def
 
@@ -274,7 +299,7 @@ useful keyword arguments:
         self._avoid_protected()
         self._require_shifted()
         noises = self.noises if self.noisy else self.D * [None]
-        self.targets = self.targets if not self.targets is None else self.D * [0.0]
+        self.targets = self.targets if self.targets is not None else self.D * [0.0]
         ls_list = []
         for d, window, noise, target in zip(range(self.D), self.windows, noises, self.targets):
             tls = TargetLineSearch(

@@ -122,8 +122,8 @@ class TargetLineSearchBase(LineSearchBase):
         return bias_tot + errorbar_x
     #end def
 
-    def __repr__(self):
-        string = LineSearchBase.__repr__(self)
+    def __str__(self):
+        string = LineSearchBase.__str__(self)
         if self.target_grid is not None:
             string += '\n  target grid: set'
         #end if
@@ -290,6 +290,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         M = None,
         N = None,
         fit_kind = None,
+        verbose = False,
         **kwargs
     ):
         if Gs is None:
@@ -301,6 +302,9 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             assert M > 1, 'Must provide M > 1'
             self.Gs = Gs
             self.M = M
+        #end if
+        if verbose:
+            print('  tls{}: generating {}-by-{} error surface with N={}'.format(self.d, W_num, sigma_num, N))
         #end if
         W_max = W_max if W_max is not None else self.W_max
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
@@ -404,13 +408,13 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         if self.resampled:
             if not self._check_Gs_M_N(Gs, M, N):
                 if allow_override:
-                    self.generate_W_sigma_data(Gs = Gs, M = M, N = N, **kwargs)
+                    self.generate_W_sigma_data(Gs = Gs, M = M, N = N, verbose = verbose, **kwargs)
                 else:
                     raise AssertionError('Requested inconsistent resampling.')
                 #end if
             #end if
         else:
-            self.generate_W_sigma_data(Gs = Gs, M = M, N = N, **kwargs)
+            self.generate_W_sigma_data(Gs = Gs, M = M, N = N, verbose = verbose, **kwargs)
         #end if
         W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
         if 'not_found' in errs:
@@ -436,13 +440,13 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         W_new = self.W_mat[0, 1] / 2
         if W_new < self.W_max * 1e-3:
             if verbose:
-                print('W underflow: did not add W = {}'.format(W_new.round(7)))
+                print('  tls{}: W underflow: did not add W = {}'.format(self.d, W_new.round(7)))
             #end if
             return False
         #end if
         self.insert_W_data(W_new)
         if verbose:
-            print('W underflow: added W = {} to resampling grid'.format((W_new).round(7)))
+            print('  tls{}: W underflow: added W = {} to resampling grid'.format(self.d, (W_new).round(7)))
         #end if
         return True
     #end def
@@ -454,7 +458,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         #end if
         self.insert_sigma_data(S_new)
         if verbose:
-            print('Sigma underflow: added sigma = {} to resampling grid'.format((S_new).round(7)))
+            print('  tls{}: Sigma underflow: added sigma = {} to resampling grid'.format(self.d, (S_new).round(7)))
         #end if
         return True
     #end def
@@ -463,13 +467,13 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         S_new = S_this * 2
         if S_new > self.W_max:
             if verbose:
-                print('sigma overflow: did not add sigma = {} to resampling grid'.format(S_new))
+                print('  tls{}: Sigma overflow: did not add sigma = {} to resampling grid'.format(self.d, S_new))
             #end if
             return False
         #end if
         self.insert_sigma_data(S_new)
         if verbose:
-            print('Sigma overlow: added sigma = {} to resampling grid'.format((S_new).round(7)))
+            print('  tls{}: Sigma overlow: added sigma = {} to resampling grid'.format(self.d, (S_new).round(7)))
         #end if
         return True
     #end def
@@ -486,7 +490,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
                 status = True
                 self.insert_W_data(W_hi)
                 if verbose:
-                    print('low-res: added W = {} to resampling grid'.format(W_hi.round(7)))
+                    print('  tls{}: Low-res: added W = {} to resampling grid'.format(self.d, W_hi.round(7)))
                 #end if
             #end if
         #end if
@@ -494,14 +498,14 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             self.insert_W_data(W_lo)
             status = True
             if verbose:
-                print('low-res: added W = {} to resampling grid'.format(W_lo.round(7)))
+                print('  tls{}: Low-res: added W = {} to resampling grid'.format(self.d, W_lo.round(7)))
             #end if
         #end if
         if abs(S_new - S_this) > self.S_mat.max() * 1e-3:
             self.insert_sigma_data(S_new)
             status = True
             if verbose:
-                print('low-res: added sigma = {} to resampling grid'.format(S_new.round(7)))
+                print('  tls{}: Low-res: added sigma = {} to resampling grid'.format(self.d, S_new.round(7)))
             #end if
         #end if
         return status

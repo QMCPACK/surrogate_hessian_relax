@@ -116,10 +116,8 @@ class LineSearchIteration():
             pls = self._load_linesearch_pickle(path)
             if pls is not None and pls.check_integrity():
                 pls_list.append(pls)
-                print('Loaded pls{} from {}'.format(i, path))
                 i += 1
             else:
-                print('Could not find pls{} from {}'.format(i, path))
                 load_failed = True
             #end if
         #end while
@@ -178,7 +176,7 @@ class LineSearchIteration():
         #end if
     #end def
 
-    def __repr__(self):
+    def __str__(self):
         string = self.__class__.__name__
         if len(self.pls_list) > 0:
             fmt = '\n  {:<4d} {}    {:<8f} +/- {:<8f}' + self.pls().D * '   {:<8f} +/- {:<8f}'

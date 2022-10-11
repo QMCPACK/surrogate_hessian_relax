@@ -17,6 +17,8 @@ from nexus import generate_pw2qmcpack, generate_physical_system
 from nxs import scfjob, p2qjob, optjob, dmcjob, cores, presub
 
 # Pseudos (execute download_pseudos.sh in the working directory)
+base_dir   = 'benzene/'
+interactive = False  # want to be interactive or not?
 relaxpseudos   = ['C.pbe_v1.2.uspp.F.upf', 'H.pbe_v1.4.uspp.F.upf']
 qmcpseudos     = ['C.ccECP.xml','H.ccECP.xml']
 scfpseudos     = ['C.ccECP.upf','H.ccECP.upf']
@@ -25,7 +27,7 @@ scfpseudos     = ['C.ccECP.upf','H.ccECP.upf']
 #   p0: C-C distance
 #   p1: C-H distance
 
-from numpy import mean,array,sin,pi,cos,diag,linalg
+from numpy import mean, array, sin, pi, cos, diag, linalg
 
 # Forward mapping: produce parameter values from an array of atomic positions
 def forward(pos, **kwargs):
@@ -128,7 +130,6 @@ def scf_relax_job(structure, path, **kwargs):
 
 
 # LINE-SEARCH
-base_dir   = 'benzene/'
 
 # 1) Surrogate: relaxation
 
@@ -139,7 +140,6 @@ structure_relax = relax_structure(
     relax_job = scf_relax_job,
     path = base_dir + 'relax/'
 )
-
 
 # 2 ) Surrogate: Hessian
 
@@ -259,21 +259,21 @@ from surrogate_macros import generate_surrogate, plot_surrogate_pes, plot_surrog
 from surrogate_macros import nexus_pwscf_analyzer
 from matplotlib import pyplot as plt
 surrogate = generate_surrogate(
+    path = base_dir + 'surrogate/',  
+    fname = 'surrogate.p',  # try to load from disk
     structure = structure_relax,
     hessian =  hessian,
     pes_func = scf_pes_job,
     load_func = nexus_pwscf_analyzer,
     mode = 'nexus',
-    path = base_dir + 'surrogate/',  
     window_frac = 0.25,  # maximum displacement relative to Lambda of each direction
     noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
-    load = 'surrogate.p',  # try to load from disk
     M = 15)  # number of points per direction to sample (should be more than finally intended)
-surrogate.run_jobs()
+surrogate.run_jobs(interactive = interactive)
 surrogate.load_results(set_target = True)
 
 # diagnose: plot bias using different fit kinds
-if __name__=='__main__':
+if __name__=='__main__' and interactive:
     plot_surrogate_pes(surrogate)
     plot_surrogate_bias(surrogate, fit_kind = 'pf2', M = 7)
     plot_surrogate_bias(surrogate, fit_kind = 'pf3', M = 7)
@@ -298,8 +298,8 @@ if not surrogate.optimized:
 
 # Diagnose and plot the performance of the surrogate optimization
 from surrogate_macros import surrogate_diagnostics
-surrogate_diagnostics(surrogate)
-if __name__=='__main__':
+if __name__=='__main__' and interactive:
+    surrogate_diagnostics(surrogate)
     plt.show()
 #end if
 
@@ -321,14 +321,16 @@ srg_ls = LineSearchIteration(
 #   add_sigma = True means that target errorbars are used to simulate random noise
 from surrogate_macros import propagate_linesearch
 for i in range(4):
-    srg_ls.pls(i).run_jobs()
+    srg_ls.pls(i).run_jobs(interactive = interactive)
     srg_ls.pls(i).load_results(add_sigma = True)
     srg_ls.propagate(i)
 #end for
-## Diagnoze and plot the line-search performance.
+srg_ls.pls(4).run_jobs(interactive = interactive, eqm_only = True)
+srg_ls.pls(4).load_eqm_results(add_sigma = True)
+# Diagnose and plot the line-search performance.
 from surrogate_macros import linesearch_diagnostics
-linesearch_diagnostics(srg_ls)
-if __name__=='__main__':
+if __name__=='__main__' and interactive:
+    linesearch_diagnostics(srg_ls)
     plt.show()
 #end if
 
@@ -445,14 +447,16 @@ dmc_ls = LineSearchIteration(
     load_args = {'suffix': 'dmc/dmc.in.xml', 'qmc_id': 1},
 )
 for i in range(3):
-    dmc_ls.pls(i).run_jobs()
+    dmc_ls.pls(i).run_jobs(interactive = interactive)
     dmc_ls.pls(i).load_results()
     dmc_ls.propagate(i)
 #end for
+dmc_ls.pls(3).run_jobs(interactive = interactive, eqm_only = True)
+dmc_ls.pls(3).load_eqm_results()
 
-# Diagnoze and plot the line-search performance
+# Diagnose and plot the line-search performance
 from surrogate_macros import linesearch_diagnostics
-linesearch_diagnostics(dmc_ls)
-if __name__=='__main__':
+if __name__=='__main__' and interactive:
+    linesearch_diagnostics(dmc_ls)
     plt.show()
 #end if

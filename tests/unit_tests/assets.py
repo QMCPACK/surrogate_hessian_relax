@@ -58,7 +58,7 @@ elem_H2O = 'O H H'.split()
 def forward_H2O(pos):
     r_OH = mean_distances([(pos[0], pos[1]), (pos[0], pos[2])])
     a_HOH = bond_angle(pos[1], pos[0], pos[2])
-    return [r_OH, a_HOH]
+    return array([r_OH, a_HOH])
 #end def
 def backward_H2O(params):
     r_OH = params[0]
