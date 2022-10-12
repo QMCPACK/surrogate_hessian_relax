@@ -48,6 +48,7 @@ class ParallelLineSearch(PesSampler):
         E_unit = 'Ry',
         fraction = 0.025,
         mode = 'pes',  # (nexus|files|pes)
+        shift_params = None,
         **kwargs,
     ):
         PesSampler.__init__(self, mode, **kwargs)
@@ -58,7 +59,7 @@ class ParallelLineSearch(PesSampler):
         self.M = M
         self.fit_kind = fit_kind
         if structure is not None:
-            self.set_structure(structure)
+            self.set_structure(structure, shift_params)
         #end if
         if hessian is not None:
             self.set_hessian(hessian)
@@ -128,13 +129,16 @@ class ParallelLineSearch(PesSampler):
         self.cascade()
     #end def
 
-    def set_structure(self, structure):
+    def set_structure(self, structure, shift_params = None):
         self._avoid_protected()
         if structure is None:
             return
         #end if
         assert isinstance(structure, ParameterSet), 'Structure must be ParameterSet object'
         self.structure = structure.copy(label = 'eqm')
+        if shift_params is not None:
+            self.structure.shift_params(shift_params)
+        #end if
         self.cascade()
     #end def
 
