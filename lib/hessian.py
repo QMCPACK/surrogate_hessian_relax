@@ -135,7 +135,7 @@ class ParameterHessian():
         return self._convert_hessian(self.hessian, **kwargs)
     #end def
 
-    def __repr__(self):
+    def __str__(self):
         string = self.__class__.__name__
         if self.hessian_set:
             string += '\n  hessian:'

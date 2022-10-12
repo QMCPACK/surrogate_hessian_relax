@@ -463,7 +463,7 @@ class ParallelLineSearch(PesSampler):
         #end with
     #end def
 
-    def __repr__(self):
+    def __str__(self):
         string = self.__class__.__name__
         if self.ls_list is None:
             string += '\n  Line-searches: None'

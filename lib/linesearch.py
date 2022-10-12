@@ -221,12 +221,12 @@ class LineSearchBase():
         return array(x0s, dtype = float), array(y0s, dtype = float)
     #end def
 
-    def __repr__(self):
+    def __str__(self):
         string = self.__class__.__name__
         if self.fit_kind is not None:
             string += '\n  fit_kind: {:s}'.format(self.fit_kind)
         #end if
-        string += self.__repr_grid__()
+        string += self.__str_grid__()
         if self.x0 is None:
             string += '\n  x0: not set'
         else:
@@ -242,8 +242,8 @@ class LineSearchBase():
         return string
     #end def
 
-    # repr of grid
-    def __repr_grid__(self):
+    # str of grid
+    def __str_grid__(self):
         if self.grid is None:
             string = '\n  data: no grid'
         else:
@@ -523,8 +523,8 @@ class LineSearch(LineSearchBase):
         return array([structure.params for structure in self.structure_list])
     #end def
 
-    def __repr__(self):
-        string = LineSearchBase.__repr__(self)
+    def __str__(self):
+        string = print(LineSearchBase)
         string += '\n  Lambda: {:<9f}'.format(self.Lambda)
         if self.W is not None:
             string += '\n  W: {:<9f}'.format(self.W)
@@ -535,8 +535,8 @@ class LineSearch(LineSearchBase):
         return string
     #end def
 
-    # repr of grid
-    def __repr_grid__(self):
+    # str of grid
+    def __str_grid__(self):
         if self.grid is None:
             string = '\n  data: no grid'
         else:

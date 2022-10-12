@@ -134,9 +134,9 @@ class TargetLineSearchBase(LineSearchBase):
         return string
     #end def
 
-    # repr of grid
+    # str of grid
     # TODO: change; currently overlapping information
-    def __repr_grid__(self):
+    def __str_grid__(self):
         if self.target_grid is None:
             string = '\n  target data: no grid'
         else:
