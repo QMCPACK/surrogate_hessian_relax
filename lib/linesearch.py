@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from numpy import array, linspace, random, concatenate
+from numpy import array, linspace, random, concatenate, polyval
+from matplotlib import pyplot as plt
 
 from lib.parameters import ParameterSet
 from lib.util import get_min_params, get_fraction_error, W_to_R
@@ -206,6 +207,15 @@ class LineSearchBase():
         return self.get_distribution(errors = errors, **kwargs)[1]
     #end def
 
+    # TODO: refactor to support generic fitting functions
+    def val_data(self, xdata):
+        if self.fit is None:
+            return None
+        else:
+            return polyval(self.fit, xdata)
+        #end def
+    #end def
+
     def _get_distribution(self, grid, values, errors, Gs = None, N = 100, fit_kind = None, **kwargs):
         func, func_p = self.get_func(fit_kind)
         if Gs is None:
@@ -395,7 +405,7 @@ class LineSearch(LineSearchBase):
 
     def generate_jobs(
         self,
-        job_func,
+        pes_func,
         exclude_eqm = True,
         **kwargs,
     ):
@@ -410,7 +420,7 @@ class LineSearch(LineSearchBase):
             if exclude_eqm and not structure.label == 'eqm':
                 s = structure.copy()
                 s.to_nexus_only()
-                jobs += self._generate_jobs(job_func, s, **kwargs)
+                jobs += self._generate_jobs(pes_func, s, **kwargs)
             #end if
         #end for
         self.generated = True
@@ -525,6 +535,50 @@ class LineSearch(LineSearchBase):
 
     def get_shifted_params(self):
         return array([structure.params for structure in self.structure_list])
+    #end def
+
+    def plot(
+        self,
+        ax = None,
+        figsize = (4, 3),
+        color = 'tab:blue',
+        linestyle = '-',
+        marker = '.',
+        return_ax = False,
+        c_lambda = 1.0,  # FIXME: replace with unit conversions
+        **kwargs
+    ):
+        if ax is None:
+            f, ax = plt.subplots()
+        #end if
+        xdata = self.grid
+        xmin = xdata.min()
+        xmax = xdata.max()
+        xlen = xmax - xmin
+        xlims = [xmin - xlen/8, xmax + xlen/8]
+        xllims = [xmin + xlen/8, xmax - xlen/8]
+        xgrid = linspace(xlims[0], xlims[1], 201)
+        xlgrid = linspace(xllims[0], xllims[1], 201)
+        ydata = self.values
+        edata = self.errors
+        x0 = self.x0
+        y0 = self.y0
+        pfl = [self.Lambda / 2 * c_lambda, -x0, y0]
+        # plot lambda
+        stylel_args = {'color': color, 'linestyle': ':'}  # etc
+        ax.plot(xlgrid, polyval(pfl, xlgrid), **stylel_args)
+        # plot the line-search data
+        style1_args = {'color': color, 'linestyle': 'None', 'marker': marker}  # etc
+        style2_args = {'color': color, 'linestyle': linestyle, 'marker': 'None'}
+        if edata is None or all(array(edata) == None):
+            ax.plot(xdata, ydata, **style1_args)
+        else:
+            ax.errorbar(xdata, ydata, edata, **style1_args)
+        #end if
+        ax.plot(xgrid, self.val_data(xgrid), **style2_args)
+        if return_ax:
+            return ax
+        #end if
     #end def
 
     def __str__(self):
