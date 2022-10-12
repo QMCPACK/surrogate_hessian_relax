@@ -508,15 +508,19 @@ class LineSearch(LineSearchBase):
         if values is None or all(array(values) == None):
             return False
         #end if
-        self.set_values(grid, values, errors, also_search = True)
         if errors is None:
             errors = 0.0 * array(values)
         #end if
+        self.set_values(grid, values, errors, also_search = True)
+        self._update_list_values(values, errors)
+        return True
+    #end def
+
+    def _update_list_values(self, values, errors):
         for s, v, e in zip(self.structure_list, values, errors):
             s.value = v
             s.value_err = e
         #end for
-        return True
     #end def
 
     def get_shifted_params(self):

@@ -114,13 +114,10 @@ def get_surrogate_H2O():
     srg = TargetParallelLineSearch(
         structure = get_structure_H2O(),
         hessian = get_hessian_H2O(),
+        mode = 'pes',
+        pes_func = pes_H2O,
         M = 25,
         window_frac = 0.5)
-    params0 = srg.get_shifted_params(0)
-    params1 = srg.get_shifted_params(1)
-    values0 = [pes_H2O(ParameterSet(p))[0] for p in params0]
-    values1 = [pes_H2O(ParameterSet(p))[0] for p in params1]
-    srg.load_results(values = [values0, values1], set_target = True)
     return srg
 #end def
 

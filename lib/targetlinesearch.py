@@ -44,6 +44,9 @@ class TargetLineSearchBase(LineSearchBase):
         interpolate_kind = 'cubic',
         **kwargs,
     ):
+        if values is None or all(array(values) == None):
+            return
+        #end if
         sidx = argsort(grid)
         self.target_grid = array(grid)[sidx]
         self.target_values = array(values)[sidx]
@@ -257,6 +260,17 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         else:
             return LineSearch.set_results(self, grid, values, errors, **kwargs)
         #end if
+    #end def
+
+    def set_target(self, grid, values, **kwargs):
+        if values is None or all(array(values) == None):
+            return
+        #end if
+        TargetLineSearchBase.set_target(self, grid, values, **kwargs)
+        for s, v in zip(self.structure_list, values):
+            s.value = v
+            s.value_err = 0.0
+        #end for
     #end def
 
     def evaluate_target(self, grid):

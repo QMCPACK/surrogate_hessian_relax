@@ -55,6 +55,11 @@ class Parameter():
         self.unit = unit
     #end def
 
+    @property
+    def param_err(self):
+        return 0.0 if self.error is None else self.error
+    #end def
+
     def print_value(self):
         if self.error is None:
             print('{:<8.6f}             '.format(self.value))
@@ -162,7 +167,7 @@ class ParameterSet():
         if self.p_list == []:
             return None
         else:
-            return array([p.error for p in self.p_list])
+            return array([p.param_err for p in self.p_list])
         #end if
     #end def
 

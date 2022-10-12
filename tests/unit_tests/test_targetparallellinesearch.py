@@ -19,6 +19,7 @@ def test_targetparallellinesearch_class():
     srg = TargetParallelLineSearch(
         structure = s,
         hessian = h,
+        mode = 'pes',
         targets = [0.01, -0.01], # NOTE!
         M = 5,
         window_frac = 0.1)
