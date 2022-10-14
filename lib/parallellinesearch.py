@@ -467,6 +467,12 @@ class ParallelLineSearch(PesSampler):
         #end with
     #end def
 
+    def plot_error_surfaces(self, **kwargs):
+        for ls in self.ls_list:
+            ls.plot_error_surface(**kwargs)
+        #end for
+    #end def
+
     def __str__(self):
         string = self.__class__.__name__
         if self.ls_list is None:

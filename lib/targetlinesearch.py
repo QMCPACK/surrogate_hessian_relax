@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from numpy import array, argsort, isscalar, linspace, append, nan, isnan, where
-from numpy import random, argmax
+from numpy import random, argmax, argmin
 from scipy.interpolate import interp1d, PchipInterpolator
 
 from lib.util import R_to_W
@@ -300,6 +300,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         W_max = None,
         sigma_num = 10,
         sigma_max = None,
+        noise_frac = 0.05,
         Gs = None,
         M = None,
         N = None,
@@ -322,7 +323,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         #end if
         W_max = W_max if W_max is not None else self.W_max
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
-        sigma_max = sigma_max if sigma_max is not None else W_max / 20
+        sigma_max = sigma_max if sigma_max is not None else W_max * noise_frac
         # starting window array: sigma = 0, so only bias
         Ws = linspace(0.0, W_max, W_num)
         sigmas = linspace(0.0, sigma_max, sigma_num)
@@ -500,7 +501,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         W_lo = (self.W_mat[0, Wi - 1] + self.W_mat[0, Wi]) / 2
         if Wi < len(self.W_mat[0]) - 1:  # whether to add high W value
             W_hi = (self.W_mat[0, Wi] + self.W_mat[0, Wi + 1]) / 2
-            if abs(W_hi - W_this) > self.W_max * 1e-3:
+            if abs(W_hi - W_this) > self.W_max * 2e-2:
                 status = True
                 self.insert_W_data(W_hi)
                 if verbose:
@@ -508,14 +509,14 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
                 #end if
             #end if
         #end if
-        if abs(W_lo - W_this) > self.W_max * 1e-3:
+        if abs(W_lo - W_this) > self.W_max * 2e-2:
             self.insert_W_data(W_lo)
             status = True
             if verbose:
                 print('  tls{}: Low-res: added W = {} to resampling grid'.format(self.d, W_lo.round(7)))
             #end if
         #end if
-        if abs(S_new - S_this) > self.S_mat.max() * 1e-3:
+        if abs(S_new - S_this) > self.S_mat.max() * 5e-3:
             self.insert_sigma_data(S_new)
             status = True
             if verbose:
@@ -570,15 +571,48 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
     def _argmax_y(self, E, T, epsilon):
         """Return indices to the highest point in E matrix that is lower than epsilon"""
         xi, yi = nan, nan
+        W = self.W_mat[0]
         for i in range(len(E), 0, -1):  # from high to low
             err = where((E[i - 1] < epsilon) & (T[i - 1]))
             if len(err[0]) > 0:
                 yi = i - 1
-                xi = err[0][argmax(E[i - 1][err[0]])]
+                #xi = err[0][argmax(E[i - 1][err[0]])]
+                xi = err[0][argmin(abs(W[err[0]] - (W[err[0][0]] + W[err[0][-1]]) / 2))]  # take the middle
                 break
             #end if
         #end for
         return xi, yi
+    #end def
+
+    def statistical_cost(self, sigma = None, M = None):
+        """Return statistical cost based on sigma and M"""
+        sigma = sigma if sigma is not None else self.sigma_opt
+        M = M if M is not None else self.M
+        return M * sigma**-2
+    #end def
+
+    def plot_error_surface(
+        self,
+        ax = None,
+        **kwargs
+    ):
+        if not self.optimized:
+            print('Must optimize before plotting error surface')
+            return
+        #end if
+        from matplotlib import pyplot as plt
+        if ax is None:
+            f, ax = plt.subplots(1, 1)
+        #end if
+        T = self.T_mat
+        X = self.W_mat
+        Y = self.S_mat
+        Z = self.E_mat
+        Z[~T] = nan
+        ax.contourf(X, Y, Z)
+        ax.contour(X, Y, Z, [self.epsilon], colors='k')
+        ax.plot(X.flatten(), Y.flatten(), 'k.', alpha=0.3)
+        ax.plot(self.W_opt, self.sigma_opt, 'ko')
     #end def
 
 #end class

@@ -51,7 +51,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
         epsilon_p = None,
         epsilon_d = None,
         temperature = None,
-        **kwargs,
+        **kwargs,  # e.g. noise_frac
     ):
         """Optimize parallel line-search for noise using different constraints. The optimizer modes are called in the following order of priority based on input parameters provided:
   1) windows, noises (list, list)
@@ -90,7 +90,7 @@ useful keyword arguments:
     #end def
 
     # All optimizer methods conclude here, where the final errors and key parameters are also stored to the object
-    def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, bias_mix = None, **kwargs):
+    def optimize_windows_noises(self, windows, noises, M = None, fit_kind = None, bias_mix = None, verbose = True, **kwargs):
         M = M if M is not None else self.M
         fit_kind = fit_kind if fit_kind is not None else self.fit_kind
         self.error_d, self.error_p = self._errors_windows_noises(windows, noises, M = M, fit_kind = fit_kind, bias_mix = bias_mix, **kwargs)
@@ -98,6 +98,9 @@ useful keyword arguments:
         self.fit_kind = fit_kind
         self.windows = windows
         self.noises = noises
+        if verbose:
+            print('Final statistical cost: {}'.format(self.statistical_cost()))
+        #end if
         self.optimized = True
     #end def
 
@@ -204,7 +207,7 @@ useful keyword arguments:
             #end for
             derror_p = self._resample_errors_p_of_d(epsilon_d_opt, target = epsilon_p, verbose = verbose, **kwargs)
             cost_it = cost(derror_p)
-            fix_res = False  # allow to fix_res on the first round
+            #fix_res = False  # allow to fix_res on the first round
             if cost_it < thr or sum(abs(epsilon_d_old - epsilon_d_opt)) < thr / 10:
                 break
             #end if
@@ -408,6 +411,11 @@ useful keyword arguments:
     def get_biases_p(self, windows = None):
         biases_p = self._calculate_shifts(self.directions, self.get_biases_d(windows = windows))
         return biases_p
+    #end def
+
+    def statistical_cost(self, noises = None):
+        noises = noises if noises is not None else self.D * [None]
+        return sum([ls.statistical_cost(sigma = sigma) for ls, sigma in zip(self.ls_list, noises)])
     #end def
 
 #end class

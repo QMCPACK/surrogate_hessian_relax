@@ -8,17 +8,17 @@
 #
 # Computing task: Runs on command line
 
-from numpy import array, exp, random
 
 # from Nexus
 base_dir = 'morse_3p/'
-morse = lambda p,r: p[2]*((1-exp(-(r-p[0])/p[1]))**2-1)+p[3]
 
 # takes: a structure object with an attribute 3x1 array params, also target noise (sigma)
 #   c: coupling constant of parameters through auxiliary morse potentials
 #   d: eqm displacements
 # returns: energy value, error (= sigma)
 def pes(structure, sigma = None, c = 1.0, d = 0.0):
+    from numpy import array, exp, random
+    morse = lambda p,r: p[2]*((1-exp(-(r-p[0])/p[1]))**2-1)+p[3]
     p0, p1, p2 = structure.params
     # define Morse potentials for each individual parameter
     # when c = 0, these are the solutions for p_eqm and the Hessian
@@ -79,7 +79,6 @@ surrogate = generate_surrogate(
     pes_args = {'c': c_srg, 'd': d_srg},
     mode = 'pes',
     window_frac = 0.5,  # maximum displacement relative to Lambda of each direction
-    noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
     M = 25,
 )
 
@@ -88,6 +87,7 @@ if not surrogate.optimized:
     surrogate.optimize(
         epsilon_p = [0.01, 0.02, 0.03],  # parameter tolerances
         fit_kind = 'pf3',
+        noise_frac = 0.01,  # (initial) maximum resampled noise relative to the maximum window
         M = 7,
         N = 500,  # use as many points for correlated resampling of the error
     )

@@ -187,14 +187,14 @@ def test_targetlinesearch_class():
     x2, y2 = tls4.maximize_sigma(epsilon= 0.02, verbose = False)
     x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
     x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
-    assert match_values([x1, y1], (0.05, 0.0025))
-    assert match_values([x2, y2], (0.04172119081049441, 0.00625))
-    assert match_values([x3, y3], (0.04172119081049441, 0.01))
-    assert match_values([x4, y4], (0.11704833567346087, 0.015))
+    assert match_values([x1, y1], (0.03344238162098882, 0.0025))
+    assert match_values([x2, y2], (0.05422119081049441, 0.00625))
+    assert match_values([x3, y3], (0.07106506094460124, 0.01125))
+    assert match_values([x4, y4], (0.08360595405247206, 0.015))
     assert not tls4.optimized
     tls4.optimize(epsilon= 0.05, verbose = False)
     x5, y5, eps5 = tls4.W_opt, tls4.sigma_opt, tls4.epsilon
     assert tls4.optimized
-    assert match_values([x5, y5, eps5], (0.1337695264839553, 0.02, 0.05))
+    assert match_values([x5, y5, eps5], (0.10032714486296647, 0.02, 0.05))
 #end def
 add_unit_test(test_targetlinesearch_class)

@@ -284,7 +284,6 @@ surrogate = generate_surrogate(
     load_func = nexus_pwscf_analyzer,
     mode = 'nexus',
     window_frac = 0.25,  # maximum displacement relative to Lambda of each direction
-    noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
     M = 15)  # number of points per direction to sample (should be more than finally intended)
 surrogate.run_jobs(interactive = interactive)
 surrogate.load_results(set_target = True)
@@ -309,6 +308,7 @@ if not surrogate.optimized:
     surrogate.optimize(
         epsilon_p = epsilon_p,
         fit_kind = 'pf3',
+        noise_frac = 0.1,  # (initial) maximum resampled noise relative to the maximum window
         M = 7,
         N = 400,  # use as many points for correlated resampling of the error
         )
