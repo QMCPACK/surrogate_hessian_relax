@@ -314,7 +314,7 @@ class ParallelLineSearch(PesSampler):
             load_func = None
             values_ls, errors_ls = [], []
             for ls in self.ls_list:
-                res = ls.evaluate_pes(pes_func = self.pes_func)
+                res = ls.evaluate_pes(pes_func = self.pes_func, pes_args = self.pes_args)
                 values_ls.append(res[1])
                 errors_ls.append(res[2])
             #end for

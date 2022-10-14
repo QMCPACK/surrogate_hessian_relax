@@ -391,11 +391,12 @@ class LineSearch(LineSearchBase):
     def evaluate_pes(
         self,
         pes_func,
+        pes_args = {},
         **kwargs,
     ):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = pes_func(structure, sigma = self.sigma)
+            value, error = pes_func(structure, sigma = self.sigma, **pes_args)
             grid.append(shift)
             values.append(value)
             errors.append(error)
