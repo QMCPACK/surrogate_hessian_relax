@@ -2,7 +2,8 @@
 
 from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
 from numpy import loadtxt, savetxt
-from os import makedirs, path
+from os import makedirs
+from os.path import exists
 from surrogate_classes import bipolyfit
 
 default_steps = 10
@@ -38,7 +39,7 @@ def write_xsf_noise(structure, path, sigma, **kwargs):
 # Minimal function for loading energies from disk
 def load_E_err(dir, sigma = 0.0, suffix = 'energy.dat'):
     fname = dir + '/' + suffix
-    if not path.exists(fname):
+    if not exists(fname):
         print('skipped {}'.format(fname))
         return None, None
     #end if
@@ -324,11 +325,16 @@ def nexus_pwscf_analyzer(path, suffix = 'scf.in', **kwargs):
 #end def
 
 
-def nexus_gamess_analyzer(path, suffix = 'uhf.inp', **kwargs):
+def nexus_gamess_analyzer(path, suffix = 'uhf.inp', allow_fail = True, **kwargs):
     from nexus import GamessAnalyzer
-    ai = GamessAnalyzer('{}/{}'.format(path, suffix))
+    fname = '{}/{}'.format(path, suffix)
+    ai = GamessAnalyzer(fname)
     ai.analyze()
-    E = ai.energy.total
+    if not 'energy' in ai.keys() and allow_fail:
+        E = 0.0
+    else:
+        E = ai.energy.total
+    #end if
     Err = 0.0
     return E, Err
 #end def
@@ -600,7 +606,7 @@ def get_var_eff(
     **kwargs
 ):
     from nexus import run_project
-    run_project(job_func(structure, path, sigma = None))
+    run_project(job_func(structure.copy(), path, sigma = None))
     E, Err = nexus_qmcpack_analyzer(path, suffix = suffix, equilibration = 10, **analyzer_args)
     var_eff = default_steps * Err**2
     return var_eff

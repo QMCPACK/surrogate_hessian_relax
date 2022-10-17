@@ -305,7 +305,7 @@ class ParallelLineSearch(PesSampler):
     #end def
 
     # can either load based on analyze_func or by providing values/errors
-    def load_results(self, load_func = None, values = None, errors = None, **kwargs):  # load_args
+    def load_results(self, load_func = None, load_args = {}, values = None, errors = None, **kwargs):
         if self.status.protected:
             return
         #end if
@@ -320,12 +320,14 @@ class ParallelLineSearch(PesSampler):
             #end for
         else:
             load_func = load_func if load_func is not None else self.load_func
+            load_args = load_args if not load_args == {} else self.load_args
             values_ls = values if values is not None else self.D * [None]
             errors_ls = errors if errors is not None else self.D * [None]
         #end if
         for ls, values, errors in zip(self.ls_list, values_ls, errors_ls):
             loaded_this = ls.load_results(
                 load_func = load_func,
+                load_args = load_args,
                 values = values,
                 errors = errors,
                 path = self.path,
@@ -341,13 +343,14 @@ class ParallelLineSearch(PesSampler):
         self.cascade()
     #end def
 
-    def load_eqm_results(self, load_func = None, **kwargs):
+    def load_eqm_results(self, load_func = None, load_args = {}, **kwargs):
         if self.status.protected:
             return
         #end if
         load_func = load_func if load_func is not None else self.load_func
+        load_args = load_args if load_args == {} else self.load_args
         sigma_min = self.noises.min()
-        E, err = self.ls_list[0].load_eqm_results(load_func = load_func, path = self.path, sigma = sigma_min, **kwargs)
+        E, err = self.ls_list[0].load_eqm_results(load_func = load_func, load_args = load_args, path = self.path, sigma = sigma_min, **kwargs)
         self.structure.value = E
         self.structure.value_err = err
     #end def

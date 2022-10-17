@@ -478,8 +478,9 @@ class LineSearch(LineSearchBase):
         for shift, structure in zip(self.grid, self.structure_list):
             value, error = self.analyze_job(structure.label, load_func = load_func, **kwargs)
             structure.set_value(value, error)
+            # FIXME: skipping values messes up the grid <-> list consistency
             if prune0 and value == 0:
-                print('Skipped shift = {}, value {}'.format(shift, value))
+                print('ls{}: skipped shift = {}, value {}'.format(self.d, shift, value))
             else:
                 grid.append(shift)
                 values.append(value)
@@ -556,8 +557,8 @@ class LineSearch(LineSearchBase):
         xmin = xdata.min()
         xmax = xdata.max()
         xlen = xmax - xmin
-        xlims = [xmin - xlen/8, xmax + xlen/8]
-        xllims = [xmin + xlen/8, xmax - xlen/8]
+        xlims = [xmin - xlen / 8, xmax + xlen / 8]
+        xllims = [xmin + xlen / 8, xmax - xlen / 8]
         xgrid = linspace(xlims[0], xlims[1], 201)
         xlgrid = linspace(xllims[0], xllims[1], 201)
         ydata = self.values
