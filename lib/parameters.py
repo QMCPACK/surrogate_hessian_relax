@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from numpy import linalg, pi, arccos, array, dot, isscalar, diag
+from numpy import linalg, pi, arccos, array, dot, isscalar, diag, random
 from copy import deepcopy
 
-from lib.util import match_to_tol
+from lib.util import match_to_tol, get_fraction_error
 
 
 # distance between two atomic coordinates
@@ -485,6 +485,24 @@ class ParameterStructureBase(ParameterSet):
             jacobian.append(dpos.flatten() / dp)
         #end for
         return array(jacobian).T
+    #end def
+
+    def get_params_distribution(self, N = 100):
+        return [self.params + self.params_err * g for g in random.randn(N, len(self.p_list))]
+    #end def
+
+    def remap_forward(self, forward, N = None, fraction = 0.159, **kwargs):
+        assert self.consistent, 'The mapping must be consistent'
+        params = forward(*self.backward(), **kwargs)
+        if N is None:
+            return params
+        elif sum(self.params_err) > 0:  # resample errorbars
+            psdata = [forward(*self.backward(p)) for p in self.get_params_distribution(N = N)]
+            params_err = array([get_fraction_error(ps, fraction = fraction)[1] for ps in array(psdata).T])
+            return params, params_err
+        else:  # errors are zero
+            return params, 0 * params
+        #end if
     #end def
 
     def __str__(self):
