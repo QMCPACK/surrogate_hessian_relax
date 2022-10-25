@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from numpy import array, linalg, diag
+from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean
 
-from lib.util import Ry, Hartree, Bohr
+from lib.util import Ry, Hartree, Bohr, directorize, bipolyfit
 from lib.parameters import ParameterSet
 
 
@@ -151,6 +151,118 @@ class ParameterHessian():
             string += '\n  hessian: not set'
         #end if
         return string
+    #end def
+
+    def compute_fdiff(
+        self,
+        structure = None,
+        dp = 0.01,
+        mode = 'pes',
+        path = 'fdiff',
+        pes_func = None,
+        pes_args = {},
+        load_func = None,
+        load_args = {},
+        **kwargs,
+    ):
+        eqm = structure if structure is not None else self.structure
+        P = len(eqm.params)
+        dps = array(P * [dp]) if isscalar(dp) else array(dp)
+        dp_list, structure_list, label_list = self._get_fdiff_data(eqm, dps)
+        if mode == 'pes':
+            Es = [pes_fun(s, **pes_args) for s in structure_list]
+        elif mode == 'nexus':
+            from nexus import run_project
+            jobs = []
+            for s, l in zip(structure_list, label_list):
+                dir = '{}{}'.format(directorize(path), l)
+                jobs += pes_func(s, dir, **pes_args)
+            #end for
+            run_project(jobs)
+            Es = []
+            for l in label_list:
+                dir = '{}{}'.format(directorize(path), l)
+                E, Err = load_func(path = dir, **load_args)
+                Es.append(E)
+            #end for
+        else:
+            raise(AssertionError, 'Mode {} not supported'.format(mode))
+        #end if
+        Es = array(Es)
+        params = eqm.params
+        pdiffs = array(dp_list)
+        if P == 1:  # for 1-dimensional problems
+            pf = polyfit(pdiffs[:, 0], Es, 2)
+            hessian = array([[pf[0]]])
+        else:
+            hessian = zeros((P, P))
+            pfs = [[] for p in range(P)]
+            for p0, param0 in enumerate(params):
+                for p1, param1 in enumerate(params):
+                    if p1 <= p0:
+                        continue
+                    #end if
+                    # filter out the values where other parameters were altered
+                    ids = ones(len(pdiffs), dtype=bool)
+                    for p in range(P):
+                        if p == p0 or p == p1:
+                            continue
+                        #end if
+                        ids = ids & (abs(pdiffs[:, p]) < 1e-10)
+                    #end for
+                    XY = pdiffs[where(ids)]
+                    E = array(Es)[where(ids)]
+                    X = XY[:, p0]
+                    Y = XY[:, p1]
+                    pf = bipolyfit(X, Y, E, 2, 2)
+                    hessian[p0, p1] = pf[4]
+                    hessian[p1, p0] = pf[4]
+                    pfs[p0].append(2 * pf[6])
+                    pfs[p1].append(2 * pf[2])
+                #end for
+            #end for
+            for p0 in range(P):
+                hessian[p0, p0] = mean(pfs[p0])
+            #end for
+        #end if
+        self.init_hessian_array(hessian)
+    #end def
+
+    def _get_fdiff_data(self, structure, dps):
+        dp_list = [0.0 * dps]
+        structure_list = [structure.copy()]
+        label_list = ['eqm']
+        def shift_params(id_ls, dp_ls):
+            dparams = array(len(dps) * [0.0])
+            label = 'eqm'
+            for p, dp in zip(id_ls, dp_ls):
+                dparams[p] += dp
+                label += '_p{}'.format(p)
+                if dp > 0:
+                    label += '+'
+                #end if
+                label += '{}'.format(dp)
+            #end for
+            structure_new = structure.copy()
+            structure_new.shift_params(dparams)
+            structure_list.append(structure_new)
+            dp_list.append(dparams)
+            label_list.append(label)
+        #end def
+        for p0, dp0 in enumerate(dps):
+            shift_params([p0], [+dp0])
+            shift_params([p0], [-dp0])
+            for p1, dp1 in enumerate(dps):
+                if p1 <= p0:
+                    continue
+                #end if
+                shift_params([p0, p1], [+dp0, +dp1])
+                shift_params([p0, p1], [+dp0, -dp1])
+                shift_params([p0, p1], [-dp0, +dp1])
+                shift_params([p0, p1], [-dp0, -dp1])
+            #end for
+        #end for
+        return dp_list, structure_list, label_list
     #end def
 
 #end class
