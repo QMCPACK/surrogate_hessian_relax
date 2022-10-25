@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-from numpy import linalg, pi, arccos, array, dot, isscalar, diag, random
+from numpy import linalg, pi, arccos, array, dot, isscalar, diag, random, loadtxt
+from scipy.optimize import minimize
 from copy import deepcopy
 
-from lib.util import match_to_tol, get_fraction_error
+from lib.util import match_to_tol, get_fraction_error, directorize
 
 
 # distance between two atomic coordinates
@@ -30,6 +31,13 @@ def mean_distances(pairs):
     #end for
     return array(rs).mean()
 #end def
+
+
+def load_xyz(fname):
+    e, x, y, z = loadtxt(fname, dtype = str, unpack = True, skiprows = 2)
+    return array([x, y, z], dtype = float).T
+#end def
+
 
 
 class Parameter():
@@ -212,6 +220,7 @@ class ParameterStructureBase(ParameterSet):
     dim = None  # dimensionality
     elem = None  # list of elements
     unit = None  # position units
+    tol = None  # consistency tolerance
     # TODO: parameter trust intervals
     # FLAGS
     periodic = False  # is the line-search periodic; will axes be supplied to forward_func
@@ -234,11 +243,13 @@ class ParameterStructureBase(ParameterSet):
         unit = None,
         dim = 3,
         translate = True,  # attempt to translate pos
+        tol = 1e-7,
         **kwargs,  # kinds, labels, units
     ):
         self.dim = dim
         self.periodic = periodic
         self.label = label
+        self.tol = tol
         self.set_forward(forward)
         self.set_backward(backward)
         if pos is not None:
@@ -374,13 +385,14 @@ class ParameterStructureBase(ParameterSet):
         self.consistent = self.check_consistency()
     #end def
 
-    def check_consistency(self, params = None, pos = None, axes = None, tol = 1e-7):
+    def check_consistency(self, params = None, pos = None, axes = None, tol = None):
         """Check consistency of present forward-backward mapping.
         If params or pos/axes are supplied, check at the corresponding points. If not, check at the present point.
         """
         if self.forward_func is None or self.backward_func is None:
             return False
         #end if
+        tol = tol if tol is not None else self.tol
         axes = axes if axes is not None else self.axes
         if pos is None and params is not None:
             return self._check_params_consistency(array(params), tol)
@@ -559,6 +571,58 @@ class ParameterStructureBase(ParameterSet):
         return string
     #end def
 
+    def relax(
+        self,
+        relax_func = None,
+        relax_args = {},
+        path = 'relax',
+        **kwargs,
+    ):
+        if relax_func is None:
+            print('Provide a relax_func!')
+            return
+        #end if
+        jobs = relax_func(self, directorize(path), **relax_args)
+        from nexus import run_project
+        run_project(jobs)
+    #end def
+
+    def load(
+        self,
+        xyz_file = None,
+        load_func = None,
+        load_args = {},
+        c_pos = 1.0,
+        make_consistent = True,
+        allow_translate = True,
+        verbose = True,
+        **kwargs,
+    ):
+        if load_func is not None:
+            pos = load_func(**load_args) * c_pos
+            self.set_position(pos)
+        elif xyz_file is not None:
+            try:
+                pos = load_xyz(xyz_file) * c_pos
+                self.set_position(pos)
+            except OSError:
+                print('Could not load {}'.format(xyz_file))
+            #end try
+            if make_consistent:
+                self._forward(self.pos)
+                self._backward(self.params)
+            #end if
+            pos_diff = self.pos - pos
+            pos_diff -= pos_diff.mean(axis = 0)
+            if verbose:
+                print('Position difference')
+                print(pos_diff.reshape(-1,3))
+            #end if
+        else:
+            print('Not loaded')
+        #end if
+    #end def
+
 #end class
 
 
@@ -619,3 +683,13 @@ except ModuleNotFoundError:  # plain implementation if nexus not present
         kind = 'plain'
     #end class
 #end try
+
+
+def invert_pos(pos0, params, forward = None, tol = 1.0e-7, method = 'BFGS'):
+    assert forward is not None, 'Must provide forward mapping'
+    def dparams_sum(pos1):
+        return sum((params - forward(pos1))**2)
+    #end def
+    pos1 = minimize(dparams_sum, pos0, tol = tol, method = method).x
+    return pos1
+#end def
