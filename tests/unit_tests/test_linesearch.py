@@ -61,15 +61,6 @@ def test_linesearch_class():
     s = get_structure_H2O()
     h = get_hessian_H2O()
 
-    with raises(TypeError):
-        ls_d0 = LineSearch()
-    #end with
-    with raises(TypeError):
-        ls_d0 = LineSearch(s)
-    #end with
-    with raises(TypeError):
-        ls_d0 = LineSearch(s, h)
-    #end with
     with raises(AssertionError):
         ls_d0 = LineSearch(s, h, d = 1)
     #end with

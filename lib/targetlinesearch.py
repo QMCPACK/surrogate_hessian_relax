@@ -176,9 +176,9 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
 
     def __init__(
         self,
-        structure,
-        hessian,
-        d,
+        structure = None,
+        hessian = None,
+        d = None,
         M = 7,
         W = None,  # characteristic window
         R = None,  # max displacement
@@ -190,9 +190,9 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
     ):
         LineSearch.__init__(
             self,
-            structure,
-            hessian,
-            d,
+            structure = structure,
+            hessian = hessian,
+            d = d,
             M = M,
             W = W,
             R = R,

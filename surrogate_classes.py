@@ -8,6 +8,7 @@ from lib.parameters import Parameter
 from lib.parameters import ParameterSet
 from lib.parameters import ParameterStructureBase
 from lib.parameters import ParameterStructure
+from lib.parameters import invert_pos
 
 from lib.hessian import ParameterHessian
 

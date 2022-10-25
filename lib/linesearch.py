@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-from numpy import array, linspace, random, concatenate, polyval
+from numpy import array, linspace, random, concatenate, polyval, sign
 from matplotlib import pyplot as plt
 
 from lib.parameters import ParameterSet
-from lib.util import get_min_params, get_fraction_error, W_to_R
+from lib.util import get_min_params, get_fraction_error, W_to_R, directorize
 
 
 # Class for line-search along direction in abstract context
@@ -21,6 +21,7 @@ class LineSearchBase():
     x0_err = None
     y0 = None
     y0_err = None
+    sgn = None
     fit = None
 
     def __init__(
@@ -29,10 +30,12 @@ class LineSearchBase():
         values = None,
         errors = None,
         fraction = 0.025,
+        sgn = 1,
         **kwargs,
     ):
         self.fraction = fraction
         self.set_func(**kwargs)
+        self.sgn = sgn
         if grid is not None:
             self.set_grid(grid)
         #end if
@@ -100,6 +103,7 @@ class LineSearchBase():
             self.errors,
             fit_kind = self.fit_kind,
             fraction = self.fraction,
+            sgn = self.sgn,
             **kwargs)
         self.x0 = res[0]
         self.y0 = res[2]
@@ -271,7 +275,7 @@ class LineSearchBase():
 #end class
 
 
-# Class for PES line-search with recorded positions
+# Class for PES line-search in structure context
 class LineSearch(LineSearchBase):
     structure = None  # eqm structure
     structure_list = None  # list of LineSearchStructure objects
@@ -290,19 +294,26 @@ class LineSearch(LineSearchBase):
 
     def __init__(
         self,
-        structure,
-        hessian,
-        d,
+        structure = None,
+        hessian = None,
+        d = 0,
         sigma = 0.0,
         grid = None,
         **kwargs,
     ):
         self.sigma = sigma if sigma is not None else 0.0
-        self.set_structure(structure)
-        self.set_hessian(hessian, d)
-        self.figure_out_grid(grid = grid, **kwargs)
-        LineSearchBase.__init__(self, grid = self.grid, **kwargs)
-        self.shift_structures()  # shift
+        self.d = d
+        if structure is not None:
+            self.set_structure(structure)
+        #end if
+        if hessian is not None:
+            self.set_hessian(hessian)
+            self.figure_out_grid(grid = grid, **kwargs)
+            LineSearchBase.__init__(self, grid = self.grid, sgn = self.sgn, **kwargs)
+            self.shift_structures()  # shift
+        else:
+            LineSearchBase.__init__(self, **kwargs)
+        #end if
     #end def
 
     def set_structure(self, structure):
@@ -311,11 +322,12 @@ class LineSearch(LineSearchBase):
         self.structure = structure
     #end def
 
-    def set_hessian(self, hessian, d):
+    def set_hessian(self, hessian):
         self.hessian = hessian
-        self.Lambda = hessian.get_lambda(d)
-        self.direction = hessian.get_directions(d)
-        self.d = d
+        Lambda = hessian.get_lambda(self.d)
+        self.Lambda = abs(Lambda)
+        self.sgn = sign(Lambda)
+        self.direction = hessian.get_directions(self.d)
     #end def
 
     def figure_out_grid(self, **kwargs):
@@ -418,11 +430,12 @@ class LineSearch(LineSearchBase):
             else:
                 self.jobs_list[si] = True
             #end if
-            if exclude_eqm and not structure.label == 'eqm':
-                s = structure.copy()
-                s.to_nexus_only()
-                jobs += self._generate_jobs(pes_func, s, **kwargs)
+            if exclude_eqm and structure.label == 'eqm':
+                continue
             #end if
+            s = structure.copy()
+            s.to_nexus_only()
+            jobs += self._generate_jobs(pes_func, s, **kwargs)
         #end for
         self.generated = True
         return jobs
@@ -444,7 +457,7 @@ class LineSearch(LineSearchBase):
     #end def
 
     def _make_job_path(self, path, label):
-        return '{}{}'.format(path, label)
+        return '{}{}'.format(directorize(path), label)
     #end def
 
     # pes_func must accept 0: structure, 1: path, 2: sigma
@@ -565,10 +578,14 @@ class LineSearch(LineSearchBase):
         edata = self.errors
         x0 = self.x0
         y0 = self.y0
-        pfl = [self.Lambda / 2 * c_lambda, -x0, y0]
+        x0e = self.x0_err
+        y0e = self.y0_err
         # plot lambda
-        stylel_args = {'color': color, 'linestyle': ':'}  # etc
-        ax.plot(xlgrid, polyval(pfl, xlgrid), **stylel_args)
+        if self.Lambda is not None:
+            pfl = [self.Lambda / 2 * c_lambda, -x0, y0]
+            stylel_args = {'color': color, 'linestyle': ':'}  # etc
+            ax.plot(xlgrid, polyval(pfl, xlgrid), **stylel_args)
+        #end if
         # plot the line-search data
         style1_args = {'color': color, 'linestyle': 'None', 'marker': marker}  # etc
         style2_args = {'color': color, 'linestyle': linestyle, 'marker': 'None'}
@@ -577,6 +594,7 @@ class LineSearch(LineSearchBase):
         else:
             ax.errorbar(xdata, ydata, edata, **style1_args)
         #end if
+        ax.errorbar(x0, y0, y0e, xerr = x0e, marker = 'x', color = color)
         ax.plot(xgrid, self.val_data(xgrid), **style2_args)
         if return_ax:
             return ax
@@ -584,8 +602,10 @@ class LineSearch(LineSearchBase):
     #end def
 
     def __str__(self):
-        string = print(LineSearchBase)
-        string += '\n  Lambda: {:<9f}'.format(self.Lambda)
+        string = LineSearchBase.__str__(self)
+        if self.Lambda is not None:
+            string += '\n  Lambda: {:<9f}'.format(self.Lambda)
+        #end if
         if self.W is not None:
             string += '\n  W: {:<9f}'.format(self.W)
         #end if

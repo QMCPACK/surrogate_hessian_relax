@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from numpy import polyfit, polyder, polyval, roots, where, argmin, median, array, isnan, linalg, linspace
-from numpy import meshgrid
+from numpy import meshgrid, loadtxt
 
 Bohr = 0.5291772105638411  # A
 Ry = 13.605693012183622  # eV
@@ -9,16 +9,16 @@ Hartree = 27.211386024367243  # eV
 
 
 # Important function to resolve the local minimum of a curve
-def get_min_params(x_n, y_n, pfn = 3, **kwargs):
+def get_min_params(x_n, y_n, pfn = 3, sgn = 1, guess = 0.0, **kwargs):
     assert pfn > 1, 'pfn must be larger than 1'
     pf = polyfit(x_n, y_n, pfn)
     pfd = polyder(pf)
     r = roots(pfd)
     d = polyval(polyder(pfd), r)
-    x_mins  = r[where((r.imag == 0) & (d > 0))].real  # filter real maxime
+    x_mins  = r[where((r.imag == 0) & (sgn * d > 0))].real  # filter real minima (maxima with sgn < 0)
     if len(x_mins) > 0:
         y_mins = polyval(pf, x_mins)
-        imin = argmin(abs(x_mins))  # pick the closest to center
+        imin = argmin(abs(x_mins - guess))  # pick the closest to guess
     else:
         x_mins = [min(x_n), max(x_n)]
         y_mins = polyval(pf, x_mins)
@@ -149,3 +149,5 @@ def directorize(path):
     #end if
     return path
 #end def
+
+

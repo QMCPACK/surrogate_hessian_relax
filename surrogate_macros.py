@@ -5,14 +5,9 @@ from numpy import loadtxt, savetxt
 from os import makedirs
 from os.path import exists
 from surrogate_classes import bipolyfit
+from lib.parameters import load_xyz
 
 default_steps = 10
-
-
-def load_xyz(fname):
-    e, x, y, z = loadtxt(fname, dtype = str, unpack = True, skiprows = 2)
-    return array([x, y, z], dtype = float).T
-#end def
 
 
 # Minimal function for writing line-search structures

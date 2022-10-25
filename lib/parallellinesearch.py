@@ -146,7 +146,7 @@ class ParallelLineSearch(PesSampler):
         self._avoid_protected()
         self._require_setup()
         if windows is None:
-            windows = self.Lambdas**0.5 * window_frac
+            windows = abs(self.Lambdas)**0.5 * window_frac
             self.windows_frac = window_frac
         #end if
         self.set_windows(windows)
