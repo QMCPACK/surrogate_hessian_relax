@@ -22,7 +22,7 @@ def get_min_params(x_n, y_n, pfn = 3, sgn = 1, guess = 0.0, **kwargs):
     else:
         x_mins = [min(x_n), max(x_n)]
         y_mins = polyval(pf, x_mins)
-        imin = argmin(y_mins)  # pick the lowest energy
+        imin = argmin(sgn * y_mins)  # pick the lowest/highest energy
     #end if
     y0 = y_mins[imin]
     x0 = x_mins[imin]

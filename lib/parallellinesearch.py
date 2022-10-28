@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import ndarray, array
+from numpy import ndarray, array, matmul
 from os import makedirs, path
 from dill import dumps
 from textwrap import indent
@@ -208,17 +208,22 @@ class ParallelLineSearch(PesSampler):
         self.cascade()
     #end def
 
-    def copy(self, path = '', c_noises = 1.0, **kwargs):
+    def copy(self, path = '', c_noises = 1.0, update_hessian = False, squeeze = 1.0, **kwargs):
         if self.noises is None:
             noises = None
         else:
-            noises = [noise * c_noises for noise in self.noises]
+            noises = array([noise * c_noises for noise in self.noises]) * squeeze
+        #end if
+        if self.windows is None:
+            windows = None
+        else:
+            windows = array(self.windows) * squeeze
         #end if
         ls_args = {
             'path': path,
             'structure': self.structure,
             'hessian': self.hessian,
-            'windows': self.windows,
+            'windows': windows,
             'noises': noises,
             'M': self.M,
             'fit_kind': self.fit_kind,
@@ -228,6 +233,9 @@ class ParallelLineSearch(PesSampler):
             'load_args': self.load_args,
             'mode': self.mode,
         }
+        if update_hessian:
+            ls_args['hessian'] = self.updated_hessian()
+        #end if
         ls_args.update(**kwargs)
         pls_next = ParallelLineSearch(**ls_args)
         return pls_next
@@ -326,10 +334,10 @@ class ParallelLineSearch(PesSampler):
         #end if
         for ls, values, errors in zip(self.ls_list, values_ls, errors_ls):
             loaded_this = ls.load_results(
-                load_func = load_func,
-                load_args = load_args,
                 values = values,
                 errors = errors,
+                load_func = load_func,
+                load_args = load_args,
                 path = self.path,
                 **kwargs)
             loaded = loaded and loaded_this
@@ -352,7 +360,7 @@ class ParallelLineSearch(PesSampler):
         sigma_min = self.noises.min()
         E, err = self.ls_list[0].load_eqm_results(load_func = load_func, load_args = load_args, path = self.path, sigma = sigma_min, **kwargs)
         self.structure.value = E
-        self.structure.value_err = err
+        self.structure.error = err
     #end def
 
     def find_eqm_value(self):
@@ -360,13 +368,13 @@ class ParallelLineSearch(PesSampler):
         for ls in self.ls_list:
             for s in ls.structure_list:
                 if sum((self.structure.params - s.params)**2) < 1e-10:
-                    E, err = s.value, s.value_err
+                    E, err = s.value, s.error
                     break
                 #end if
             #end for
         #end for
         self.structure.value = E
-        self.structure.value_err = err
+        self.structure.error = err
     #end def
 
     def calculate_next(self, **kwargs):
@@ -486,6 +494,28 @@ class ParallelLineSearch(PesSampler):
         #end if
         # TODO
         return string
+    #end def
+
+    def plot(self, **kwargs):
+        for ls in self.ls_list:
+            ls.plot(**kwargs)
+        #end for
+    #end def
+
+    def updated_hessian(self, method = 'powell', **kwargs):
+        H = self.hessian.hessian
+        U = self.hessian.U
+        if method == 'powell':
+            d = matmul(U, array([[ls.x0 for ls in self.ls_list]]).T)
+            y = matmul(U, array([[ls.get_force() for ls in self.ls_list]]).T)
+            u = d * (d.T @ d)**-0.5
+            j = y - H @ d
+            dH = j @ u.T + u @ j.T - d.T @ j * u @ u.T
+        else:
+            print('Method {} not implemented'. format(method))
+            dH = 0.0
+        #end if
+        return ParameterHessian(hessian = H + dH, structure = self.structure_next)
     #end def
 
 #end class

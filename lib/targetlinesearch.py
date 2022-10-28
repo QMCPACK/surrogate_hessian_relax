@@ -269,7 +269,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         TargetLineSearchBase.set_target(self, grid, values, **kwargs)
         for s, v in zip(self.structure_list, values):
             s.value = v
-            s.value_err = 0.0
+            s.error = 0.0
         #end for
     #end def
 
@@ -342,7 +342,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
     #end def
 
     def _generate_T_mat(self):
-        return self.W_mat > self.S_mat
+        return self.W_mat >= self.S_mat
     #end def
 
     def _check_Gs_M_N(self, Gs, M, N):

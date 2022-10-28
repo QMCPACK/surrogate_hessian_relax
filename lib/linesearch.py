@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array, linspace, random, concatenate, polyval, sign
+from numpy import array, linspace, random, concatenate, polyval, sign, polyder
 from matplotlib import pyplot as plt
 
 from lib.parameters import ParameterSet
@@ -186,6 +186,24 @@ class LineSearchBase():
             return self.y0, self.y0_err
         else:
             return self.y0
+        #end if
+    #end def
+
+    def get_hessian(self, x = None):
+        x = x if x is not None else self.x0
+        if self.fit is None:
+            return None
+        else:
+            return polyval(polyder(polyder(self.fit)), x)
+        #end if
+    #end def
+
+    def get_force(self, x = None):
+        x = x if x is not None else 0.0
+        if self.fit is None:
+            return None
+        else:
+            return -polyval(polyder(self.fit), x)
         #end if
     #end def
 
@@ -382,7 +400,9 @@ class LineSearch(LineSearchBase):
         structure = self._shift_structure(shift)
         self.structure_list.append(structure)
         self.jobs_list.append(False)
-        self.grid = concatenate([self.grid, [shift]])
+        if not shift in self.grid:
+            self.grid = concatenate([self.grid, [shift]])
+        #end if
     #end def
 
     def _shift_structure(self, shift, roundi = 4):
@@ -503,7 +523,7 @@ class LineSearch(LineSearchBase):
         return array(grid), array(values), array(errors)
     #end def
 
-    def load_results(self, load_func = None, grid = None, values = None, errors = None, **kwargs):
+    def load_results(self, grid = None, values = None, errors = None, load_func = None, **kwargs):
         if load_func is not None:
             grid, values, errors = self.analyze_jobs(load_func, **kwargs)
         else:
@@ -544,7 +564,7 @@ class LineSearch(LineSearchBase):
     def _update_list_values(self, values, errors):
         for s, v, e in zip(self.structure_list, values, errors):
             s.value = v
-            s.value_err = e
+            s.error = e
         #end for
     #end def
 
@@ -582,7 +602,8 @@ class LineSearch(LineSearchBase):
         y0e = self.y0_err
         # plot lambda
         if self.Lambda is not None:
-            pfl = [self.Lambda / 2 * c_lambda, -x0, y0]
+            a = self.sgn * self.Lambda / 2 * c_lambda
+            pfl = [a, -2 * a * x0, y0 + a * x0**2]
             stylel_args = {'color': color, 'linestyle': ':'}  # etc
             ax.plot(xlgrid, polyval(pfl, xlgrid), **stylel_args)
         #end if

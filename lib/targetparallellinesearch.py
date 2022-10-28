@@ -46,6 +46,18 @@ class TargetParallelLineSearch(ParallelLineSearch):
 
     def optimize(
         self,
+        reoptimize = True,
+        **kwargs,
+    ):
+        if self.optimized and not reoptimize:
+            print('Already optimized, use reoptimize = True to reoptimize.')
+        else:
+            self.reoptimize(**kwargs)
+        #end if
+    #end def
+
+    def reoptimize(
+        self,
         windows = None,
         noises = None,
         epsilon_p = None,
@@ -123,6 +135,7 @@ useful keyword arguments:
         epsilon_p,
         kind = 'ls',  # try line-search by default
         verbose = True,
+        mix = 0.5,
         **kwargs,
     ):
         if verbose:
@@ -131,7 +144,9 @@ useful keyword arguments:
             strings = tuple([str(round(e, 4)) for e in epsilon_p])
             print(fmt.format('epsilon_p:', *strings))
         #end if
-        epsilon_d0 = abs(self.get_directions() @ epsilon_p)
+        # start with a guess mixture of propagated bias and noise
+        U = self.get_directions()
+        epsilon_d0 = mix * abs(U @ epsilon_p) + (1 - mix) * U.T @ U @ epsilon_p
         if kind == 'ls':
             epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, verbose = verbose, **kwargs)
         elif kind == 'thermal':

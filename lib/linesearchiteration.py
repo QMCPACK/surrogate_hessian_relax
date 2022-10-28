@@ -4,7 +4,7 @@ from numpy import array, mean
 from dill import loads
 
 from lib.util import directorize
-from lib.parameters import ParameterStructure
+from lib.parameters import ParameterStructure, ParameterSet
 from lib.hessian import ParameterHessian
 from lib.parallellinesearch import ParallelLineSearch
 
@@ -64,7 +64,7 @@ class LineSearchIteration():
     #end def
 
     def init_from_hessian(self, structure, hessian, **kwargs):
-        assert isinstance(structure, ParameterStructure), 'Starting structure must be a ParameterStructure object'
+        assert isinstance(structure, ParameterSet), 'Starting structure must be a ParameterSet object'
         assert isinstance(hessian, ParameterHessian), 'Starting hessian must be a ParameterHessian'
         pls = ParallelLineSearch(
             path = self._get_pls_path(0),
@@ -188,7 +188,7 @@ class LineSearchIteration():
             #end for
             string += fmts.format(*tuple(plabels))
             for p, pls in enumerate(self.pls_list):
-                data = [pls.structure.value, pls.structure.value_err]
+                data = [pls.structure.value, pls.structure.error]
                 data[0] = data[0] if not data[0] is None else 0.0
                 data[1] = data[1] if not data[1] is None else 0.0
                 for param, perr in zip(pls.structure.params, pls.structure.params_err):
@@ -200,6 +200,10 @@ class LineSearchIteration():
         #end if
         # TODO add parameter and energy printouts
         return string
+    #end def
+
+    def pop(self):
+        return self.pls_list.pop()
     #end def
 
 #end class

@@ -5,7 +5,7 @@ from numpy import loadtxt, savetxt
 from os import makedirs
 from os.path import exists
 from surrogate_classes import bipolyfit
-from lib.parameters import load_xyz
+from lib.parameters import load_xyz, directorize, load_xsf
 
 default_steps = 10
 
@@ -312,7 +312,7 @@ def compute_fdiff_hessian(
 
 def nexus_pwscf_analyzer(path, suffix = 'scf.in', **kwargs):
     from nexus import PwscfAnalyzer
-    ai = PwscfAnalyzer('{}/{}'.format(path, suffix))
+    ai = PwscfAnalyzer('{}{}'.format(directorize(path), suffix))
     ai.analyze()
     E = ai.E
     Err = 0.0
@@ -320,9 +320,23 @@ def nexus_pwscf_analyzer(path, suffix = 'scf.in', **kwargs):
 #end def
 
 
-def nexus_gamess_analyzer(path, suffix = 'uhf.inp', allow_fail = True, **kwargs):
+def nexus_pwscf_relax(path, suffix = 'scf.in', **kwargs):
+    from nexus import PwscfAnalyzer
+    ai = PwscfAnalyzer('{}{}'.format(directorize(path), suffix))
+    ai.analyze()
+    pos = ai.structures[len(ai.structures) - 1].positions
+    try:
+        axes = ai.structures[len(ai.structures) - 1].axes
+    except:
+        axes = None
+    #end try
+    return pos, axes
+#end def
+
+
+def nexus_gamess_analyzer(path, suffix = 'gamess.inp', allow_fail = True, **kwargs):
     from nexus import GamessAnalyzer
-    fname = '{}/{}'.format(path, suffix)
+    fname = '{}{}'.format(directorize(path), suffix)
     ai = GamessAnalyzer(fname)
     ai.analyze()
     if not 'energy' in ai.keys() and allow_fail:
@@ -337,7 +351,7 @@ def nexus_gamess_analyzer(path, suffix = 'uhf.inp', allow_fail = True, **kwargs)
 
 def nexus_qmcpack_analyzer(path, qmc_idx = 1, get_var = False, suffix = '/dmc/dmc.in.xml', **kwargs):
     from nexus import QmcpackAnalyzer
-    ai = QmcpackAnalyzer('{}/{}'.format(path, suffix))
+    ai = QmcpackAnalyzer('{}{}'.format(directorize(path), suffix))
     ai.analyze()
     LE = ai.qmc[qmc_idx].scalars.LocalEnergy
     LE2 = ai.qmc[qmc_idx].scalars.LocalEnergy_sq
@@ -360,7 +374,7 @@ def generate_surrogate(
 ):
     if fname is not None:
         from surrogate_classes import load_from_disk
-        fname = '{}/{}'.format(path, fname)
+        fname = '{}{}'.format(directorize(path), fname)
         surrogate = load_from_disk(fname)
         if surrogate is not None:
             return surrogate

@@ -39,6 +39,12 @@ def load_xyz(fname):
 #end def
 
 
+# FIXME
+def load_xsf(fname):
+    e, x, y, z = loadtxt(fname, dtype = str, unpack = True, skiprows = 2)
+    return array([x, y, z], dtype = float).T
+#end def
+
 
 class Parameter():
     """Base class for representing an optimizable parameter"""
@@ -208,6 +214,19 @@ class ParameterSet():
         return True
     #end def
 
+    def relax(
+        self,
+        pes_func = None,
+        pes_args = {},
+        **kwargs,
+    ):
+        def relax_aux(p):
+            return pes_func(ParameterSet(p), **pes_args)[0]
+        #end def
+        res =  minimize(relax_aux, self.params, **kwargs)
+        self.set_params(res.x)
+    #end def
+
 #end class
 
 
@@ -309,6 +328,7 @@ class ParameterStructureBase(ParameterSet):
             assert axes.size == self.dim**2, 'Axes vector inconsistent with {} dimensions!'.format(self.dim)
             axes = array(axes).reshape(self.dim, self.dim)
         #end if
+        # TODO: there's a problem with updating an explicit list of kpoints
         try:
             self.reset_axes(axes)  # use nexus method to get kaxes
         except AttributeError:
@@ -415,7 +435,8 @@ class ParameterStructureBase(ParameterSet):
         #end if
     #end def
 
-    def _check_pos_consistency(self, pos, axes, tol = 1e-7):
+    def _check_pos_consistency(self, pos, axes, tol = None):
+        tol = tol if tol is not None else self.tol
         if self.periodic:
             params = self.forward(pos, axes)
             pos_new, axes_new = self.backward(params)
@@ -428,7 +449,8 @@ class ParameterStructureBase(ParameterSet):
         return consistent
     #end def
 
-    def _check_params_consistency(self, params, tol = 1e-7):
+    def _check_params_consistency(self, params, tol = None):
+        tol = tol if tol is not None else self.tol
         pos, axes = self.backward(params)
         params_new = self.forward(pos, axes)
         return match_to_tol(params, params_new, tol)
@@ -573,53 +595,69 @@ class ParameterStructureBase(ParameterSet):
 
     def relax(
         self,
-        relax_func = None,
-        relax_args = {},
+        pes_func = None,
+        pes_args = {},
         path = 'relax',
+        mode = 'nexus',
         **kwargs,
     ):
-        if relax_func is None:
-            print('Provide a relax_func!')
+        if pes_func is None:
+            print('Provide a pes_func!')
             return
         #end if
-        jobs = relax_func(self, directorize(path), **relax_args)
-        from nexus import run_project
-        run_project(jobs)
+        if mode == 'nexus':
+            jobs = pes_func(self, directorize(path), **pes_args)
+            from nexus import run_project
+            run_project(jobs)
+        elif mode == 'pes':
+            ParameterSet.relax(self, pes_func = pes_func, pes_args = pes_args, **kwargs)
+        #end if
     #end def
 
     def load(
         self,
+        path = 'relax',
         xyz_file = None,
+        xsf_file = None,
         load_func = None,
         load_args = {},
         c_pos = 1.0,
+        c_axes = 1.0,
         make_consistent = True,
-        allow_translate = True,
         verbose = True,
         **kwargs,
     ):
+        path = directorize(path)
         if load_func is not None:
-            pos = load_func(**load_args) * c_pos
-            self.set_position(pos)
+            pos, axes = load_func(path, **load_args)
         elif xyz_file is not None:
-            try:
-                pos = load_xyz(xyz_file) * c_pos
-                self.set_position(pos)
-            except OSError:
-                print('Could not load {}'.format(xyz_file))
-            #end try
-            if make_consistent:
-                self._forward(self.pos)
-                self._backward(self.params)
-            #end if
-            pos_diff = self.pos - pos
-            pos_diff -= pos_diff.mean(axis = 0)
-            if verbose:
-                print('Position difference')
-                print(pos_diff.reshape(-1,3))
-            #end if
+            fname = '{}{}'.format(path, xyz_file)
+            pos = load_xyz(fname)
+        elif xsf_file is not None:
+            fname = '{}{}'.format(path, xsf_file)
+            pos, axes = load_xsf(fname)
         else:
             print('Not loaded')
+        #end if
+        pos *= c_pos
+        self.set_position(pos)
+        if self.periodic:
+            axes *= c_axes
+            self.set_axes(axes)
+        #end if
+        if make_consistent:
+            if self.periodic:
+                self._forward(self.pos, self.axes)
+            else:
+                self._forward(self.pos)
+            #end if
+            self._backward(self.params)
+        #end if
+        pos_diff = self.pos - pos
+        pos_diff -= pos_diff.mean(axis = 0)
+        if verbose:
+            print('Position difference')
+            print(pos_diff.reshape(-1,3))
         #end if
     #end def
 

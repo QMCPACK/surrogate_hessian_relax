@@ -82,7 +82,7 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.error_p, [0.05657029, 0.10617361])
 
     #2: thermal
-    srg.optimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res = False)
+    srg.reoptimize(temperature = 0.0001, Gs = Gs_N200_M7.reshape(2, -1, 5), W_num = 5, sigma_num = 5, verbose = False, fix_res = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.06556247311750507])
     assert match_values(srg.noises,    [0.0025862088709533, 0.00245859274190644])
     assert match_values(srg.error_d,   [0.00922068, 0.01366444])
@@ -92,7 +92,7 @@ def test_targetparallellinesearch_class():
     assert srg.ls(0).E_mat.shape == (5, 5)
     assert srg.ls(1).E_mat.shape == (5, 5)
 
-    srg.optimize(temperature = 0.0002, verbose = False, fix_res = True)
+    srg.reoptimize(temperature = 0.0002, verbose = False, fix_res = True)
     assert match_values(srg.windows,   [0.1034483548381337,   0.0491718548381288])
     assert match_values(srg.noises,    [0.005172417741906685, 0.0032781236558752534])
     assert match_values(srg.error_d,   [0.0127679 , 0.02093523])
@@ -104,9 +104,9 @@ def test_targetparallellinesearch_class():
 
     #3: epsilon_d
     with raises(AssertionError):  # too low tolerances
-        srg.optimize(epsilon_d = [0.001, 0.001], verbose = False)
+        srg.reoptimize(epsilon_d = [0.001, 0.001], verbose = False)
     #end with
-    srg.optimize(epsilon_d = [0.008, 0.007], verbose = False)
+    srg.reoptimize(epsilon_d = [0.008, 0.007], verbose = False)
 
     assert match_values(srg.windows,   [0.1034483548381337, 0.061464818547661004])
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0011268550067071183])
@@ -115,8 +115,7 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.epsilon_d, [0.008, 0.007])
 
     #4: epsilon_p with thermal
-
-    srg.optimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose = False)
+    srg.reoptimize(epsilon_p = [0.01, 0.015], kind='thermal', T0 = 0.00001, dT = 0.000005, verbose = False)
     assert match_values(srg.windows,   [0.1034483548381337, 0.05736716397781694])
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0020488272849220335])
     assert match_values(srg.error_d,   [0.00741869, 0.01224184])
@@ -125,12 +124,12 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.epsilon_p, [0.01, 0.015])
 
     #5 epsilon_p with ls
-    srg.optimize(epsilon_p = [0.02, 0.05], kind='ls', verbose = False)
-    assert match_values(srg.windows,   [0.09375007157205865, 0.06556247311750507])
-    assert match_values(srg.noises,    [0.0012931044354766712, 0.007375778225719321])
-    assert match_values(srg.error_d,   [0.0076813,  0.04006859])
-    assert match_values(srg.error_p,   [0.0199301, 0.0396935 ])
-    assert match_values(srg.epsilon_d, [0.008203164660496224, 0.04077888801127219])
+    srg.reoptimize(epsilon_p = [0.02, 0.05], kind='ls', verbose = False)
+    assert match_values(srg.windows,   [0.09051731048336698, 0.061464818547661004])
+    assert match_values(srg.noises,    [0.0006465522177383356, 0.007375778225719321])
+    assert match_values(srg.error_d,   [0.00677768, 0.04134956])
+    assert match_values(srg.error_p,   [0.01943834, 0.04092298])
+    assert match_values(srg.epsilon_d, [0.007278290487659847, 0.0440791914501621])
     assert match_values(srg.epsilon_p, [0.02, 0.05])
 
 #end def
