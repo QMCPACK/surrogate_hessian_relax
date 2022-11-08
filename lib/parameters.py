@@ -405,7 +405,7 @@ class ParameterStructureBase(ParameterSet):
         self.consistent = self.check_consistency()
     #end def
 
-    def check_consistency(self, params = None, pos = None, axes = None, tol = None):
+    def check_consistency(self, params = None, pos = None, axes = None, tol = None, verbose = False):
         """Check consistency of present forward-backward mapping.
         If params or pos/axes are supplied, check at the corresponding points. If not, check at the present point.
         """

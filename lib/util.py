@@ -50,8 +50,9 @@ def get_fraction_error(data, fraction, both = False):
 #end def
 
 
-def match_to_tol(val1, val2, tol = 1e-10):
+def match_to_tol(val1, val2, tol = None):
     """Match the values of two vectors. True if all match, False if not."""
+    tol = tol if tol is not None else 1e-10
     assert len(val1) == len(val2), 'lengths of val1 and val2 do not match' + str(val1) + str(val2)
     for v1, v2 in zip(val1.flatten(), val2.flatten()):  # TODO: maybe vectorize?
         if abs(v2 - v1) > tol:
