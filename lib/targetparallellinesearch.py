@@ -10,6 +10,7 @@ from lib.parallellinesearch import ParallelLineSearch
 
 
 class TargetParallelLineSearch(ParallelLineSearch):
+    ls_type = TargetLineSearch
     epsilon_p = None
     epsilon_d = None
     error_p = None
@@ -28,10 +29,10 @@ class TargetParallelLineSearch(ParallelLineSearch):
         **kwargs
     ):
         ParallelLineSearch.__init__(self, structure = structure, hessian = hessian, **kwargs)
-        self.set_targets(targets)
+        self.set_x_targets(targets)
     #end def
 
-    def set_targets(self, targets):
+    def set_x_targets(self, targets):
         if not self.status.setup:
             return
         #end if
@@ -312,32 +313,20 @@ useful keyword arguments:
         return [(temperature / Lambda)**0.5 for Lambda in self.hessian.diagonal]
     #end def
 
-    # override parent method
-    def reset_ls_list(self, set_target = True, **kwargs):
-        self._avoid_protected()
-        self._require_shifted()
-        noises = self.noises if self.noisy else self.D * [None]
-        self.targets = self.targets if self.targets is not None else self.D * [0.0]
-        ls_list = []
-        for d, window, noise, target in zip(range(self.D), self.windows, noises, self.targets):
-            tls = TargetLineSearch(
-                structure = self.structure,
-                hessian = self.hessian,
-                d = d,
-                W = window,
-                M = self.M,
-                fit_kind = self.fit_kind,
-                sigma = noise,
-                target = target,
-                **kwargs)
-            ls_list.append(tls)
-        #end for
-        self.ls_list = ls_list
-        if self.mode == 'pes':
-            self.cascade()
-            self.load_results(set_target = set_target)
+    # override to set targets instead of results
+    def load_results(self, set_target = True, **kwargs):
+        ParallelLineSearch.load_results(self, **kwargs)
+        if set_target:
+            for ls in self.ls_list:
+                kwargs.update({'grid': ls.grid, 'values': ls.values})
+                #print(kwargs)
+                #print(ls.grid)
+                #print(ls.values)
+                #print('gwaeg')
+                #ls.set_target(ls.grid, ls.values, **kwargs)
+                ls.set_target(**kwargs)
+            #end for
         #end if
-        self.cascade()
     #end def
 
     def compute_bias_p(self, **kwargs):

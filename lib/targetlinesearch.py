@@ -28,13 +28,9 @@ class TargetLineSearchBase(LineSearchBase):
     ):
         LineSearchBase.__init__(self, **kwargs)
         self.target_x0 = target_x0
-        if target_y0 is not None:  # FIXME: refactor set_target
-            self.target_y0 = target_y0
-        #end if
+        self.target_y0 = target_y0
         self.bias_mix = bias_mix
-        if target_grid is not None and target_values is not None:
-            self.set_target(target_grid, target_values, **kwargs)
-        #end if
+        self.set_target(grid = target_grid, values = target_values, **kwargs)
     #end def
 
     def set_target(
@@ -75,7 +71,7 @@ class TargetLineSearchBase(LineSearchBase):
 
     def _compute_xy_bias(self, grid, **kwargs):
         values = self.evaluate_target(grid)
-        x0, y0, fit = self._search(grid, values, **kwargs)
+        x0, y0, fit = self._search(grid, values, sgn = self.sgn, **kwargs)
         bias_x = x0 - self.target_x0
         bias_y = y0 - self.target_y0
         return bias_x, bias_y
@@ -103,7 +99,7 @@ class TargetLineSearchBase(LineSearchBase):
     # dvalues is an array of value fluctuations: 'errors * Gs' or 'noise * Gs'
     def _compute_errorbar(self, grid, errors, **kwargs):
         values = self.evaluate_target(grid)
-        x0, x0_err, y0, y0_err, fit = self._search_with_error(grid, values, errors, **kwargs)
+        x0, x0_err, y0, y0_err, fit = self._search_with_error(grid, values, errors, sgn = self.sgn, **kwargs)
         return x0_err, y0_err
     #end def
 
@@ -183,11 +179,13 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         W = None,  # characteristic window
         R = None,  # max displacement
         grid = None,  # manual set of shifts
+        values = None,
         mode = 'jobs',
         pes_func = None,
-        set_target = False,
-        **kwargs,
+        **kwargs,  # some redundancy in submitting kwargs
     ):
+        # provide target_grid, target_values explicitly
+        TargetLineSearchBase.__init__(self, **kwargs)
         LineSearch.__init__(
             self,
             structure = structure,
@@ -197,12 +195,12 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             W = W,
             R = R,
             grid = grid,
+            values = values,
             mode = mode,
             pes_func = pes_func,
-            set_target = set_target,
+            **kwargs,
         )
         self._set_RW_max()
-        TargetLineSearchBase.__init__(self, set_target = set_target, **kwargs)
     #end def
 
     def compute_bias_of(
@@ -251,22 +249,15 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         return array(biases_x), array(biases_y), array(biases_tot)
     #end def
 
-    # overrides method in LineSearch class with option to set target PES
-    def set_results(self, grid, values, errors, set_target = False, **kwargs):
-        if set_target:
-            self.set_target(grid, values, **kwargs)
-            self._set_RW_max()
-            return False  # to avoid calculate_next
-        else:
-            return LineSearch.set_results(self, grid, values, errors, **kwargs)
-        #end if
-    #end def
-
+    # override TargetLineSearchBase class
     def set_target(self, grid, values, **kwargs):
         if values is None or all(array(values) == None):
             return
         #end if
         TargetLineSearchBase.set_target(self, grid, values, **kwargs)
+        if self.structure_list is None:
+             return
+        #end if
         for s, v in zip(self.structure_list, values):
             s.value = v
             s.error = 0.0
@@ -433,7 +424,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         #end if
         W, sigma, E, errs = self._maximize_y(epsilon, low_thr = low_thr)
         if 'not_found' in errs:
-            raise AssertionError('W, sigma not found for epsilon = {}. Check minimum bias and raise epsilon.'.format(epsilon))
+            raise AssertionError('  tls{}: W, sigma not found for epsilon = {}. Check minimum bias and raise epsilon.'.format(self.d, epsilon))
         #end if
         if fix_res:
             while 'x_underflow' in errs and self._fix_x_underflow(W, verbose = verbose):

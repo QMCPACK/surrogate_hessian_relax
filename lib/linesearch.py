@@ -22,7 +22,7 @@ class LineSearchBase():
     x0_err = None
     y0 = None
     y0_err = None
-    sgn = None
+    sgn = 1
     fit = None
 
     def __init__(

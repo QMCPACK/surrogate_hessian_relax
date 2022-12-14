@@ -15,6 +15,7 @@ from lib.pessampler import PesSampler
 # Class for a bundle of parallel line-searches
 class ParallelLineSearch(PesSampler):
 
+    ls_type = LineSearch
     ls_list = []  # list of line-search objects
     hessian = None  # hessian object
     Lambdas = None
@@ -31,7 +32,7 @@ class ParallelLineSearch(PesSampler):
     E_unit = None
     noisy = False  # flag whether deterministic or noisy
     msg_setup = 'Setup: first set_structure() and set_hessian() with valid input'
-    msg_shiftep = 'Shifted: first set_windows() to define displacements'
+    msg_shifted = 'Shifted: first set_windows() to define displacements'
     msg_loaded = 'Loaded: first load_results() with valid input'
 
     def __init__(
@@ -187,7 +188,7 @@ class ParallelLineSearch(PesSampler):
         noises = self.noises if self.noisy else self.D * [None]
         ls_list = []
         for d, window, noise in zip(D, self.windows, noises):
-            ls = LineSearch(
+            ls = self.ls_type(
                 structure = self.structure,
                 hessian = self.hessian,
                 d = d,
