@@ -17,6 +17,7 @@ class LineSearchBase():
     grid = None
     values = None
     errors = None
+    mask = []
     x0 = None
     x0_err = None
     y0 = None
@@ -89,6 +90,7 @@ class LineSearchBase():
         #end if
         self.set_grid(grid)
         self.values = array(values)
+        self.mask = len(values) * [True]
         if also_search and not all(array(values) == None):
             self.search()
         #end if
@@ -97,10 +99,11 @@ class LineSearchBase():
     def search(self, **kwargs):
         """Perform line-search with the preset values and settings, saving the result to self."""
         assert self.grid is not None and self.values is not None
+        errors = self.errors[self.mask] if self.errors is not None else None
         res = self._search_with_error(
-            self.grid,
-            self.values,
-            self.errors,
+            self.grid[self.mask],
+            self.values[self.mask],
+            errors,
             fit_kind = self.fit_kind,
             fraction = self.fraction,
             sgn = self.sgn,
@@ -111,6 +114,16 @@ class LineSearchBase():
         self.y0_err = res[3]
         self.fit = res[4]
         self.analyzed = True
+    #end def
+
+    def disable_value(self, i):
+        assert i < len(self.mask), 'Cannot disable element {} from array of {}'.format(i, len(self.mask))
+        self.mask[i] = False
+    #end def
+
+    def enable_value(self, i):
+        assert i < len(self.mask), 'Cannot enable element {} from array of {}'.format(i, len(self.mask))
+        self.mask[i] = True
     #end def
 
     def _search(
