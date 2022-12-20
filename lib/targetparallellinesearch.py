@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array, mean, linspace, argmin
+from numpy import array, mean, linspace, argmin, where, isnan, nanmax, ceil
 from functools import partial
 from scipy.optimize import broyden1
 
@@ -142,22 +142,34 @@ useful keyword arguments:
         if verbose:
             fmt = (1 + len(epsilon_p)) * '  {:<8s}'
             print('Optimizing to parameter tolerances using the {:s} method'.format(kind))
-            strings = tuple([str(round(e, 4)) for e in epsilon_p])
-            print(fmt.format('epsilon_p:', *strings))
+            strings = []
+            for e in epsilon_p:
+                if e is None:
+                    strings.append('None')
+                else:
+                    strings.append(str(round(e, 4)))
+                #end if
+            #end for
+            print(fmt.format('epsilon_p:', *tuple(strings)))
         #end if
         # start with a guess mixture of propagated bias and noise
         U = self.get_directions()
-        epsilon_d0 = mix * abs(U @ epsilon_p) + (1 - mix) * U.T @ U @ epsilon_p
-        if kind == 'ls':
-            epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, verbose = verbose, **kwargs)
-        elif kind == 'thermal':
+        if kind == 'thermal':
+            epsilon_p = array(epsilon_p, dtype = float)
             epsilon_d_opt = self._optimize_epsilon_p_thermal(epsilon_p, verbose = verbose, **kwargs)
-        elif kind == 'broyden1':
-            # Current: broyden1, probably fails to converge
-            validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
-            epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
         else:
-            raise AssertionError('Fixed-point kind not recognized')
+            assert not any([e is None for e in epsilon_p]), 'Must specify all epsilon_p for the {:s} method'.format(kind)
+            epsilon_p = array(epsilon_p, dtype = float)
+            epsilon_d0 = mix * abs(U @ epsilon_p) + (1 - mix) * U.T @ U @ epsilon_p
+            if kind == 'ls':
+                epsilon_d_opt = self._optimize_epsilon_p_ls(epsilon_p, epsilon_d0, verbose = verbose, **kwargs)
+            elif kind == 'broyden1':
+                # Current: broyden1, probably fails to converge
+                validate_epsilon_d = partial(self._resample_errors_p_of_d, target = array(epsilon_p), **kwargs)
+                epsilon_d_opt = broyden1(validate_epsilon_d, epsilon_d0, f_tol = 1e-3, verbose = True)
+            else:
+                raise AssertionError('Fixed-point kind not recognized')
+            #end if
         #end if
         kwargs_d = kwargs.copy()
         kwargs_d.update(fix_res = False)
@@ -167,25 +179,35 @@ useful keyword arguments:
 
     # TODO: check for the first step
     def _optimize_epsilon_p_thermal(self, epsilon_p, T0 = 0.00001, dT = 0.000005, verbose = False, **kwargs):
+        # init
         T = T0
-        error_p = array([-1, -1])  # init
-        #first = True
-        while all(error_p < 0.0):
+        error_p = array([-1, -1])
+        # First loop: increase T until the errors are no longer capped
+        while all(error_p[where(~isnan(error_p))] < 0.0):
             try:
                 epsilon_d = self._get_thermal_epsilon_d(T)
                 error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose)
+                error_frac = (error_p + epsilon_p) / epsilon_p
                 if verbose:
-                    print('T = {} highest error {} %'.format(T, (error_p + epsilon_p) / epsilon_p * 100))
+                    print('T = {} highest error {} %'.format(T, error_frac * 100))
                 #end if
-                T += dT
             except AssertionError:
                 if verbose:
                     print('T = {} skipped'.format(T))
                 #end if
-                T += dT
             #end try
+            T *= 1.5
         #end while
-        T -= 2 * dT
+        # Second loop: decrease T until the errors are capped
+        while not all(error_p[where(~isnan(error_p))] < 0.0):
+            T *= 0.95
+            epsilon_d = self._get_thermal_epsilon_d(T)
+            error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose)
+            error_frac = (error_p + epsilon_p) / epsilon_p
+            if verbose:
+                print('T = {} highest error {} %'.format(T, error_frac * 100))
+            #end if
+        #end while
         return self._get_thermal_epsilon_d(T)
     #end def
 
@@ -306,11 +328,11 @@ useful keyword arguments:
     #end def
 
     def _get_thermal_epsilon_d(self, temperature):
-        return [(temperature / Lambda)**0.5 for Lambda in self.Lambdas]
+        return [(temperature / abs(Lambda))**0.5 for Lambda in self.Lambdas]
     #end def
 
     def _get_thermal_epsilon(self, temperature):
-        return [(temperature / Lambda)**0.5 for Lambda in self.hessian.diagonal]
+        return [(temperature / abs(Lambda))**0.5 for Lambda in self.hessian.diagonal]
     #end def
 
     # override to set targets instead of results
@@ -319,11 +341,6 @@ useful keyword arguments:
         if set_target:
             for ls in self.ls_list:
                 kwargs.update({'grid': ls.grid, 'values': ls.values})
-                #print(kwargs)
-                #print(ls.grid)
-                #print(ls.values)
-                #print('gwaeg')
-                #ls.set_target(ls.grid, ls.values, **kwargs)
                 ls.set_target(**kwargs)
             #end for
         #end if
@@ -386,7 +403,7 @@ useful keyword arguments:
         return error_d, error_p
     #end def
 
-    def _resample_errors_p_of_d(self, epsilon_d, target = 0.0, **kwargs):
+    def _resample_errors_p_of_d(self, epsilon_d, target, **kwargs):
         windows, noises = self._windows_noises_of_epsilon_d(epsilon_d, **kwargs)
         return self._resample_errors(windows, noises, **kwargs)[1] - target
     #end def

@@ -120,7 +120,7 @@ def test_targetparallellinesearch_class():
     assert match_values(srg.noises,    [0.0012931044354766712, 0.0020488272849220335])
     assert match_values(srg.error_d,   [0.00741869, 0.01224184])
     assert match_values(srg.error_p,   [0.00963971, 0.0133939])
-    assert match_values(srg.epsilon_d, [0.008087707415388121, 0.01276126397847382])
+    assert match_values(srg.epsilon_d, [0.008190424524106486, 0.012923337118875344])
     assert match_values(srg.epsilon_p, [0.01, 0.015])
 
     #5 epsilon_p with ls
