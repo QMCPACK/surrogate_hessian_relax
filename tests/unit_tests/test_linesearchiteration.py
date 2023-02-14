@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
-from numpy import array, exp, nan, isnan, random, polyval, linspace
-from pytest import raises
-from testing import match_values, add_unit_test
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
-from unit_tests.assets import job_H2O_pes, analyze_H2O_pes
+from surrogate_classes import match_values
+
+from assets import pos_H2O, get_structure_H2O, get_hessian_H2O
+from assets import get_surrogate_H2O
+from assets import Gs_N200_M7
+from assets import job_H2O_pes, analyze_H2O_pes
 
 
 # test LineSearchIteration class
@@ -78,5 +76,5 @@ def test_linesearchiteration_class():
     assert match_values(lsi.pls().ls(0).grid, grid0_ref, tol = 1e-5)
     assert match_values(lsi.pls().ls(1).grid, grid1_ref, tol = 1e-5)
     rmtree(test_dir)
+    rmtree('tmp/')
 #end def
-add_unit_test(test_linesearchiteration_class)

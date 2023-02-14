@@ -3,7 +3,7 @@
 from numpy import array, exp, random
 from pytest import raises
 
-from testing import add_unit_test, match_values
+from surrogate_classes import match_values
 
 
 def test_get_min_params():
@@ -36,7 +36,6 @@ def test_get_min_params():
 
     # TODO: test faulty behavior
 #end def
-add_unit_test(test_get_min_params)
 
 
 def test_get_fraction_error():
@@ -57,4 +56,3 @@ def test_get_fraction_error():
         err,ave = get_fraction_error(N,fraction=-0.1)
     #end with 
 #end def
-add_unit_test(test_get_fraction_error)

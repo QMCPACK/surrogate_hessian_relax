@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 
-from numpy import array, exp, nan, isnan, random, polyval, linspace
-from pytest import raises
-from testing import match_values, add_unit_test
+from numpy import array
+from surrogate_classes import match_values
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
-
+from assets import hessian_H2O, pes_H2O, get_structure_H2O, get_hessian_H2O
 
 def test_parallellinesearch_class():
     from surrogate_classes import ParallelLineSearch
@@ -110,5 +105,7 @@ def test_parallellinesearch_class():
         window_frac = 0.1,
         noises = None,)
     assert match_values(pls.Lambdas, [0.074919, 0.030092], tol = 1e-5)
+
+    from shutil import rmtree
+    rmtree('pls/')
 #end def
-add_unit_test(test_parallellinesearch_class)

@@ -2,13 +2,9 @@
 
 from numpy import array, exp, nan, isnan, random, polyval
 from pytest import raises
-from testing import match_values, add_unit_test
+from surrogate_classes import match_values
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
-
+from assets import hessian_H2O, get_structure_H2O, hessian_real_H2O
 
 
 def test_parameterhessian_class():
@@ -44,5 +40,4 @@ def test_parameterhessian_class():
     '''.split(), dtype = float)
     assert match_values(h.hessian, h_ref, tol = 1e-5)
 #end def
-add_unit_test(test_parameterhessian_class)
 

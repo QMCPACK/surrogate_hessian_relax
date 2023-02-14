@@ -152,3 +152,17 @@ def directorize(path):
 #end def
 
 
+def match_values(val1, val2, tol = 1e-8, expect_false = False):
+    val1 = array(val1).flatten()
+    val2 = array(val2).flatten()
+    failed = False
+    for v,val in enumerate(abs(val1 - val2)):
+        if val > tol:
+            if not expect_false:
+                print('row {}: {} and {} differ by {} > {}'.format(v, val1[v], val2[v], abs(val), tol))
+            #end if
+            failed = True
+        #end if
+    #end for
+    return not failed
+#end def

@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 
-from numpy import array, exp, nan, isnan, random, polyval, linspace
+from numpy import array
 from pytest import raises
-from testing import match_values, add_unit_test
+from surrogate_classes import match_values
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
-
+from assets import get_structure_H2O, get_hessian_H2O
 
 def test_linesearchbase_class():
     from surrogate_classes import LineSearchBase
@@ -51,7 +47,6 @@ def test_linesearchbase_class():
     assert match_values(pf3, [ 0.42857143, -1.71428571,  2.05714286])
     # TODO: more tests
 #end def
-add_unit_test(test_linesearchbase_class)
 
 
 # test LineSearch
@@ -91,5 +86,4 @@ def test_linesearch_class():
         grid = ls_d0.figure_out_grid(W = -1.0)
     #end with
 #end def
-add_unit_test(test_linesearch_class)
 

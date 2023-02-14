@@ -2,12 +2,12 @@
 
 from numpy import array, exp, nan, isnan, random, polyval, linspace
 from pytest import raises
-from testing import match_values, add_unit_test
+from surrogate_classes import match_values
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
+from assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
+from assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
+from assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
+from assets import morse, Gs_N200_M7
 
 
 def test_targetlinesearchbase_class():
@@ -31,7 +31,6 @@ def test_targetlinesearchbase_class():
     bias_x, bias_y, bias_tot = ls.compute_bias(grid, values)
     # TODO
 #end def
-add_unit_test(test_targetlinesearchbase_class)
 
 
 # test TargetLineSearch class
@@ -197,4 +196,3 @@ def test_targetlinesearch_class():
     assert tls4.optimized
     assert match_values([x5, y5, eps5], (0.10032714486296647, 0.02, 0.05))
 #end def
-add_unit_test(test_targetlinesearch_class)

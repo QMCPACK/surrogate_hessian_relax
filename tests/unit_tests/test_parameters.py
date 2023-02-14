@@ -2,12 +2,11 @@
 
 from numpy import array
 from pytest import raises
-from testing import match_values, add_unit_test
+from surrogate_classes import match_values
 
-from unit_tests.assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from unit_tests.assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from unit_tests.assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
-from unit_tests.assets import morse, Gs_N200_M7
+from assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
+from assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
+from assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
 
 
 def test_parameter_tools():
@@ -24,7 +23,6 @@ def test_parameter_tools():
     assert match_values(mean_distances([(pos[0],pos[1]),(pos[0],pos[2])]),0.957897074324)
     assert match_values(bond_angle(pos[1],pos[0],pos[2]),104.1199307245)
 #end def
-add_unit_test(test_parameter_tools)
 
 
 # Test Parameter class
@@ -40,8 +38,6 @@ def test_parameter_class():
     assert p.unit == 'unit'
     return True
 #end def
-add_unit_test(test_parameter_class)
-
 
 
 # Test ParameterStructureBase class
@@ -153,7 +149,6 @@ def test_parameterstructurebase_class():
     assert match_values(s.params, params_ref2)
     assert match_values(s.pos, pos_orig)
 #end def
-add_unit_test(test_parameterstructurebase_class)
 
 
 # Test ParameterStructure class
@@ -173,4 +168,3 @@ def test_parameterstructure_class():
     assert s2.label == '2'
     assert s1.forward_func == s2.forward_func
 #end def
-add_unit_test(test_parameterstructure_class)

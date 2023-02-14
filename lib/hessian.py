@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean
+from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
 from lib.util import Ry, Hartree, Bohr, directorize, bipolyfit
 from lib.parameters import ParameterSet
@@ -170,7 +170,7 @@ class ParameterHessian():
         dps = array(P * [dp]) if isscalar(dp) else array(dp)
         dp_list, structure_list, label_list = self._get_fdiff_data(eqm, dps)
         if mode == 'pes':
-            Es = [pes_fun(s, **pes_args) for s in structure_list]
+            Es = [pes_func(s, **pes_args) for s in structure_list]
         elif mode == 'nexus':
             from nexus import run_project
             jobs = []

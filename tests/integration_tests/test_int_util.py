@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-from numpy import array,exp,nan,isnan,random
+from numpy import random
 
-from testing import match_values, add_integration_test
+from surrogate_classes import match_values
 
 
-def int_get_fraction_error():
+def test_get_fraction_error():
     from surrogate_classes import get_fraction_error
     # test normal distribution
     sigma = 1.0
@@ -18,4 +18,3 @@ def int_get_fraction_error():
     #end for
     # TODO: test other distributions
 #end def
-add_integration_test(int_get_fraction_error)
