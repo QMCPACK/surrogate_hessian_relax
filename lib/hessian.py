@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""ParameterHessian class to consider Hessians according to a ParameterSet mapping.
+"""
+
 
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
@@ -6,8 +9,9 @@ from lib.util import Ry, Hartree, Bohr, directorize, bipolyfit
 from lib.parameters import ParameterSet
 
 
-# Class for parameter Hessian matrix
 class ParameterHessian():
+    """ParameterHessian class to consider Hessians according to a ParameterSet mapping.
+    """
     hessian = None  # always stored in (Ry/A)**2
     Lambda = None
     structure = None
@@ -37,11 +41,13 @@ class ParameterHessian():
     #end def
 
     def set_structure(self, structure):
+        """Set the Hessian location as a ParameterSet or derived object"""
         assert isinstance(structure, ParameterSet), 'Structure must be ParameterSet object'
         self.structure = structure
     #end def
 
     def init_hessian_structure(self, structure):
+        """Initialize the Hessian from a structure"""
         assert isinstance(structure, ParameterSet), 'Provided argument is not ParameterSet'
         assert structure.check_consistency(), 'Provided ParameterStructure is incomplete or inconsistent'
         hessian = diag(len(structure.params) * [1.0])

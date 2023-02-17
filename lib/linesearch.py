@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+"""
+Generic classes for 1-dimensional line-searches
+"""
 
 from numpy import array, linspace, random, concatenate, polyval, sign, polyder
 from matplotlib import pyplot as plt

@@ -66,7 +66,9 @@ class TargetParallelLineSearch(ParallelLineSearch):
         temperature = None,
         **kwargs,  # e.g. noise_frac
     ):
-        """Optimize parallel line-search for noise using different constraints. The optimizer modes are called in the following order of priority based on input parameters provided:
+        """Optimize parallel line-search for noise using different constraints.
+        
+        The optimizer modes are called in the following order of priority based on input parameters provided:
   1) windows, noises (list, list)
      when windows and noises per DIRECTION are provided, they are allocated to each DIRECTION and parameter errors resampled
   2) temperature (float > 0)
@@ -83,8 +85,7 @@ useful keyword arguments:
   M = number of points
   N = number of points for resampling
   bias_mix = mixing of energy bias to parameter bias
-  fit_kind = fitting function
-        """
+  fit_kind = fitting function"""
         if windows is not None and noises is not None:
             for w, s, ls in zip(windows, noises, self.ls_list):
                 ls.W_opt = w
@@ -296,7 +297,8 @@ useful keyword arguments:
     #end def
 
     def validate(self, N = 500, verbose = False, thr = 1.1):
-        """Validate optimization by independent random resampling"""
+        """Validate optimization by independent random resampling
+        """
         assert self.optimized, 'Must be optimized first'
         ref_error_p, ref_error_d = self._resample_errors(self.windows, self.noises, Gs = None, N = N)
         valid = True
