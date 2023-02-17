@@ -3,7 +3,7 @@
 from numpy import array, exp, random
 from pytest import raises
 
-from surrogate_classes import match_values
+from surrogate_classes import match_to_tol
 
 
 def test_get_min_params():
@@ -23,16 +23,16 @@ def test_get_min_params():
     xmin5,ymin5,pf5 = get_min_params(x_in,y_in,pfn=5)
     xmin6,ymin6,pf6 = get_min_params(x_in,y_in,pfn=6)
 
-    assert match_values(xmin2,4.756835779652)
-    assert match_values(xmin3,3.467303536188)
-    assert match_values(xmin4,2.970625073283)
-    assert match_values(xmin5,2.887435491013)
-    assert match_values(xmin6,2.965039959160)
-    assert match_values(ymin2,-1.6348441686)
-    assert match_values(ymin3,-1.5560903945)
-    assert match_values(ymin4,-1.2521783062)
-    assert match_values(ymin5,-1.0431982684)
-    assert match_values(ymin6,-1.0005432843)
+    assert match_to_tol(xmin2,4.756835779652)
+    assert match_to_tol(xmin3,3.467303536188)
+    assert match_to_tol(xmin4,2.970625073283)
+    assert match_to_tol(xmin5,2.887435491013)
+    assert match_to_tol(xmin6,2.965039959160)
+    assert match_to_tol(ymin2,-1.6348441686)
+    assert match_to_tol(ymin3,-1.5560903945)
+    assert match_to_tol(ymin4,-1.2521783062)
+    assert match_to_tol(ymin5,-1.0431982684)
+    assert match_to_tol(ymin6,-1.0005432843)
 
     # TODO: test faulty behavior
 #end def
@@ -44,9 +44,9 @@ def test_get_fraction_error():
     random.shuffle(N)
     for frac,target in zip([0.0,0.01,0.1,0.5],[50,49,40,0]):
         ave,err = get_fraction_error(N,fraction=frac,both=True)
-        assert match_values(err[0], target)
-        assert match_values(err[1], target)
-        assert match_values(ave, 100)
+        assert match_to_tol(err[0], target)
+        assert match_to_tol(err[1], target)
+        assert match_to_tol(ave, 100)
     #end for
     # test too large fraction
     with raises(ValueError):

@@ -2,7 +2,7 @@
 
 from numpy import array, exp, nan, isnan, random, polyval, linspace
 from pytest import raises
-from surrogate_classes import match_values
+from surrogate_classes import match_to_tol
 
 from assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
 from assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
@@ -85,10 +85,10 @@ def test_targetlinesearch_class():
     0.475500   -0.010680  -0.036409  0.010680   
     0.500000   -0.012562  -0.045427  0.012562  
     '''.split(),dtype=float).reshape(-1,4)
-    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
-    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
-    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
-    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
+    assert match_to_tol(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_to_tol(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_to_tol(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_to_tol(biases_tot, biases_ref[:,3], tol=1e-5)
 
     # bias_mix = 0.4, pf4, cubic
     tls0.set_target(grid, values, interpolate_kind = 'cubic')
@@ -117,10 +117,10 @@ def test_targetlinesearch_class():
     0.500000   -0.021232  0.000067   0.021259  
     '''.split(),dtype=float).reshape(-1,4)
 
-    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
-    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
-    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
-    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
+    assert match_to_tol(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_to_tol(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_to_tol(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_to_tol(biases_tot, biases_ref[:,3], tol=1e-5)
 
     # same as above, but from initialization
     tls4 = TargetLineSearch(
@@ -138,10 +138,10 @@ def test_targetlinesearch_class():
         interpolate_kind = 'cubic',
     )
     biases_x, biases_y, biases_tot = tls4.compute_bias_of(Rs, verbose = False)
-    assert match_values(Rs, biases_ref[:,0], tol=1e-5)
-    assert match_values(biases_x, biases_ref[:,1], tol=1e-5)
-    assert match_values(biases_y, biases_ref[:,2], tol=1e-5)
-    assert match_values(biases_tot, biases_ref[:,3], tol=1e-5)
+    assert match_to_tol(Rs, biases_ref[:,0], tol=1e-5)
+    assert match_to_tol(biases_x, biases_ref[:,1], tol=1e-5)
+    assert match_to_tol(biases_y, biases_ref[:,2], tol=1e-5)
+    assert match_to_tol(biases_tot, biases_ref[:,3], tol=1e-5)
 
     # TODO: unit test maximize_sigma function manually
     # tls_test = TargetLinesearch(structure = s, hessian = h, d = 0)
@@ -178,21 +178,21 @@ def test_targetlinesearch_class():
 1.39992678e-02 1.56528175e-02 1.45600956e-02 1.53117739e-02  1.98755300e-02 2.77348900e-02
 1.39514271e-02 1.72255235e-02 1.57640068e-02 1.63683030e-02  2.07282364e-02 2.84389483e-02
     '''.split(), dtype = float)
-    assert match_values(tls4.W_mat, W_ref, tol = 1e-5)
-    assert match_values(tls4.S_mat, S_ref, tol = 1e-5)
-    assert match_values(tls4.E_mat, E_ref, tol = 1e-5)
+    assert match_to_tol(tls4.W_mat, W_ref, tol = 1e-5)
+    assert match_to_tol(tls4.S_mat, S_ref, tol = 1e-5)
+    assert match_to_tol(tls4.E_mat, E_ref, tol = 1e-5)
 
     x1, y1 = tls4.maximize_sigma(epsilon= 0.01, verbose = False)
     x2, y2 = tls4.maximize_sigma(epsilon= 0.02, verbose = False)
     x3, y3 = tls4.maximize_sigma(epsilon= 0.03, verbose = False)
     x4, y4 = tls4.maximize_sigma(epsilon= 0.04, verbose = False)
-    assert match_values([x1, y1], (0.03344238162098882, 0.0025))
-    assert match_values([x2, y2], (0.05422119081049441, 0.00625))
-    assert match_values([x3, y3], (0.07106506094460124, 0.01125))
-    assert match_values([x4, y4], (0.08360595405247206, 0.015))
+    assert match_to_tol([x1, y1], (0.03344238162098882, 0.0025))
+    assert match_to_tol([x2, y2], (0.05422119081049441, 0.00625))
+    assert match_to_tol([x3, y3], (0.07106506094460124, 0.01125))
+    assert match_to_tol([x4, y4], (0.08360595405247206, 0.015))
     assert not tls4.optimized
     tls4.optimize(epsilon= 0.05, verbose = False)
     x5, y5, eps5 = tls4.W_opt, tls4.sigma_opt, tls4.epsilon
     assert tls4.optimized
-    assert match_values([x5, y5, eps5], (0.10032714486296647, 0.02, 0.05))
+    assert match_to_tol([x5, y5, eps5], (0.10032714486296647, 0.02, 0.05))
 #end def
