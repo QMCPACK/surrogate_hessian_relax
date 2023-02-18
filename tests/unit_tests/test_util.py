@@ -5,6 +5,10 @@ from pytest import raises
 
 from surrogate_classes import match_to_tol
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
+
 
 def test_get_min_params():
     from surrogate_classes import get_min_params

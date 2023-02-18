@@ -2,11 +2,14 @@
 """ParameterHessian class to consider Hessians according to a ParameterSet mapping.
 """
 
-
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
 from lib.util import Ry, Hartree, Bohr, directorize, bipolyfit
 from lib.parameters import ParameterSet
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 class ParameterHessian():

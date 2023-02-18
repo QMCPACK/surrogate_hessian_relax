@@ -1,12 +1,16 @@
-"""
-Generic classes for 1-dimensional line-searches
-"""
+#!/usr/bin/env python3
+'''Generic classes for 1-dimensional line-searches
+'''
 
 from numpy import array, linspace, random, concatenate, polyval, sign, polyder
 from matplotlib import pyplot as plt
 
 from lib.parameters import ParameterSet
 from lib.util import get_min_params, get_fraction_error, W_to_R, directorize
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 # Class for line-search along direction in abstract context

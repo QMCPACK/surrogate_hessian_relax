@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+'''LineSearchIteration class for treating iteration of subsequent parallel linesearches
+'''
 
 from numpy import array, mean
 from dill import loads
@@ -7,6 +9,10 @@ from lib.util import directorize, plot_parameter_convergence, plot_energy_conver
 from lib.parameters import ParameterStructure, ParameterSet
 from lib.hessian import ParameterHessian
 from lib.parallellinesearch import ParallelLineSearch
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 # load pickle from disk

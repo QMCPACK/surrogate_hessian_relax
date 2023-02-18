@@ -6,6 +6,10 @@ from numpy.random import randn
 
 from surrogate_classes import mean_distances, bond_angle, distance
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
+
 harmonic_a = lambda p,a: p[1]*(a-p[0])**2
 # from Nexus
 morse = lambda p,r: p[2]*((1-exp(-(r-p[0])/p[1]))**2-1)+p[3]

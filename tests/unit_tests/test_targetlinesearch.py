@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
-from numpy import array, exp, nan, isnan, random, polyval, linspace
-from pytest import raises
+from numpy import array, linspace
 from surrogate_classes import match_to_tol
 
-from assets import pos_H2O, elem_H2O, forward_H2O, backward_H2O, hessian_H2O, pes_H2O, hessian_real_H2O, get_structure_H2O, get_hessian_H2O
-from assets import pos_H2, elem_H2, forward_H2, backward_H2, hessian_H2, get_structure_H2, get_hessian_H2, get_surrogate_H2O
-from assets import params_GeSe, forward_GeSe, backward_GeSe, hessian_GeSe, elem_GeSe
+from assets import get_structure_H2O, get_hessian_H2O
 from assets import morse, Gs_N200_M7
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 def test_targetlinesearchbase_class():

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+'''A selection of utilities for analysis and interfacing with other codes, etc'''
 
 from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
 from numpy import loadtxt, savetxt, polyfit
@@ -7,8 +8,12 @@ from os.path import exists
 from surrogate_classes import bipolyfit
 from lib.parameters import load_xyz, directorize
 
-default_steps = 10
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
+
+default_steps = 10
 
 # Minimal function for writing line-search structures
 def write_xyz_noise(structure, path, sigma, **kwargs):

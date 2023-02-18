@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+'''ParallelLineSearch class for simultaneous linesearches along conjugate directions'''
 
 from numpy import ndarray, array, matmul
 from os import makedirs, path
@@ -10,6 +11,10 @@ from lib.parameters import ParameterSet
 from lib.hessian import ParameterHessian
 from lib.linesearch import LineSearch
 from lib.pessampler import PesSampler
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 # Class for a bundle of parallel line-searches

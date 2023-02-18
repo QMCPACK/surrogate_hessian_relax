@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
+'''Generic base class for sampling a PES in iterative batches
+'''
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 # Class for managing PesSampler objects
 class CascadeStatus():

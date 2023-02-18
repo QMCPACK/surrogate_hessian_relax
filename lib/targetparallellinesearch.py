@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+'''TargetParallelLinesearch class for assessment of parallel mixed errors
+
+This is the surrogate model used to inform and optimize a parallel line-search.
+'''
 
 from numpy import array, mean, linspace, argmin, where, isnan, nanmax, ceil
 from functools import partial
@@ -7,6 +11,10 @@ from scipy.optimize import broyden1
 from lib.util import get_fraction_error
 from lib.targetlinesearch import TargetLineSearch
 from lib.parallellinesearch import ParallelLineSearch
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 class TargetParallelLineSearch(ParallelLineSearch):

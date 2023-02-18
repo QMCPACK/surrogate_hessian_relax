@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+'''Methods and class definitions regarding physical/abstract parametric mappings'''
 
 from numpy import linalg, pi, arccos, array, dot, isscalar, diag, random, loadtxt
 from scipy.optimize import minimize
@@ -6,16 +7,20 @@ from copy import deepcopy
 
 from lib.util import match_to_tol, get_fraction_error, directorize
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
-# distance between two atomic coordinates
+
 def distance(r0, r1):
+    '''Return Euclidean distance between two positions'''
     r = linalg.norm(r0 - r1)
     return r
 #end def
 
 
-# bond angle between r0-rc and r1-rc bonds
 def bond_angle(r0, rc, r1, units = 'ang'):
+    '''Return dihedral angle between 3 bodies'''
     v1 = r0 - rc
     v2 = r1 - rc
     cosang = dot(v1, v2) / linalg.norm(v1) / linalg.norm(v2)
@@ -25,6 +30,7 @@ def bond_angle(r0, rc, r1, units = 'ang'):
 
 
 def mean_distances(pairs):
+    '''Return average distance over (presumably) identical position pairs'''
     rs = []
     for pair in pairs:
         rs.append(distance(pair[0], pair[1]))

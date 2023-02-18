@@ -5,6 +5,11 @@ from surrogate_classes import match_to_tol
 
 from assets import hessian_H2O, pes_H2O, get_structure_H2O, get_hessian_H2O
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
+
+
 def test_parallellinesearch_class():
     from surrogate_classes import ParallelLineSearch
     from surrogate_classes import ParameterSet

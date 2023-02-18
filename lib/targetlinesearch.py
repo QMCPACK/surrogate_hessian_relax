@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+'''TargetLineSearch classes for the assessment and evaluation of fitting errors
+'''
 
 from numpy import array, argsort, isscalar, linspace, append, nan, isnan, where
 from numpy import random, argmax, argmin
@@ -6,6 +8,10 @@ from scipy.interpolate import interp1d, PchipInterpolator
 
 from lib.util import R_to_W
 from lib.linesearch import LineSearchBase, LineSearch
+
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
 
 
 # Class for line-search with resampling and bias assessment against target

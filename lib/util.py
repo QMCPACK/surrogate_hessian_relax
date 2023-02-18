@@ -8,6 +8,8 @@ from matplotlib import pyplot as plt
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
+
 
 Bohr = 0.5291772105638411  # A
 Ry = 13.605693012183622  # eV

@@ -8,6 +8,10 @@ from assets import get_surrogate_H2O
 from assets import Gs_N200_M7
 from assets import job_H2O_pes, analyze_H2O_pes
 
+__author__ = "Juha Tiihonen"
+__email__ = "tiihonen@iki.fi"
+__license__ = "BSD-3-Clause"
+
 
 # test LineSearchIteration class
 def test_linesearchiteration_class():
