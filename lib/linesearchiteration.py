@@ -3,7 +3,7 @@
 from numpy import array, mean
 from dill import loads
 
-from lib.util import directorize
+from lib.util import directorize, plot_parameter_convergence, plot_energy_convergence, plot_bundled_convergence
 from lib.parameters import ParameterStructure, ParameterSet
 from lib.hessian import ParameterHessian
 from lib.parallellinesearch import ParallelLineSearch
@@ -204,6 +204,25 @@ class LineSearchIteration():
 
     def pop(self):
         return self.pls_list.pop()
+    #end def
+
+    def plot_convergence(
+        self,
+        transient = 1,
+        target_convergence = True,
+        bundle = True,
+        **kwargs
+    ):
+        if target_convergence:
+            targets = self.get_average_params(transient = transient, get_errs = False)
+        else:
+            targets = None
+        #end if
+        if bundle:
+            plot_bundled_convergence(self.pls_list, targets = targets, **kwargs)
+        else:
+            plot_energy_convergence(self.pls_list, **kwargs)
+            plot_parameter_convergence(self.pls_list, targets = targets, **kwargs)
     #end def
 
 #end class

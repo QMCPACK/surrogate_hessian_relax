@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
-from numpy import loadtxt, savetxt
+from numpy import loadtxt, savetxt, polyfit
 from os import makedirs
 from os.path import exists
 from surrogate_classes import bipolyfit
-from lib.parameters import load_xyz, directorize, load_xsf
+from lib.parameters import load_xyz, directorize
 
 default_steps = 10
 
@@ -388,13 +388,6 @@ def generate_surrogate(
 #end def
 
 
-# TODO: make this more fun
-def get_color(l):
-    colors = 'rgbmck'
-    return colors[l % len(colors)]
-#end def
-
-
 from matplotlib import pyplot as plt
 def plot_surrogate_pes(
     surrogate,  # surrogate object
@@ -690,6 +683,6 @@ def linesearch_diagnostics(
     #end for
 
     if show_plot:
-        pass  # WIP
+        lsi.plot_convergence()
     #end if
 #end def

@@ -602,8 +602,11 @@ class LineSearch(LineSearchBase):
             f, ax = plt.subplots()
         #end if
         xdata = self.grid
+        ydata = self.values
         xmin = xdata.min()
         xmax = xdata.max()
+        ymin = ydata.min()
+        ymax = ydata.max()
         xlen = xmax - xmin
         xlims = [xmin - xlen / 8, xmax + xlen / 8]
         xllims = [xmin + xlen / 8, xmax - xlen / 8]
@@ -611,8 +614,8 @@ class LineSearch(LineSearchBase):
         xlgrid = linspace(xllims[0], xllims[1], 201)
         ydata = self.values
         edata = self.errors
-        x0 = self.x0
-        y0 = self.y0
+        x0 = self.x0 if self.x0 is not None else 0
+        y0 = self.y0 if self.x0 is not None else ymin
         x0e = self.x0_err
         y0e = self.y0_err
         # plot lambda
