@@ -55,7 +55,6 @@ class TargetLineSearchBase(LineSearchBase):
         if self.target_y0 is None:
             self.target_y0 = self.target_values.min()  # approximation
         #end if
-        self.set_grid(grid)
         self.target_xlim = [grid.min(), grid.max()]
         if interpolate_kind == 'pchip':
             self.target_in = PchipInterpolator(grid, values, extrapolate = False)

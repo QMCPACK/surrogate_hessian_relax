@@ -195,7 +195,7 @@ useful keyword arguments:
         while all(error_p[where(~isnan(error_p))] < 0.0):
             try:
                 epsilon_d = self._get_thermal_epsilon_d(T)
-                error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose)
+                error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose, **kwargs)
                 error_frac = (error_p + epsilon_p) / epsilon_p
                 if verbose:
                     print('T = {} highest error {} %'.format(T, error_frac * 100))
@@ -209,9 +209,9 @@ useful keyword arguments:
         #end while
         # Second loop: decrease T until the errors are capped
         while not all(error_p[where(~isnan(error_p))] < 0.0):
-            T *= 0.95
+            T *= 0.96
             epsilon_d = self._get_thermal_epsilon_d(T)
-            error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose)
+            error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose, **kwargs)
             error_frac = (error_p + epsilon_p) / epsilon_p
             if verbose:
                 print('T = {} highest error {} %'.format(T, error_frac * 100))
@@ -298,6 +298,7 @@ useful keyword arguments:
         #end for
         self.optimize_windows_noises(windows, noises, Gs = Gs_d, verbose = verbose, **kwargs)
         self.epsilon_d = epsilon_d
+        self.epsilon_p = None  # will be updated later if relevant
     #end def
 
     def get_Gs(self):
@@ -435,7 +436,7 @@ useful keyword arguments:
 
     def get_biases_d(self, windows = None):
         windows = windows if windows is not None else self.windows
-        biases_d = array([ls.compute_bias_of(W = ls.W_opt)[0][0] for ls in self.ls_list])
+        biases_d = array([ls.compute_bias_of(W = W)[0][0] for W, ls in zip(windows, self.ls_list)])
         return biases_d
     #end def
 
