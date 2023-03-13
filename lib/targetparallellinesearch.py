@@ -209,7 +209,7 @@ useful keyword arguments:
         #end while
         # Second loop: decrease T until the errors are capped
         while not all(error_p[where(~isnan(error_p))] < 0.0):
-            T *= 0.96
+            T *= 0.95
             epsilon_d = self._get_thermal_epsilon_d(T)
             error_p = self._resample_errors_p_of_d(epsilon_d, target = epsilon_p, verbose = verbose, **kwargs)
             error_frac = (error_p + epsilon_p) / epsilon_p

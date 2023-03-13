@@ -493,7 +493,16 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         status = False
         Wi, Si = self._argmax_y(self.E_mat, self.T_mat, epsilon)
         W_this, S_this = self.W_mat[0, Wi], self.S_mat[Si, 0]
-        S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
+        if Si < self.S_mat.shape[0] - 1:
+            S_new = (self.S_mat[Si, 0] + self.S_mat[Si + 1, 0]) / 2
+            if abs(S_new - S_this) > self.S_mat.max() * 5e-3:
+                self.insert_sigma_data(S_new)
+                status = True
+                if verbose:
+                    print('  tls{}: Low-res: added sigma = {} to resampling grid'.format(self.d, S_new.round(7)))
+                #end if
+            #end if
+        #end if
         W_lo = (self.W_mat[0, Wi - 1] + self.W_mat[0, Wi]) / 2
         if Wi < len(self.W_mat[0]) - 1:  # whether to add high W value
             W_hi = (self.W_mat[0, Wi] + self.W_mat[0, Wi + 1]) / 2
@@ -510,13 +519,6 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             status = True
             if verbose:
                 print('  tls{}: Low-res: added W = {} to resampling grid'.format(self.d, W_lo.round(7)))
-            #end if
-        #end if
-        if abs(S_new - S_this) > self.S_mat.max() * 5e-3:
-            self.insert_sigma_data(S_new)
-            status = True
-            if verbose:
-                print('  tls{}: Low-res: added sigma = {} to resampling grid'.format(self.d, S_new.round(7)))
             #end if
         #end if
         return status
