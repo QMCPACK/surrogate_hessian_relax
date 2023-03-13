@@ -37,8 +37,8 @@ def write_xsf_noise(structure, path, sigma, **kwargs):
 
 
 # Minimal function for loading energies from disk
-def load_E_err(dir, sigma = 0.0, suffix = 'energy.dat'):
-    fname = dir + '/' + suffix
+def load_E_err(path, sigma = 0.0, suffix = 'energy.dat'):
+    fname = path + '/' + suffix
     if not exists(fname):
         print('skipped {}'.format(fname))
         return None, None
