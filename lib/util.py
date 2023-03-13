@@ -203,24 +203,29 @@ def plot_parameter_convergence(
     labels = labels if labels is not None else ['p' + str(p) for p in P_list]
 
     # init values
+    x_grids = []
     P_vals = []
     P_errs = []
-    xgrid = list(range(len(pls_list) + 1))
     for p in P_list:
         P_vals.append([pls0.structure.params[p] - targets[p]])
         P_errs.append([0.0])
+        x_grids.append([0.0])
     #end for
     # line search params
-    for pls in pls_list:
-        for p in P_list:
-            P_vals[p].append(pls.structure_next.params[p] - targets[p])
-            P_errs[p].append(pls.structure_next.params_err[p])
-        #end for
+    for l, pls in enumerate(pls_list):
+        if pls.status.analyzed:
+            for p in P_list:
+                x_grids[p].append(l)
+                P_vals[p].append(pls.structure_next.params[p] - targets[p])
+                P_errs[p].append(pls.structure_next.params_err[p])
+            #end for
+        #end if
     #end for
     # plot
     for p in P_list:
         P_val = P_vals[p]
         P_err = P_errs[p]
+        xgrid = x_grids[p]
         if p in P_list:
             if separate:
                 f, ax = plt.subplots()
@@ -273,16 +278,18 @@ def plot_energy_convergence(
     #end if
 
     # init values
-    xgrid = list(range(len(pls_list)))
-    E_vals, E_errs = [], []
-    for pls in pls_list:
-        E_vals.append(pls.structure.value)
-        E_errs.append(pls.structure.error)
+    E_vals, E_errs, x_grid = [], [], []
+    for p, pls in enumerate(pls_list):
+        if pls.structure.value is not None:
+            x_grid.append(p)
+            E_vals.append(pls.structure.value)
+            E_errs.append(pls.structure.error)
+        #end if
     #end for
 
     # plot   
     h, c, f = ax.errorbar(
-        xgrid,
+        x_grid,
         E_vals,
         E_errs,
         marker = marker,
@@ -299,7 +306,7 @@ def plot_energy_convergence(
     ax.set_xlabel('Iteration')
     ax.set_ylabel('Energy value')
     ax.set_title('Energy vs iteration')
-    ax.set_xticks(xgrid)
+    ax.set_xticks(x_grid)
 #end def
 
 
