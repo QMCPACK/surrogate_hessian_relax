@@ -77,7 +77,7 @@ class TargetLineSearchBase(LineSearchBase):
     def _compute_xy_bias(self, grid, bias_order = 1, **kwargs):
         x0 = 0
         for i in range(bias_order):
-            grid_this =  array([min([ max([p, -self.R_max]), self.R_max]) for p in (grid + x0)])
+            grid_this =  array([min([ max([p, self.target_grid.min()]), self.target_grid.max()]) for p in (grid + x0)])
             values = self.evaluate_target(grid_this)
             x0, y0, fit = self._search(grid_this, values, sgn = self.sgn, **kwargs)
         #end for
