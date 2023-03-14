@@ -215,7 +215,7 @@ def plot_parameter_convergence(
     for l, pls in enumerate(pls_list):
         if pls.status.analyzed:
             for p in P_list:
-                x_grids[p].append(l)
+                x_grids[p].append(l + 1)
                 P_vals[p].append(pls.structure_next.params[p] - targets[p])
                 P_errs[p].append(pls.structure_next.params_err[p])
             #end for
