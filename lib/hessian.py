@@ -87,7 +87,7 @@ class ParameterHessian():
         # TODO: assertions
         if len(hessian) == 1:
             Lambda = array(hessian[0])
-            U = array([1.0])
+            U = array([[1.0]])
             P, D = 1, 1
         else:
             Lambda, U = linalg.eig(hessian)
