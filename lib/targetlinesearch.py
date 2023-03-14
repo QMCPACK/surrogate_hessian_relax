@@ -74,9 +74,13 @@ class TargetLineSearchBase(LineSearchBase):
         return self._compute_bias(grid, bias_mix, **kwargs)
     #end def
 
-    def _compute_xy_bias(self, grid, **kwargs):
-        values = self.evaluate_target(grid)
-        x0, y0, fit = self._search(grid, values, sgn = self.sgn, **kwargs)
+    def _compute_xy_bias(self, grid, bias_order = 1, **kwargs):
+        x0 = 0
+        for i in range(bias_order):
+            grid_this =  array([min([ max([p, -self.R_max]), self.R_max]) for p in (grid + x0)])
+            values = self.evaluate_target(grid_this)
+            x0, y0, fit = self._search(grid_this, values, sgn = self.sgn, **kwargs)
+        #end for
         bias_x = x0 - self.target_x0
         bias_y = y0 - self.target_y0
         return bias_x, bias_y
@@ -324,7 +328,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         Ws = linspace(0.0, W_max, W_num)
         sigmas = linspace(0.0, sigma_max, sigma_num)
         errors = array(self.M * sigmas[0])
-        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = self.Gs, fit_kind = fit_kind) for W in Ws]
+        E_this = [self._compute_error(self._make_grid_W(W, self.M), errors, Gs = self.Gs, fit_kind = fit_kind, **kwargs) for W in Ws]
         self.fit_kind = fit_kind
         self.E_mat = array([E_this])
         self.W_mat = array([Ws])
