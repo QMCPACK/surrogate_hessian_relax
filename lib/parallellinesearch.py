@@ -71,7 +71,7 @@ class ParallelLineSearch(PesSampler):
             self.set_hessian(hessian)
         #end if
         if self.status.setup:
-            self.guess_windows(windows, window_frac)
+            self.guess_windows(windows, window_frac, no_reset = True)
             self.set_noises(noises)
         #end if
     #end def
@@ -155,10 +155,10 @@ class ParallelLineSearch(PesSampler):
             windows = abs(self.Lambdas)**0.5 * window_frac
             self.windows_frac = window_frac
         #end if
-        self.set_windows(windows)
+        self.set_windows(windows, **kwargs)
     #end def
 
-    def set_windows(self, windows, **kwargs):
+    def set_windows(self, windows, no_reset = False, **kwargs):
         self._avoid_protected()
         self._require_setup()
         if windows is not None:
@@ -166,7 +166,9 @@ class ParallelLineSearch(PesSampler):
             self.windows = array(windows)
         #end if
         self.cascade()
-        self.reset_ls_list(**kwargs)  # always reset ls_list
+        if not no_reset:
+            self.reset_ls_list(**kwargs)  # always reset ls_list
+        #end if
     #end def
 
     def set_noises(self, noises, **kwargs):
