@@ -105,7 +105,6 @@ class TargetLineSearchBase(LineSearchBase):
         return errorbar_x, errorbar_y
     #end def
 
-    # dvalues is an array of value fluctuations: 'errors * Gs' or 'noise * Gs'
     def _compute_errorbar(self, grid, errors, **kwargs):
         values = self.evaluate_target(grid)
         x0, x0_err, y0, y0_err, fit = self._search_with_error(grid, values, errors, sgn = self.sgn, **kwargs)
@@ -116,8 +115,11 @@ class TargetLineSearchBase(LineSearchBase):
         self,
         grid = None,
         errors = None,
+        W = None,
+        R = None,
         **kwargs
     ):
+        grid = self._figure_out_grid(R = R, W = W, grid = grid)
         bias_x, bias_y, bias_tot = self.compute_bias(grid, **kwargs)
         errorbar_x, errorbar_y = self.compute_errorbar(grid, errors, **kwargs)
         error = bias_tot + errorbar_x

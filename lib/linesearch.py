@@ -159,17 +159,18 @@ class LineSearchBase():
         grid,
         values,
         errors,
-        fraction = 0.25,
+        fraction = None,
         fit_kind = None,
         **kwargs,
     ):
         func, func_p = self.get_func(fit_kind)
         x0, y0, fit = self._search_one(grid, values, func, func_p, **kwargs)
+        fraction = fraction if not fraction is None else self.fraction
         # resample for errorbars
         if errors is not None:
             x0s, y0s = self._get_distribution(grid, values, errors, func = func, func_p = func_p, **kwargs)
-            ave, x0_err = get_fraction_error(x0s - x0, fraction = self.fraction)
-            ave, y0_err = get_fraction_error(y0s - y0, fraction = self.fraction)
+            ave, x0_err = get_fraction_error(x0s - x0, fraction = fraction)
+            ave, y0_err = get_fraction_error(y0s - y0, fraction = fraction)
         else:
             x0_err, y0_err = 0.0, 0.0
         #end if
@@ -226,12 +227,13 @@ class LineSearchBase():
         #end if
     #end def
 
-    def get_distribution(self, grid = None, values = None, errors = None, **kwargs):
+    def get_distribution(self, grid = None, values = None, errors = None, fit_kind = None, **kwargs):
         grid = grid if grid is not None else self.grid
         values = values if values is not None else self.values
         errors = errors if errors is not None else self.errors
+        func, func_p = self.get_func(fit_kind)
         assert errors is not None, 'Cannot produce distribution unless errors are provided'
-        return self._get_distribution(grid, values, errors, **kwargs)
+        return self._get_distribution(grid, values, errors, func = func, func_p = func_p, sgn = self.sgn, **kwargs)
     #end def
 
     def get_x0_distribution(self, errors = None, N = 100, **kwargs):
@@ -257,14 +259,14 @@ class LineSearchBase():
         #end def
     #end def
 
-    def _get_distribution(self, grid, values, errors, Gs = None, N = 100, fit_kind = None, **kwargs):
-        func, func_p = self.get_func(fit_kind)
+    # must have func, func_p in **kwargs
+    def _get_distribution(self, grid, values, errors, Gs = None, N = 100, **kwargs):
         if Gs is None:
             Gs = random.randn(N, len(errors))
         #end if
         x0s, y0s, pfs = [], [], []
         for G in Gs:
-            x0, y0, pf = self._search_one(grid, values + errors * G, func, func_p)
+            x0, y0, pf = self._search_one(grid, values + errors * G, **kwargs)
             x0s.append(x0)
             y0s.append(y0)
             pfs.append(pf)
