@@ -9,7 +9,7 @@ from textwrap import indent
 from lib.util import get_fraction_error, directorize
 from lib.parameters import ParameterSet
 from lib.hessian import ParameterHessian
-from lib.linesearch import LineSearch
+from lib.linesearch import LineSearch, LineSearchDummy
 from lib.pessampler import PesSampler
 
 __author__ = "Juha Tiihonen"
@@ -55,6 +55,7 @@ class ParallelLineSearch(PesSampler):
         fraction = 0.025,
         mode = 'pes',  # (nexus|files|pes)
         shift_params = None,
+        D = None,
         **kwargs,
     ):
         PesSampler.__init__(self, mode, **kwargs)
@@ -71,8 +72,8 @@ class ParallelLineSearch(PesSampler):
             self.set_hessian(hessian)
         #end if
         if self.status.setup:
-            self.guess_windows(windows, window_frac, no_reset = True)
-            self.set_noises(noises)
+            self.guess_windows(windows, window_frac, no_reset = True, D = D)
+            self.set_noises(noises, D = D)
         #end if
     #end def
 
@@ -191,19 +192,25 @@ class ParallelLineSearch(PesSampler):
         self._require_shifted()
         if D is None:
             D = range(self.D)
+        else:
+            D = [ d if d in D else None for d in range(self.D) ]
         #end if
+        assert len(D) == self.D, 'len(D) must match D'
         noises = self.noises if self.noisy else self.D * [None]
         ls_list = []
         for d, window, noise in zip(D, self.windows, noises):
-            ls = self.ls_type(
-                structure = self.structure,
-                hessian = self.hessian,
-                d = d,
-                W = window,
-                M = self.M,
-                fit_kind = self.fit_kind,
-                sigma = noise,
-                **kwargs)
+            if d is None:
+                ls = LineSearchDummy(d = d)
+            else:
+                ls = self.ls_type(
+                    structure = self.structure,
+                    hessian = self.hessian,
+                    d = d,
+                    W = window,
+                    M = self.M,
+                    fit_kind = self.fit_kind,
+                    sigma = noise,
+                    **kwargs)
             ls_list.append(ls)
         #end for
         self.ls_list = ls_list
@@ -373,7 +380,7 @@ class ParallelLineSearch(PesSampler):
 
     def find_eqm_value(self):
         E, err = None, None
-        for ls in self.ls_list:
+        for ls in filter(lambda x: not isinstance(x, LineSearchDummy), self.ls_list):
             for s in ls.structure_list:
                 if sum((self.structure.params - s.params)**2) < 1e-10:
                     E, err = s.value, s.error
@@ -498,7 +505,7 @@ class ParallelLineSearch(PesSampler):
             string += '\n  Line-searches: None'
         else:
             string += '\n  Line-searches:\n'
-            string += indent('\n'.join(['#{:<2d} {}'.format(ls.d, str(ls)) for ls in self.ls_list]), '    ')
+            string += indent('\n'.join(['#{:<2d} {}'.format(ls.d, str(ls)) for ls in filter(lambda x: not isinstance(x, LineSearchDummy), self.ls_list)]), '    ')
         #end if
         # TODO
         return string

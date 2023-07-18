@@ -111,6 +111,11 @@ def test_parallellinesearch_class():
         noises = None,)
     assert match_to_tol(pls.Lambdas, [0.074919, 0.030092], tol = 1e-5)
 
+    # test partial line-search
+    pls.reset_ls_list(D=[1])
+    pls.load_results()
+    assert match_to_tol(pls.propagate().structure.params, [1.170805, 104.283132], tol = 1e-5)
+
     from shutil import rmtree
     rmtree('pls/')
 #end def
