@@ -2,7 +2,7 @@
 '''Generic classes for 1-dimensional line-searches
 '''
 
-from numpy import array, linspace, random, concatenate, polyval, sign, polyder
+from numpy import array, linspace, random, concatenate, polyval, sign, polyder, equal
 from matplotlib import pyplot as plt
 
 from lib.parameters import ParameterSet
@@ -33,11 +33,11 @@ class LineSearchBase():
 
     def __init__(
         self,
-        grid = None,
-        values = None,
-        errors = None,
-        fraction = 0.025,
-        sgn = 1,
+        grid=None,
+        values=None,
+        errors=None,
+        fraction=0.025,
+        sgn=1,
         **kwargs,
     ):
         self.fraction = fraction
@@ -45,62 +45,64 @@ class LineSearchBase():
         self.sgn = sgn
         if grid is not None:
             self.set_grid(grid)
-        #end if
+        # end if
         if values is not None:
-            self.set_values(grid, values, errors, also_search = (self.grid is not None))
-        #end if
-    #end def
+            self.set_values(grid, values, errors,
+                            also_search=(self.grid is not None))
+        # end if
+    # end def
 
     def set_func(
         self,
-        fit_kind = 'pf3',
+        fit_kind='pf3',
         **kwargs
     ):
         self.func, self.func_p = self._get_func(fit_kind)
         self.fit_kind = fit_kind
-    #end def
+    # end def
 
-    def get_func(self, fit_kind = None):
+    def get_func(self, fit_kind=None):
         if fit_kind is None:
             return self.func, self.func_p
         else:
             return self._get_func(fit_kind)
-        #end if
-    #end def
+        # end if
+    # end def
 
     def _get_func(self, fit_kind):
         if 'pf' in fit_kind:
             func = self._pf_search
             func_p = int(fit_kind[2:])
         else:
-            raise('Fit kind {} not recognized'.format(fit_kind))
-        #end if
+            raise ('Fit kind {} not recognized'.format(fit_kind))
+        # end if
         return func, func_p
-    #end def
+    # end def
 
     def set_grid(self, grid):
         assert len(grid) > 2, 'Number of grid points must be greater than 2'
         self.reset()
         self.grid = array(grid)
-    #end def
+    # end def
 
-    def set_values(self, grid = None, values = None, errors = None, also_search = True):
+    def set_values(self, grid=None, values=None, errors=None, also_search=True):
         grid = grid if grid is not None else self.grid
         assert values is not None, 'must set values'
-        assert len(values) == len(grid), 'Number of values does not match the grid'
+        assert len(values) == len(
+            grid), 'Number of values does not match the grid'
         self.reset()
         if errors is None:
             self.errors = None
         else:
             self.errors = array(errors)
-        #end if
+        # end if
         self.set_grid(grid)
         self.values = array(values)
         self.mask = len(values) * [True]
-        if also_search and not all(array(values) == None):
+        if also_search and not all(equal(array(values), None)):
             self.search()
-        #end if
-    #end def
+        # end if
+    # end def
 
     def search(self, **kwargs):
         """Perform line-search with the preset values and settings, saving the result to self."""
@@ -110,9 +112,9 @@ class LineSearchBase():
             self.grid[self.mask],
             self.values[self.mask],
             errors,
-            fit_kind = self.fit_kind,
-            fraction = self.fraction,
-            sgn = self.sgn,
+            fit_kind=self.fit_kind,
+            fraction=self.fraction,
+            sgn=self.sgn,
             **kwargs)
         self.x0 = res[0]
         self.y0 = res[2]
@@ -120,62 +122,65 @@ class LineSearchBase():
         self.y0_err = res[3]
         self.fit = res[4]
         self.analyzed = True
-    #end def
+    # end def
 
     def disable_value(self, i):
-        assert i < len(self.mask), 'Cannot disable element {} from array of {}'.format(i, len(self.mask))
+        assert i < len(self.mask), 'Cannot disable element {} from array of {}'.format(
+            i, len(self.mask))
         self.mask[i] = False
-    #end def
+    # end def
 
     def enable_value(self, i):
-        assert i < len(self.mask), 'Cannot enable element {} from array of {}'.format(i, len(self.mask))
+        assert i < len(self.mask), 'Cannot enable element {} from array of {}'.format(
+            i, len(self.mask))
         self.mask[i] = True
-    #end def
+    # end def
 
     def _search(
         self,
         grid,
         values,
-        fit_kind = None,
+        fit_kind=None,
         **kwargs,
     ):
         func, func_p = self.get_func(fit_kind)
         return self._search_one(grid, values, func, func_p, **kwargs)
-    #end def
+    # end def
 
     def _search_one(
         self,
         grid,
         values,
         func,
-        func_p = None,
+        func_p=None,
         **kwargs,
     ):
         return func(grid, values, func_p, **kwargs)  # x0, y0, fit
-    #end def
+    # end def
 
     def _search_with_error(
         self,
         grid,
         values,
         errors,
-        fraction = None,
-        fit_kind = None,
+        fraction=None,
+        fit_kind=None,
         **kwargs,
     ):
         func, func_p = self.get_func(fit_kind)
         x0, y0, fit = self._search_one(grid, values, func, func_p, **kwargs)
-        fraction = fraction if not fraction is None else self.fraction
+        fraction = fraction if fraction is not None else self.fraction
         # resample for errorbars
         if errors is not None:
-            x0s, y0s = self._get_distribution(grid, values, errors, func = func, func_p = func_p, **kwargs)
-            ave, x0_err = get_fraction_error(x0s - x0, fraction = fraction)
-            ave, y0_err = get_fraction_error(y0s - y0, fraction = fraction)
+            x0s, y0s = self._get_distribution(
+                grid, values, errors, func=func, func_p=func_p, **kwargs)
+            ave, x0_err = get_fraction_error(x0s - x0, fraction=fraction)
+            ave, y0_err = get_fraction_error(y0s - y0, fraction=fraction)
         else:
             x0_err, y0_err = 0.0, 0.0
-        #end if
+        # end if
         return x0, x0_err, y0, y0_err, fit
-    #end def
+    # end def
 
     def _pf_search(
         self,
@@ -185,70 +190,70 @@ class LineSearchBase():
         **kwargs,
     ):
         return get_min_params(grid, values, pfn, **kwargs)
-    #end def
+    # end def
 
     def reset(self):
         self.x0, self.x0_err, self.y0, self.y0_err, self.fit = None, None, None, None, None
-    #end def
+    # end def
 
-    def get_x0(self, err = True):
+    def get_x0(self, err=True):
         assert self.x0 is not None, 'x0 must be computed first'
         if err:
             return self.x0, self.x0_err
         else:
             return self.x0
-        #end if
-    #end def
+        # end if
+    # end def
 
-    def get_y0(self, err = True):
+    def get_y0(self, err=True):
         assert self.y0 is not None, 'y0 must be computed first'
         if err:
             return self.y0, self.y0_err
         else:
             return self.y0
-        #end if
-    #end def
+        # end if
+    # end def
 
-    def get_hessian(self, x = None):
+    def get_hessian(self, x=None):
         x = x if x is not None else self.x0
         if self.fit is None:
             return None
         else:
             return polyval(polyder(polyder(self.fit)), x)
-        #end if
-    #end def
+        # end if
+    # end def
 
-    def get_force(self, x = None):
+    def get_force(self, x=None):
         x = x if x is not None else 0.0
         if self.fit is None:
             return None
         else:
             return -polyval(polyder(self.fit), x)
-        #end if
-    #end def
+        # end if
+    # end def
 
-    def get_distribution(self, grid = None, values = None, errors = None, fit_kind = None, **kwargs):
+    def get_distribution(self, grid=None, values=None, errors=None, fit_kind=None, **kwargs):
         grid = grid if grid is not None else self.grid
         values = values if values is not None else self.values
         errors = errors if errors is not None else self.errors
         func, func_p = self.get_func(fit_kind)
         assert errors is not None, 'Cannot produce distribution unless errors are provided'
-        return self._get_distribution(grid, values, errors, func = func, func_p = func_p, sgn = self.sgn, **kwargs)
-    #end def
+        return self._get_distribution(grid, values, errors, func=func, func_p=func_p, sgn=self.sgn, **kwargs)
+    # end def
 
-    def get_x0_distribution(self, errors = None, N = 100, **kwargs):
+    def get_x0_distribution(self, errors=None, N=100, **kwargs):
         if errors is None:
-            return array(N * [self.get_x0(err = False)])
-        #end if
-        return self.get_distribution(errors = errors, **kwargs)[0]
-    #end def
+            return array(N * [self.get_x0(err=False)])
+        # end if
+        return self.get_distribution(errors=errors, **kwargs)[0]
+    # end def
 
-    def get_y0_distribution(self, errors = None, N = 100, **kwargs):
+    def get_y0_distribution(self, errors=None, N=100, **kwargs):
         if errors is None:
-            return array(N * [self.get_y0(err = False)])
-        #end if
-        return self.get_distribution(errors = errors, **kwargs)[1]
-    #end def
+            return array(N * [self.get_y0(err=False)])
+        # end if
+        return self.get_distribution(errors=errors, **kwargs)[1]
+    # end def
 
     # TODO: refactor to support generic fitting functions
     def val_data(self, xdata):
@@ -256,44 +261,46 @@ class LineSearchBase():
             return None
         else:
             return polyval(self.fit, xdata)
-        #end def
-    #end def
+        # end def
+    # end def
 
     # must have func, func_p in **kwargs
-    def _get_distribution(self, grid, values, errors, Gs = None, N = 100, **kwargs):
+    def _get_distribution(self, grid, values, errors, Gs=None, N=100, **kwargs):
         if Gs is None:
             Gs = random.randn(N, len(errors))
-        #end if
+        # end if
         x0s, y0s, pfs = [], [], []
         for G in Gs:
             x0, y0, pf = self._search_one(grid, values + errors * G, **kwargs)
             x0s.append(x0)
             y0s.append(y0)
             pfs.append(pf)
-        #end for
-        return array(x0s, dtype = float), array(y0s, dtype = float)
-    #end def
+        # end for
+        return array(x0s, dtype=float), array(y0s, dtype=float)
+    # end def
 
     def __str__(self):
         string = self.__class__.__name__
         if self.fit_kind is not None:
             string += '\n  fit_kind: {:s}'.format(self.fit_kind)
-        #end if
+        # end if
         string += self.__str_grid__()
         if self.x0 is None:
             string += '\n  x0: not set'
         else:
-            x0_err = '' if self.x0_err is None else ' +/- {: <8f}'.format(self.x0_err)
+            x0_err = '' if self.x0_err is None else ' +/- {: <8f}'.format(
+                self.x0_err)
             string += '\n  x0: {: <8f} {:s}'.format(self.x0, x0_err)
-        #end if
+        # end if
         if self.y0 is None:
             string += '\n  y0: not set'
         else:
-            y0_err = '' if self.y0_err is None else ' +/- {: <8f}'.format(self.y0_err)
+            y0_err = '' if self.y0_err is None else ' +/- {: <8f}'.format(
+                self.y0_err)
             string += '\n  y0: {: <8f} {:s}'.format(self.y0, y0_err)
-        #end if
+        # end if
         return string
-    #end def
+    # end def
 
     # str of grid
     def __str_grid__(self):
@@ -301,17 +308,20 @@ class LineSearchBase():
             string = '\n  data: no grid'
         else:
             string = '\n  data:'
-            values = self.values if self.values is not None else len(self.values) * ['-']
-            errors = self.errors if self.errors is not None else len(self.values) * ['-']
-            string += '\n    {:9s} {:9s} {:9s}'.format('grid', 'value', 'error')
+            values = self.values if self.values is not None else len(
+                self.values) * ['-']
+            errors = self.errors if self.errors is not None else len(
+                self.values) * ['-']
+            string += '\n    {:9s} {:9s} {:9s}'.format(
+                'grid', 'value', 'error')
             for g, v, e in zip(self.grid, values, errors):
                 string += '\n    {: 8f} {:9s} {:9s}'.format(g, str(v), str(e))
-            #end for
-        #end if
+            # end for
+        # end if
         return string
-    #end def
+    # end def
 
-#end class
+# end class
 
 
 # Class for PES line-search in structure context
@@ -333,33 +343,35 @@ class LineSearch(LineSearchBase):
 
     def __init__(
         self,
-        structure = None,
-        hessian = None,
-        d = 0,
-        sigma = 0.0,
-        grid = None,
+        structure=None,
+        hessian=None,
+        d=0,
+        sigma=0.0,
+        grid=None,
         **kwargs,
     ):
         self.sigma = sigma if sigma is not None else 0.0
         self.d = d
         if structure is not None:
             self.set_structure(structure)
-        #end if
+        # end if
         if hessian is not None:
             self.set_hessian(hessian)
-            self.figure_out_grid(grid = grid, **kwargs)
-            LineSearchBase.__init__(self, grid = self.grid, sgn = self.sgn, **kwargs)
+            self.figure_out_grid(grid=grid, **kwargs)
+            LineSearchBase.__init__(
+                self, grid=self.grid, sgn=self.sgn, **kwargs)
             self.shift_structures()  # shift
         else:
             LineSearchBase.__init__(self, **kwargs)
-        #end if
-    #end def
+        # end if
+    # end def
 
     def set_structure(self, structure):
-        assert isinstance(structure, ParameterSet), 'provided structure is not a ParameterSet object'
+        assert isinstance(
+            structure, ParameterSet), 'provided structure is not a ParameterSet object'
         assert structure.check_consistency(), 'Provided structure is not a consistent mapping'
         self.structure = structure
-    #end def
+    # end def
 
     def set_hessian(self, hessian):
         self.hessian = hessian
@@ -367,42 +379,42 @@ class LineSearch(LineSearchBase):
         self.Lambda = abs(Lambda)
         self.sgn = sign(Lambda)
         self.direction = hessian.get_directions(self.d)
-    #end def
+    # end def
 
     def figure_out_grid(self, **kwargs):
         self.grid, self.M = self._figure_out_grid(**kwargs)
-    #end def
+    # end def
 
-    def _figure_out_grid(self, M = None, W = None, R = None, grid = None, **kwargs):
+    def _figure_out_grid(self, M=None, W=None, R=None, grid=None, **kwargs):
         if M is None:
             M = self.M if self.M is not None else 7  # universal default
-        #end if
+        # end if
         if grid is not None:
             self.M = len(grid)
         elif R is not None:
             assert not R < 0, 'R cannot be negative, {} requested'.format(R)
-            grid = self._make_grid_R(R, M = M)
+            grid = self._make_grid_R(R, M=M)
             self.R = R
         elif W is not None:
             assert not W < 0, 'W cannot be negative, {} requested'.format(W)
-            grid = self._make_grid_W(W, M = M)
+            grid = self._make_grid_W(W, M=M)
             self.W = W
         else:
             raise AssertionError('Must characterize grid')
-        #end if
+        # end if
         return grid, M
-    #end def
+    # end def
 
     def _make_grid_R(self, R, M):
         R = max(R, 1e-4)
         grid = linspace(-R, R, M)
         return grid
-    #end def
+    # end def
 
     def _make_grid_W(self, W, M):
         R = W_to_R(max(W, 1e-4), self.Lambda)
-        return self._make_grid_R(R, M = M)
-    #end def
+        return self._make_grid_R(R, M=M)
+    # end def
 
     def shift_structures(self):
         structure_list = []
@@ -411,22 +423,22 @@ class LineSearch(LineSearchBase):
             structure = self._shift_structure(shift)
             structure_list.append(structure)
             jobs_list.append(False)
-        #end for
+        # end for
         self.structure_list = structure_list
         self.jobs_list = jobs_list
         self.shifted = True
-    #end def
+    # end def
 
     def add_shift(self, shift):
         structure = self._shift_structure(shift)
         self.structure_list.append(structure)
         self.jobs_list.append(False)
-        if not shift in self.grid:
+        if shift not in self.grid:
             self.grid = concatenate([self.grid, [shift]])
-        #end if
-    #end def
+        # end if
+    # end def
 
-    def _shift_structure(self, shift, roundi = 4):
+    def _shift_structure(self, shift, roundi=4):
         shift_rnd = round(shift, roundi)
         params_this = self.structure.params
         if shift_rnd == 0.0:
@@ -436,31 +448,31 @@ class LineSearch(LineSearchBase):
             sgn = '' if shift_rnd < 0 else '+'
             label = 'd{}_{}{}'.format(self.d, sgn, shift_rnd)
             params = params_this + shift * self.direction
-        #end if
-        structure = self.structure.copy(params = params, label = label)
+        # end if
+        structure = self.structure.copy(params=params, label=label)
         return structure
-    #end def
+    # end def
 
     def evaluate_pes(
         self,
         pes_func,
-        pes_args = {},
+        pes_args={},
         **kwargs,
     ):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = pes_func(structure, sigma = self.sigma, **pes_args)
+            value, error = pes_func(structure, sigma=self.sigma, **pes_args)
             grid.append(shift)
             values.append(value)
             errors.append(error)
-        #end for
+        # end for
         return array(grid), array(values), array(errors)
-    #end def
+    # end def
 
     def generate_jobs(
         self,
         pes_func,
-        exclude_eqm = True,
+        exclude_eqm=True,
         **kwargs,
     ):
         assert self.shifted, 'Must shift parameters first before generating jobs'
@@ -470,17 +482,17 @@ class LineSearch(LineSearchBase):
                 continue
             else:
                 self.jobs_list[si] = True
-            #end if
+            # end if
             if exclude_eqm and structure.label == 'eqm':
                 continue
-            #end if
+            # end if
             s = structure.copy()
             s.to_nexus_only()
             jobs += self._generate_jobs(pes_func, s, **kwargs)
-        #end for
+        # end for
         self.generated = True
         return jobs
-    #end def
+    # end def
 
     # job must accept 0: position, 1: path, 2: sigma
     def generate_eqm_jobs(
@@ -491,128 +503,129 @@ class LineSearch(LineSearchBase):
     ):
         if self.generated:
             return []
-        #end if
+        # end if
         structure = self.structure.copy()  # copy to be safe
         structure.to_nexus_only()
-        return self._generate_jobs(pes_func, structure, sigma = sigma, **kwargs)
-    #end def
+        return self._generate_jobs(pes_func, structure, sigma=sigma, **kwargs)
+    # end def
 
     def _make_job_path(self, path, label):
         return '{}{}'.format(directorize(path), label)
-    #end def
+    # end def
 
     # pes_func must accept 0: structure, 1: path, 2: sigma
     def _generate_jobs(
         self,
         pes_func,
         structure,
-        sigma = None,
-        path = '',
+        sigma=None,
+        path='',
         **kwargs,
     ):
         sigma = sigma if sigma is not None else self.sigma
         path = self._make_job_path(path, structure.label)
-        return pes_func(structure, path = path, sigma = sigma, **kwargs)
-    #end def
+        return pes_func(structure, path=path, sigma=sigma, **kwargs)
+    # end def
 
-    def analyze_job(self, label, load_func, load_args = {}, path = '', add_sigma = False, sigma = None, **kwargs):
+    def analyze_job(self, label, load_func, load_args={}, path='', add_sigma=False, sigma=None, **kwargs):
         value, error = load_func(self._make_job_path(path, label), **load_args)
         sigma = sigma if sigma is not None else self.sigma
         if add_sigma:
             error += sigma
             value += sigma * random.randn(1)[0]
-        #end if
+        # end if
         return value, error
-    #end def
+    # end def
 
     # analyzer fuctions must accept 0: path
     #   return energy, errorbar
-    def analyze_jobs(self, load_func, prune0 = True, **kwargs):
+    def analyze_jobs(self, load_func, prune0=True, **kwargs):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = self.analyze_job(structure.label, load_func = load_func, **kwargs)
+            value, error = self.analyze_job(
+                structure.label, load_func=load_func, **kwargs)
             structure.set_value(value, error)
             # FIXME: skipping values messes up the grid <-> list consistency
             if prune0 and value == 0:
-                print('ls{}: skipped shift = {}, value {}'.format(self.d, shift, value))
+                print('ls{}: skipped shift = {}, value {}'.format(
+                    self.d, shift, value))
             else:
                 grid.append(shift)
                 values.append(value)
                 errors.append(error)
-            #end if
-        #end for
+            # end if
+        # end for
         return array(grid), array(values), array(errors)
-    #end def
+    # end def
 
-    def load_results(self, grid = None, values = None, errors = None, load_func = None, **kwargs):
+    def load_results(self, grid=None, values=None, errors=None, load_func=None, **kwargs):
         if load_func is not None:
             grid, values, errors = self.analyze_jobs(load_func, **kwargs)
         else:
             # allow to input only values, not grid
             grid = grid if grid is not None else self.grid
-        #end if
+        # end if
         self.loaded = self.set_results(grid, values, errors, **kwargs)
         return self.loaded
-    #end def
+    # end def
 
-    def load_eqm_results(self, load_func = None, values = None, errors = None, **kwargs):
+    def load_eqm_results(self, load_func=None, values=None, errors=None, **kwargs):
         if load_func is not None:
             value, error = self.analyze_job('eqm', load_func, **kwargs)
         else:
             value, error = values, errors
-        #end if
+        # end if
         return value, error
-    #end def
+    # end def
 
     def set_results(
         self,
         grid,
         values,
-        errors = None,
+        errors=None,
         **kwargs
     ):
-        if values is None or all(array(values) == None):
+        if values is None or all(equal(array(values), None)):
             return False
-        #end if
+        # end if
         if errors is None:
             errors = 0.0 * array(values)
-        #end if
-        self.set_values(grid, values, errors, also_search = True)
+        # end if
+        self.set_values(grid, values, errors, also_search=True)
         self._update_list_values(values, errors)
         return True
-    #end def
+    # end def
 
     def _update_list_values(self, values, errors):
         for s, v, e in zip(self.structure_list, values, errors):
             s.value = v
             s.error = e
-        #end for
-    #end def
+        # end for
+    # end def
 
     def get_shifted_params(self):
         return array([structure.params for structure in self.structure_list])
-    #end def
+    # end def
 
     def plot(
         self,
-        ax = None,
-        figsize = (4, 3),
-        color = 'tab:blue',
-        linestyle = '-',
-        marker = '.',
-        return_ax = False,
-        c_lambda = 1.0,  # FIXME: replace with unit conversions
+        ax=None,
+        figsize=(4, 3),
+        color='tab:blue',
+        linestyle='-',
+        marker='.',
+        return_ax=False,
+        c_lambda=1.0,  # FIXME: replace with unit conversions
         **kwargs
     ):
         if ax is None:
             f, ax = plt.subplots()
-        #end if
+        # end if
         xdata = self.grid
         ydata = self.values
         xmin = xdata.min()
         xmax = xdata.max()
         ymin = ydata.min()
-        ymax = ydata.max()
         xlen = xmax - xmin
         xlims = [xmin - xlen / 8, xmax + xlen / 8]
         xllims = [xmin + xlen / 8, xmax - xlen / 8]
@@ -630,35 +643,37 @@ class LineSearch(LineSearchBase):
             pfl = [a, -2 * a * x0, y0 + a * x0**2]
             stylel_args = {'color': color, 'linestyle': ':'}  # etc
             ax.plot(xlgrid, polyval(pfl, xlgrid), **stylel_args)
-        #end if
+        # end if
         # plot the line-search data
-        style1_args = {'color': color, 'linestyle': 'None', 'marker': marker}  # etc
-        style2_args = {'color': color, 'linestyle': linestyle, 'marker': 'None'}
-        if edata is None or all(array(edata) == None):
+        style1_args = {'color': color,
+                       'linestyle': 'None', 'marker': marker}  # etc
+        style2_args = {'color': color,
+                       'linestyle': linestyle, 'marker': 'None'}
+        if edata is None or all(equal(array(edata), None)):
             ax.plot(xdata, ydata, **style1_args)
         else:
             ax.errorbar(xdata, ydata, edata, **style1_args)
-        #end if
-        ax.errorbar(x0, y0, y0e, xerr = x0e, marker = 'x', color = color)
+        # end if
+        ax.errorbar(x0, y0, y0e, xerr=x0e, marker='x', color=color)
         ax.plot(xgrid, self.val_data(xgrid), **style2_args)
         if return_ax:
             return ax
-        #end if
-    #end def
+        # end if
+    # end def
 
     def __str__(self):
         string = LineSearchBase.__str__(self)
         if self.Lambda is not None:
             string += '\n  Lambda: {:<9f}'.format(self.Lambda)
-        #end if
+        # end if
         if self.W is not None:
             string += '\n  W: {:<9f}'.format(self.W)
-        #end if
+        # end if
         if self.R is not None:
             string += '\n  R: {:<9f}'.format(self.R)
-        #end if
+        # end if
         return string
-    #end def
+    # end def
 
     # str of grid
     def __str_grid__(self):
@@ -668,50 +683,51 @@ class LineSearch(LineSearchBase):
             string = '\n  data:'
             values = self.values if self.values is not None else self.M * ['-']
             errors = self.errors if self.errors is not None else self.M * ['-']
-            string += '\n    {:11s}  {:9s}  {:9s}  {:9s}'.format('label', 'grid', 'value', 'error')
+            string += '\n    {:11s}  {:9s}  {:9s}  {:9s}'.format(
+                'label', 'grid', 'value', 'error')
             for s, g, v, e in zip(self.structure_list, self.grid, values, errors):
-                string += '\n    {:11s}  {: 8f}  {:9.9s}  {:<9.9s}'.format(s.label, g, str(v), str(e))
-            #end for
-        #end if
+                string += '\n    {:11s}  {: 8f}  {:9.9s}  {:<9.9s}'.format(
+                    s.label, g, str(v), str(e))
+            # end for
+        # end if
         return string
-    #end def
+    # end def
 
-#end class
+# end class
 
 
 class LineSearchDummy(LineSearch):
 
-
     def __init__(
         self,
-        d = 0,
+        d=0,
         **kwargs,
     ):
         self.d = d
-    #end def
+    # end def
 
     def load_results(self, **kwargs):
         return True
-    #end def
+    # end def
 
     def generate_jobs(self, **kwargs):
         return []
-    #end def
+    # end def
 
     def generate_eqm_jobs(self, **kwargs):
         return []
-    #end def
+    # end def
 
     def evaluate_pes(self, **kwargs):
         return [None, None, None]
-    #end def
+    # end def
 
-    def get_x0(self, err = True):
+    def get_x0(self, err=True):
         if err:
             return 0.0, 0.0
         else:
             return 0.0
-        #end if
-    #end def
-    
-#end class
+        # end if
+    # end def
+
+# end class

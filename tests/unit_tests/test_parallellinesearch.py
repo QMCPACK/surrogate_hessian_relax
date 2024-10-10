@@ -24,7 +24,7 @@ def test_parallellinesearch_class():
     h = get_hessian_H2O()
     pls.set_hessian(h)
     assert pls.get_status() == '100000'
-    pls.guess_windows(windows = None, window_frac = 0.1)
+    pls.guess_windows(windows=None, window_frac=0.1)
     pls.M = 9
     pls.reset_ls_list()
 
@@ -44,14 +44,14 @@ def test_parallellinesearch_class():
     params0_ref = array('''
     0.74298682 104.17438807
     0.84671438 104.21077373
-    0.95044195 104.2471594 
+    0.95044195 104.2471594
     1.05416951 104.28354506
     1.15789707 104.31993072
     1.26162464 104.35631639
     1.3653522  104.39270205
     1.46907977 104.42908772
     1.57280733 104.46547338
-    '''.split(),dtype=float)
+    '''.split(), dtype=float)
     params1_ref = array('''
     1.34071738 103.79875005
     1.29501231 103.92904522
@@ -69,9 +69,9 @@ def test_parallellinesearch_class():
     values0 = [pes_H2O(ParameterSet(params))[0] for params in params0]
     values1 = [pes_H2O(ParameterSet(params))[0] for params in params1]
     values0_ref = array('''-0.35429145 -0.4647814  -0.49167476 -0.47112498 -0.42546898 -0.36820753
-   -0.30724027 -0.24695829 -0.18959033'''.split(), dtype = float)
+   -0.30724027 -0.24695829 -0.18959033'''.split(), dtype=float)
     values1_ref = array('''-0.3056267  -0.3616872  -0.40068042 -0.42214136 -0.42546898 -0.40989479
-   -0.37444477 -0.31789329 -0.23870716'''.split(), dtype = float)
+   -0.37444477 -0.31789329 -0.23870716'''.split(), dtype=float)
     assert match_to_tol(values0, values0_ref)
     assert match_to_tol(values1, values1_ref)
 
@@ -94,28 +94,29 @@ def test_parallellinesearch_class():
     assert match_to_tol(ls0.get_y0(), ls0_y0_ref)
     assert match_to_tol(ls1.get_x0(), ls1_x0_ref)
     assert match_to_tol(ls1.get_y0(), ls1_y0_ref)
-  
+
     next_params_ref = [0.98723545, 104.21430094]
     assert match_to_tol(pls.get_next_params(), next_params_ref)
 
     # test init from hessian array, also switch units, do pes mode
     pls = ParallelLineSearch(
-        structure = s,
-        hessian = hessian_H2O,
-        pes_func = pes_H2O,
-        M = 5,
-        x_unit = 'B',
-        E_unit = 'Ha',
-        mode = 'pes',
-        window_frac = 0.1,
-        noises = None,)
-    assert match_to_tol(pls.Lambdas, [0.074919, 0.030092], tol = 1e-5)
+        structure=s,
+        hessian=hessian_H2O,
+        pes_func=pes_H2O,
+        M=5,
+        x_unit='B',
+        E_unit='Ha',
+        mode='pes',
+        window_frac=0.1,
+        noises=None,)
+    assert match_to_tol(pls.Lambdas, [0.074919, 0.030092], tol=1e-5)
 
     # test partial line-search
     pls.reset_ls_list(D=[1])
     pls.load_results()
-    assert match_to_tol(pls.propagate().structure.params, [1.170805, 104.283132], tol = 1e-5)
+    assert match_to_tol(pls.propagate().structure.params,
+                        [1.170805, 104.283132], tol=1e-5)
 
     from shutil import rmtree
     rmtree('pls/')
-#end def
+# end def

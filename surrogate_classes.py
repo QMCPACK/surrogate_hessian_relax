@@ -8,7 +8,7 @@ __license__ = "BSD-3-Clause"
 
 
 from lib.util import get_min_params, match_to_tol, get_fraction_error, R_to_W
-from lib.util import W_to_R, bipolyfit, directorize, match_to_tol
+from lib.util import W_to_R, bipolyfit, directorize
 
 from lib.parameters import distance, bond_angle, mean_distances
 from lib.parameters import Parameter
