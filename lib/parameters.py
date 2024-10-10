@@ -725,6 +725,9 @@ try:
 except ModuleNotFoundError:  # plain implementation if nexus not present
     class ParameterStructure(ParameterStructureBase):
         kind = 'plain'
+
+        def to_nexus_only(self):
+            pass
     #end class
 #end try
 

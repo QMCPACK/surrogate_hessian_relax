@@ -40,7 +40,6 @@ def test_parameter_class():
     assert p.kind == 'kind'
     assert p.label == 'test'
     assert p.unit == 'unit'
-    return True
 #end def
 
 
