@@ -1,5 +1,5 @@
-parallellinesearch module
-=========================
+Parallel linesearch
+===================
 
 .. automodule:: parallellinesearch
    :members:

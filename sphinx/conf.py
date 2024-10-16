@@ -9,7 +9,7 @@
 import sys
 import os
 project = 'Surrogate Hessian Relax'
-copyright = '2023, Juha Tiihonen'
+copyright = '2024, Juha Tiihonen'
 author = 'Juha Tiihonen'
 release = '0.1.0'
 
@@ -20,7 +20,6 @@ extensions = ['sphinx.ext.autodoc']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

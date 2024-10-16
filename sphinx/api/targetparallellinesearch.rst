@@ -1,7 +1,7 @@
-linesearchiteration module
+Target parallel linesearch
 ==========================
 
-.. automodule:: linesearchiteration
+.. automodule:: targetparallellinesearch
    :members:
    :undoc-members:
    :show-inheritance:

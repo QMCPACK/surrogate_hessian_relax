@@ -1,7 +1,7 @@
-pessampler module
+Target linesearch
 =================
 
-.. automodule:: pessampler
+.. automodule:: targetlinesearch
    :members:
    :undoc-members:
    :show-inheritance:

@@ -56,10 +56,11 @@ main [Documentation](docs/) (work-in-progress).
 
 To install, make sure to meet the following minimum requirements for Python.
 
-* Python (3.6.8)
-  * Numpy (1.19.5)
-  * Scipy (1.5.4)
-  * Matplotlib (3.3.5)
+* Python (3.12.5)
+  * Numpy (2.0.1)
+  * Scipy (1.14.1)
+  * Dill (0.3.9)
+  * Matplotlib (3.9.2)
   * Nexus (https://qmcpack.org)
 
 The libraries of Nexus and the root directory of Surrogate Hessian Relax,
@@ -100,7 +101,7 @@ troubleshooting before successful completion of a line-search project. On the
 other hand, the code design and conventions will be subject to change until 
 the first stable version is published.
 
-Support can be requested by [contacting the authors](mailto:juha.m.s.tiihonen@jyu.fi).
+Support can be inquired by [contacting the authors](mailto:juha.tiihonen@tuni.fi).
 
 
 ## ACKNOWLEDGEMENTS

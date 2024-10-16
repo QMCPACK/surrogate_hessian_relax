@@ -1,7 +1,7 @@
-hessian module
-==============
+Linesearch
+==========
 
-.. automodule:: hessian
+.. automodule:: linesearch
    :members:
    :undoc-members:
    :show-inheritance:

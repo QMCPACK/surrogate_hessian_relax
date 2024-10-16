@@ -1,5 +1,5 @@
-parameters module
-=================
+Parameters
+==========
 
 .. automodule:: parameters
    :members:
