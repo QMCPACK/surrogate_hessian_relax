@@ -8,3 +8,7 @@ build:
 sphinx:
   configuration: sphinx/conf.py
   fail_on_warning: false
+
+python:
+  install:
+    - requirements: sphinx/requirements.txt
