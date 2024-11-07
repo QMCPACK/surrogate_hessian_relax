@@ -7,5 +7,8 @@
     "flake8.args": [
         "--ignore=E241,E501,F401",
         "--exclude=test_"
+    ],
+    "editor.rulers": [
+        92
     ]
 }
