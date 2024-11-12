@@ -39,6 +39,16 @@ def mean_distances(pairs):
 # end def
 
 
+def mean_param(params, tol=1e-6):
+    avg = array([params]).mean()
+    if not all(params - avg < tol):
+        print("Warning! Some of symmetric parameters stand out:")
+        print(params)
+    # end if
+    return avg
+# end def
+
+
 def load_xyz(fname):
     e, x, y, z = loadtxt(fname, dtype=str, unpack=True, skiprows=2)
     return array([x, y, z], dtype=float).T
