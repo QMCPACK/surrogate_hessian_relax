@@ -34,7 +34,20 @@ def test_parameter_tools():
 def test_parameter_class():
     # TODO: add features, add meaningful tests
     from surrogate_classes import Parameter
-    # test defaults
+    
+    # Cannot construct without a value
+    with raises(TypeError):
+        Parameter()
+    # end with
+    # test empty
+    p = Parameter(0.0)
+    assert p.value == 0.0
+    assert p.error == 0.0
+    assert p.kind == ''
+    assert p.unit == ''
+    assert p.label == 'p'
+    
+    # test nominal
     p = Parameter(0.74, 0.01, 'kind', 'test', 'unit')
     assert p.value == 0.74
     assert p.error == 0.01
@@ -44,35 +57,50 @@ def test_parameter_class():
 # end def
 
 
+# Test ParameterSet class
+def test_parameterset_class():
+    from surrogate_classes import ParameterSet
+
+    # test empty
+    s = ParameterSet()
+    assert s.p_list == []
+    assert s.value is None
+    assert s.error is None
+    assert s.label is None
+# end def
+
+
 # Test ParameterStructureBase class
 def test_parameterstructurebase_class():
     from surrogate_classes import ParameterStructureBase
-    # test H2 (open; 1 parameter)
+    
     s = ParameterStructureBase()
+    
+    # test H2 (open; 1 parameter)
 
     # test inconsistent pos vector
     with raises(AssertionError):
         s.set_position([0.0, 0.0])
     # end with
     # test premature backward mapping
-    with raises(AssertionError):
-        s.backward()
-    # end with
-    assert not s.check_consistency()  # cannot be consistent without mapping functions
+    assert s.map_backward()[0] is None
+    assert s.map_backward()[1] is None
+    # cannot be consistent without mapping functions
+    assert not s.check_consistency()  
 
     # test backward mapping
     s.set_params([1.4])
-    s.set_backward(backward_H2)  # pos should now be computed automatically
+    s.set_backward_func(backward_H2)  # pos should now be computed automatically
     assert match_to_tol(s.pos, pos_H2, tol=1e-5)
 
     assert not s.check_consistency()  # still not consistent, without forward mapping
     # test premature forward mapping
-    with raises(AssertionError):
-        s.forward()
-    # end with
+    assert s.map_forward() is None
 
-    s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])  # set another pos
-    s.set_forward(forward_H2)  # then set forward mapping
+    s.set_forward_func(forward_H2)  # set forward mapping
+    assert match_to_tol(s.pos, [0.0, 0.0, 0.7, 0.0, 0.0, -0.7], tol=1e-5)
+    # set another pos
+    s.set_position([0.0, 0.0, 0.0, 0.0, 0.0, 1.6])
     # params computed automatically
     assert match_to_tol(s.params, 1.6, tol=1e-5)
     assert s.check_consistency()  # finally consistent
@@ -90,7 +118,7 @@ def test_parameterstructurebase_class():
     assert match_to_tol(s.params, params_ref, tol=1e-5)
 
     # add backward mapping
-    s.set_backward(backward_H2O)
+    s.set_backward_func(backward_H2O)
     pos_ref = [[0.,          0.,          0.],
                [0.,          0.75545,     0.58895],
                [0.,         -0.75545,     0.58895]]
@@ -118,7 +146,7 @@ def test_parameterstructurebase_class():
     '''.split(), dtype=float).reshape(-1, 2)
     assert match_to_tol(jac_ref, s.jacobian())
 
-    # test complete positional init of a periodic system (GeSe)
+    # test periodic structure
     s = ParameterStructureBase(
         forward_GeSe,  # forward
         backward_GeSe,  # backward
@@ -127,12 +155,12 @@ def test_parameterstructurebase_class():
         elem_GeSe,  # elem
         params_GeSe,
         None,  # params_err
-        True,  # periodic
-        -10.0,  # value
-        0.1,  # error
-        'GeSe test',  # label
-        'crystal',  # unit
-        3,  # dim
+        periodic=True,  # periodic
+        value=-10.0,  # value
+        error=0.1,  # error
+        label='GeSe test',  # label
+        unit='crystal',  # unit
+        dim=3,  # dim
     )
     pos_orig = s.pos
     s.shift_params([0.1, 0.1, 0.0, -0.1, 0.05])
