@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 # First, the user must set up Nexus according to their computing environment.
-from surrogate_macros import init_nexus
-from nexus import obj
+from nexus import obj, settings
 
 # Modify the below variables as needed
 cores = 8
@@ -23,4 +22,8 @@ nx_settings = obj(
     generate_only=0,
     machine='ws8',
 )
-init_nexus(**nx_settings)  # initiate nexus
+
+# Make sure to init only once
+if len(settings) == 0:
+    settings(**nx_settings)
+# end if

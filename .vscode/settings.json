@@ -5,7 +5,7 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "flake8.args": [
-        "--ignore=E241,E501,F401",
+        "--ignore=E501",
         "--exclude=test_"
     ],
     "editor.rulers": [

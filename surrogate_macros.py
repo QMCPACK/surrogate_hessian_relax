@@ -6,9 +6,7 @@ from numpy import linspace, ceil, isscalar, array, zeros, ones, where, mean
 from numpy import loadtxt, savetxt, polyfit
 from os import makedirs
 from os.path import exists
-from surrogate_classes import bipolyfit
-from lib.parameters import load_xyz, directorize
-from lib.util import get_color
+from shapls.util import bipolyfit, directorize
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
@@ -66,68 +64,6 @@ def init_nexus(**nx_settings):
 # end def
 
 
-def relax_structure(
-    structure,
-    relax_job,
-    path='relax',
-    mode='nexus',
-    j_id=-1,
-    c_pos=1.0,
-    pos_file=None,
-    make_consistent=True,
-    allow_translate=True,
-    **kwargs
-):
-    # try to load from file
-    if pos_file is not None:
-        try:
-            pos_relax = load_xyz('{}/{}'.format(path, pos_file))
-            axes_relax = None
-            mode = 'load'
-        except OSError:
-            print('File {} not found'.format(pos_file))
-        # end try
-    # end if
-    jobs = relax_job(structure, path)
-    if mode == 'load':
-        pass
-    elif mode == 'nexus':
-        from nexus import run_project
-        run_project(jobs)
-        job = jobs[j_id]
-        if 'pw.x' in job.app_name:  # TODO: make this more robust
-            from nexus import PwscfAnalyzer
-            ai = PwscfAnalyzer(job)
-            ai.analyze()
-        else:
-            print('Not implemented')
-            return None
-        # end if
-        pos_relax = ai.structures[len(ai.structures) - 1].positions * c_pos
-        try:
-            axes_relax = ai.structures[len(ai.structures) - 1].axes
-            axes_relax *= structure.params[0]
-        except AttributeError:
-            axes_relax = None
-        # end try
-    else:  # TODO
-        print('Warning: only Nexus currently implemented')
-        return None
-    # end if
-    structure_relax = structure.copy(pos=pos_relax, axes=axes_relax)
-    if make_consistent:
-        structure_relax._forward(pos_relax)
-        structure_relax._backward(structure_relax.params)
-        pos_diff = structure_relax.pos - pos_relax
-        if allow_translate:
-            pos_diff -= pos_diff.mean(axis=0)
-        # end if
-        print('Max pos_diff was {}'.format(abs(pos_diff).max()))
-    # end if
-    return structure_relax
-# end def
-
-
 # Load FC matrix in QE format
 def load_force_constants_qe(fname, num_prt, dim=3):
     K = zeros((dim * num_prt, dim * num_prt))
@@ -179,7 +115,7 @@ def compute_phonon_hessian(
         print('Warning: only QE phonon calculation currently supported')
         return None
     # end if
-    from surrogate_classes import ParameterHessian
+    from shapls.hessian import ParameterHessian
     # TODO: set target energy
     hessian = ParameterHessian(
         structure=structure, hessian_real=hessian_real, x_unit=x_unit, E_unit=E_unit)
@@ -321,7 +257,7 @@ def compute_fdiff_hessian(
             hessian[p0, p0] = mean(pfs[p0])
         # end for
     # end if
-    from surrogate_classes import ParameterHessian
+    from shapls.hessian import ParameterHessian
     return ParameterHessian(structure=structure, hessian=hessian)
 # end def
 
@@ -379,54 +315,6 @@ def nexus_qmcpack_analyzer(path, qmc_idx=1, get_var=False, suffix='/dmc/dmc.in.x
         return E, Err, V, kappa
     else:
         return E, Err
-    # end if
-# end def
-
-
-def generate_surrogate(
-    path='surrogate',
-    fname=None,
-    **kwargs,
-):
-    if fname is not None:
-        from surrogate_classes import load_from_disk
-        fname = '{}{}'.format(directorize(path), fname)
-        surrogate = load_from_disk(fname)
-        if surrogate is not None:
-            return surrogate
-        else:
-            print('Failed to load {}, generating from scratch...'.format(fname))
-        # end if
-    # end if
-    from surrogate_classes import TargetParallelLineSearch
-    surrogate = TargetParallelLineSearch(path=path, **kwargs)
-    return surrogate
-# end def
-
-
-def plot_surrogate_pes(
-    surrogate,  # surrogate object
-    overlay=True,
-    **kwargs,
-):
-    if overlay:
-        f, ax = plt.subplots(tight_layout=True)
-        ax.set_title('PES: every line-search')
-    # end if
-    for li, ls in enumerate(surrogate.ls_list):
-        if not overlay:
-            f, ax = plt.subplots(tight_layout=True)
-            ax.set_title('PES: Line-search #{}'.format(li))
-        # end if
-        # label = 'ls #{}'.format(li)
-        plot_one_surrogate_pes(ls, ax=ax, color=get_color(
-            li), **kwargs)  # TODO: make this class method
-        if not overlay:
-            ax.legend(fontsize=10)
-        # end if
-    # end for
-    if overlay:
-        ax.legend(fontsize=10)
     # end if
 # end def
 
@@ -544,7 +432,7 @@ def generate_linesearch(
     mode='nexus',
     **kwargs,
 ):
-    from surrogate_classes import LineSearchIteration
+    from shapls.lsi import LineSearchIteration
     if not load_only:  # a hacky override to enable importing pre-computed modules
         srg = surrogate.copy()
         if shift_params is not None:

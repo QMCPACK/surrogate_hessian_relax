@@ -8,22 +8,20 @@
 #
 # Computing task: Runs on command line
 
-
-# from Nexus
+from shapls.hessian import ParameterHessian
+from shapls.lsi import LineSearchIteration, load_from_disk
+from shapls.params import ParameterSet
+from shapls.pls import TargetParallelLineSearch
 from surrogate_macros import linesearch_diagnostics
-from surrogate_classes import LineSearchIteration
-from surrogate_macros import generate_surrogate
-from surrogate_macros import compute_fdiff_hessian
 from scipy.optimize import minimize
-from surrogate_classes import ParameterSet
+
 base_dir = 'morse_3p/'
+
 
 # takes: a structure object with an attribute 3x1 array params, also target noise (sigma)
 #   c: coupling constant of parameters through auxiliary morse potentials
 #   d: eqm displacements
 # returns: energy value, error (= sigma)
-
-
 def pes(structure, sigma=None, c=1.0, d=0.0):
     from numpy import array, exp, random
 
@@ -60,38 +58,40 @@ p_init = ParameterSet([1.0, 2.0, 3.0])
 c_srg = 1.0  # define the surrogate PES with c = 1.0
 d_srg = 0.0  # and d = 0.0
 
-# Relax numerically in the absence of noise
-# wrap the function for numerical optimizer
 
-
+# Relax numerically in the absence of noise, wrap the function for numerical optimizer
 def pes_min(params):
     return pes(ParameterSet(params), c=c_srg, d=d_srg)[0]
-
-
 # end def
+
+
 res = minimize(pes_min, p_init.params)
 p_relax = ParameterSet(res.x)
 print('Minimum-energy parameters (surrogate):')
 print(p_relax.params)
 
 # Compute the numerical Hessian using a finite difference method
-hessian = compute_fdiff_hessian(structure=p_relax, func=pes, mode='pes')
+hessian = ParameterHessian(structure=p_relax)
+hessian.compute_fdiff(pes_func=pes, pes_args={'c': c_srg, 'd': d_srg})
 print('Hessian:')
 print(hessian)
 
 
-# Create a surrogate ParallelLineSearch object
-surrogate = generate_surrogate(
-    path=base_dir + 'surrogate',
-    fname='surrogate.p',  # try to load from disk
-    structure=p_relax,
-    hessian=hessian,
-    pes_func=pes,
-    pes_args={'c': c_srg, 'd': d_srg},
-    mode='pes',
-    window_frac=0.5,  # maximum displacement relative to Lambda of each direction
-    M=25,
-)
+# Create, or try to load from disk, surrogate TargetParallelLineSearch object
+srg_file = 'surrogate.p'
+surrogate = load_from_disk('surrogate/' + srg_file)
+if surrogate is None:
+    surrogate = TargetParallelLineSearch(
+        path='surrogate',
+        structure=p_relax,
+        hessian=hessian,
+        pes_func=pes,
+        pes_args={'c': c_srg, 'd': d_srg},
+        M=25,
+        window_frac=0.5
+    )
+# end if
+
 
 # Optimize the line-search to tolerances
 if not surrogate.optimized:
@@ -103,21 +103,20 @@ if not surrogate.optimized:
         M=7,
         N=500,  # use as many points for correlated resampling of the error
     )
-    surrogate.write_to_disk('surrogate.p')
+    surrogate.write_to_disk(srg_file)
 # end if
 
 # Define alternative PES
 c_alt = 1.0
 d_alt = 0.3
 
+
 # Compute reference minimum
-
-
 def pes_min_alt(params):
     return pes(ParameterSet(params), c=c_alt, d=d_alt)[0]
-
-
 # end def
+
+
 res = minimize(pes_min_alt, p_init.params)
 p_relax = ParameterSet(res.x)
 print('Minimum-energy parameters (alternative):')

@@ -12,23 +12,20 @@
 # Computing task: Suitable for institutional clusters
 
 # First, the user must set up Nexus according to their computing environment.
-from numpy import mean, array, sin, pi, cos, diag, linalg, arccos, arcsin
+from shapls.lsi import LineSearchIteration
+from shapls.params import ParameterStructure, distance
+from numpy import array, sin, pi, cos, diag, arccos, arcsin
 from surrogate_macros import nexus_qmcpack_analyzer
 from surrogate_macros import get_var_eff
 from surrogate_macros import dmc_steps
 from surrogate_macros import linesearch_diagnostics
-from surrogate_macros import propagate_linesearch
-from surrogate_classes import LineSearchIteration
 from surrogate_macros import surrogate_diagnostics
-from surrogate_macros import optimize_surrogate
 from matplotlib import pyplot as plt
 from surrogate_macros import nexus_pwscf_analyzer
 from surrogate_macros import generate_surrogate, plot_surrogate_pes, plot_surrogate_bias
 from surrogate_macros import compute_phonon_hessian
 from simulation import GenericSimulation, input_template
 from surrogate_macros import relax_structure
-from surrogate_classes import ParameterStructure
-from surrogate_classes import distance
 from nexus import generate_pwscf, generate_qmcpack, job, obj
 from nexus import generate_pw2qmcpack, generate_physical_system
 from nxs import scfjob, p2qjob, optjob, dmcjob, cores, presub
@@ -46,8 +43,6 @@ scfpseudos = ['C.ccECP.upf', 'H.ccECP.upf']
 
 
 # Forward mapping: produce parameter values from an array of atomic positions
-
-
 def forward(pos, **kwargs):
     pos = pos.reshape(-1, 3)  # make sure of the shape
     # 0) from neighboring C-atoms
