@@ -42,7 +42,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         grid=None,  # manual set of shifts
         values=None,
         mode='jobs',
-        pes_func=None,
+        pes=None,
         **kwargs,  # some redundancy in submitting kwargs
     ):
         # provide target_grid, target_values explicitly
@@ -58,7 +58,7 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             grid=grid,
             values=values,
             mode=mode,
-            pes_func=pes_func,
+            pes=pes,
             **kwargs,
         )
         self._set_RW_max()

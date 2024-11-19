@@ -29,6 +29,10 @@ class TargetParallelLineSearch(ParallelLineSearch):
     # FLAGS
     optimized = False
 
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls, *args, **kwargs)
+    # end def
+
     def __init__(
         self,
         structure=None,
@@ -36,8 +40,7 @@ class TargetParallelLineSearch(ParallelLineSearch):
         targets=None,
         **kwargs
     ):
-        ParallelLineSearch.__init__(
-            self, structure=structure, hessian=hessian, **kwargs)
+        ParallelLineSearch.__init__(self, structure=structure, hessian=hessian, **kwargs)
         self.set_x_targets(targets)
     # end def
 
@@ -365,7 +368,7 @@ useful keyword arguments:
         return [(temperature / abs(Lambda))**0.5 for Lambda in self.hessian.diagonal]
     # end def
 
-    # override to set targets instead of results
+    # override to set targets in addition to results
     def load_results(self, set_target=True, **kwargs):
         ParallelLineSearch.load_results(self, **kwargs)
         if set_target:

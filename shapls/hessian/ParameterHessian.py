@@ -175,10 +175,8 @@ class ParameterHessian():
         dp=0.01,
         mode='pes',
         path='fdiff',
-        pes_func=None,
-        pes_args={},
-        load_func=None,
-        load_args={},
+        pes=None,
+        loader=None,
         **kwargs,
     ):
         eqm = structure if structure is not None else self.structure
@@ -186,19 +184,19 @@ class ParameterHessian():
         dps = array(P * [dp]) if isscalar(dp) else array(dp)
         dp_list, structure_list, label_list = self._get_fdiff_data(eqm, dps)
         if mode == 'pes':
-            Es = [pes_func(s, **pes_args)[0] for s in structure_list]
+            Es = [pes.run(s)[0] for s in structure_list]
         elif mode == 'nexus':
             from nexus import run_project
             jobs = []
             for s, label in zip(structure_list, label_list):
                 dir = '{}{}'.format(directorize(path), label)
-                jobs += pes_func(s, dir, **pes_args)
+                jobs += pes.run(s, dir)
             # end for
             run_project(jobs)
             Es = []
             for label in label_list:
                 dir = '{}{}'.format(directorize(path), label)
-                E, Err = load_func(path=dir, **load_args)
+                E, Err = loader.load(path=dir)
                 Es.append(E)
             # end for
         else:

@@ -3,6 +3,7 @@ from scipy.optimize import minimize
 from copy import deepcopy
 
 from .Parameter import Parameter
+from .PesFunction import PesFunction
 
 
 class ParameterSet():
@@ -137,12 +138,14 @@ class ParameterSet():
 
     def relax(
         self,
-        pes_func=None,
-        pes_args={},
-        **kwargs,
+        pes,
+        **kwargs
     ):
+        assert isinstance(pes, PesFunction), "Must provide PES as a PesFunction instance."
+
+        # Relax numerically using a wrapper around SciPy minimize
         def relax_aux(p):
-            return pes_func(ParameterSet(p), **pes_args)[0]
+            return pes.run(ParameterSet(p))[0]
         # end def
         res = minimize(relax_aux, self.params, **kwargs)
         self.set_params(res.x)

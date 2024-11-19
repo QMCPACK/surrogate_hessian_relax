@@ -3,7 +3,7 @@
 
 from numpy import ndarray, array, matmul
 from os import makedirs, path
-from dill import dumps
+from dill import dumps, loads
 from textwrap import indent
 
 from shapls.util import get_fraction_error, directorize
@@ -40,8 +40,32 @@ class ParallelLineSearch(PesSampler):
     msg_shifted = 'Shifted: first set_windows() to define displacements'
     msg_loaded = 'Loaded: first load_results() with valid input'
 
+    # Try to load the instance from file before ordinary init
+    def __new__(cls, load=None, *args, **kwargs):
+        if load is None:
+            return super().__new__(cls)
+        else:
+            # Try to load a pickle file from disk.
+            try:
+                with open(load, mode='rb') as f:
+                    data = loads(f.read())
+                # end with
+                return data
+            except FileNotFoundError:
+                return super().__new__(cls)
+            # end try
+        # end if
+    # end def
+
     def __init__(
         self,
+        # Remove disk loading argument
+        load=None,
+        # PesSampler arguments
+        mode=None,
+        pes=None,
+        loader=None,
+        # PLS arguments
         hessian=None,
         structure=None,
         windows=None,
@@ -53,12 +77,10 @@ class ParallelLineSearch(PesSampler):
         x_unit='A',
         E_unit='Ry',
         fraction=0.025,
-        mode='pes',  # (nexus|files|pes)
         shift_params=None,
-        D=None,
-        **kwargs,
+        D=None
     ):
-        PesSampler.__init__(self, mode, **kwargs)
+        PesSampler.__init__(self, mode, pes=pes, loader=loader)
         self.x_unit = x_unit
         self.E_unit = E_unit
         self.path = directorize(path)
@@ -74,6 +96,14 @@ class ParallelLineSearch(PesSampler):
         if self.status.setup:
             self.guess_windows(windows, window_frac, no_reset=True, D=D)
             self.set_noises(noises, D=D)
+        # end if
+        if self.mode == 'pes':
+            if self.status.shifted:
+                self.generate_jobs()
+            # end if
+            if self.status.generated:
+                self.load_results()
+            # end if
         # end if
     # end def
 
@@ -217,12 +247,6 @@ class ParallelLineSearch(PesSampler):
             ls_list.append(ls)
         # end for
         self.ls_list = ls_list
-        if self.mode == 'pes':
-            self.cascade()
-            self.load_results()
-        elif self.mode == 'files':
-            self.generate_jobs(**kwargs)
-        # end if
         self.cascade()
     # end def
 
@@ -246,10 +270,8 @@ class ParallelLineSearch(PesSampler):
             'noises': noises,
             'M': self.M,
             'fit_kind': self.fit_kind,
-            'pes_func': self.pes_func,
-            'pes_args': self.pes_args,
-            'load_func': self.load_func,
-            'load_args': self.load_args,
+            'pes': self.pes,
+            'loader': self.loader,
             'mode': self.mode,
         }
         if update_hessian:
@@ -280,36 +302,36 @@ class ParallelLineSearch(PesSampler):
         return pls_next
     # end def
 
-    def generate_jobs(self, pes_func=None, pes_args={}, **kwargs):
+    def generate_jobs(self, **kwargs):
         self._require_shifted()
-        assert self.mode in [
-            'nexus', 'files'], 'Supported only in nexus/files modes; present mode: {}'.format(self.mode)
-        pes_args = pes_args if not pes_args == {} else self.pes_args
-        pes_func = pes_func if pes_func is not None else self.pes_func
+        
+        if (self.mode == 'pes'):
+            self.status.generated = True
+            return
+        # end if
+
+        # Find the smallest noise target for the eqm job
         sigma_min = None if not self.noisy else self.noises.min()
-        # TODO: check validity of pes_func
-        eqm_jobs = self.ls_list[0].generate_eqm_jobs(
-            pes_func, path=self.path, sigma=sigma_min, **pes_args, **kwargs)
+
+        # Generate eqm jobs
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(self.pes, path=self.path, sigma=sigma_min)
         jobs = eqm_jobs
+
+        # Generate line-search jobs
         for ls in self.ls_list:
-            jobs += ls.generate_jobs(pes_func, path=self.path,
-                                     eqm_jobs=eqm_jobs, **pes_args, **kwargs)
+            jobs += ls.generate_jobs(self.pes, path=self.path, eqm_jobs=eqm_jobs, **kwargs)
         # end for
         self.status.generated = True
         return jobs
     # end def
 
-    def generate_eqm_jobs(self, pes_func=None, pes_args={}, **kwargs):
-        pes_args = pes_args if not pes_args == {} else self.pes_args
-        pes_func = pes_func if pes_func is not None else self.pes_func
+    def generate_eqm_jobs(self, **kwargs):
         sigma_min = None if not self.noisy else self.noises.min()
-        eqm_jobs = self.ls_list[0].generate_eqm_jobs(
-            pes_func, path=self.path, sigma=sigma_min, **pes_args, **kwargs)
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(self.pes, path=self.path, sigma=sigma_min, **kwargs)
         return eqm_jobs
     # end def
 
     def run_jobs(self, interactive=True, eqm_only=False, **kwargs):
-        from nexus import run_project
         if eqm_only:
             jobs = self.generate_eqm_jobs(**kwargs)
         else:
@@ -333,36 +355,36 @@ class ParallelLineSearch(PesSampler):
                 # end if
             # end if
         # end if
+        from nexus import run_project
         run_project(jobs)
     # end def
 
     # can either load based on analyze_func or by providing values/errors
-    def load_results(self, load_func=None, load_args={}, values=None, errors=None, **kwargs):
+    def load_results(self, loader=None, values=None, errors=None, **kwargs):
         if self.status.protected:
             return
         # end if
-        loaded = True
-        if self.mode == 'pes' and self.pes_func is not None:
-            load_func = None
+
+        if self.mode == 'pes':
             values_ls, errors_ls = [], []
             for ls in self.ls_list:
-                res = ls.evaluate_pes(
-                    pes_func=self.pes_func, pes_args=self.pes_args)
+                res = ls.evaluate_pes(pes_eval=self.pes)
                 values_ls.append(res[1])
                 errors_ls.append(res[2])
             # end for
         else:
-            load_func = load_func if load_func is not None else self.load_func
-            load_args = load_args if not load_args == {} else self.load_args
+            # Unless a list/array of per-direction values/errors is provided, init to None
             values_ls = values if values is not None else self.D * [None]
             errors_ls = errors if errors is not None else self.D * [None]
         # end if
+
+        loaded = True
+        loader = loader if loader is not None else self.loader
         for ls, values, errors in zip(self.ls_list, values_ls, errors_ls):
             loaded_this = ls.load_results(
                 values=values,
                 errors=errors,
-                load_func=load_func,
-                load_args=load_args,
+                loader=loader,
                 path=self.path,
                 **kwargs)
             loaded = loaded and loaded_this
@@ -376,15 +398,12 @@ class ParallelLineSearch(PesSampler):
         self.cascade()
     # end def
 
-    def load_eqm_results(self, load_func=None, load_args={}, **kwargs):
+    def load_eqm_results(self, **kwargs):
         if self.status.protected:
             return
         # end if
-        load_func = load_func if load_func is not None else self.load_func
-        load_args = load_args if load_args == {} else self.load_args
         sigma_min = self.noises.min()
-        E, err = self.ls_list[0].load_eqm_results(
-            load_func=load_func, load_args=load_args, path=self.path, sigma=sigma_min, **kwargs)
+        E, err = self.ls_list[0].load_eqm_results(self.loader, path=self.path, sigma=sigma_min, **kwargs)
         self.structure.value = E
         self.structure.error = err
     # end def

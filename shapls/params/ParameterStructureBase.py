@@ -4,6 +4,7 @@ from copy import deepcopy
 from shapls.util import match_to_tol, get_fraction_error, directorize
 from .util import load_xyz, load_xsf
 from .ParameterSet import ParameterSet
+from .ParameterLoader import ParameterLoader
 
 
 class ParameterStructureBase(ParameterSet):
@@ -402,28 +403,22 @@ class ParameterStructureBase(ParameterSet):
 
     def relax(
         self,
-        pes_func=None,
-        pes_args={},
+        pes,
         path='relax',
         mode='nexus',
-        load_func=None,
+        loader=None,
+        loader_args={},
         **kwargs,
     ):
-        if pes_func is None:
-            print('Provide a pes_func!')
-            return
-        # end if
         if mode == 'nexus':
-            jobs = pes_func(self, directorize(path), **pes_args)
+            jobs = pes.run(self, directorize(path))
             from nexus import run_project
             run_project(jobs)
-            if load_func is not None:
-                pos, axes = load_func(path)
-                self.set_position(pos, axes=axes)
+            if isinstance(loader, ParameterLoader):
+                loader.load(path, self, **loader_args)
             # end if
         elif mode == 'pes':
-            ParameterSet.relax(self, pes_func=pes_func,
-                               pes_args=pes_args, **kwargs)
+            ParameterSet.relax(self, pes=pes, **kwargs)
         # end if
     # end def
 

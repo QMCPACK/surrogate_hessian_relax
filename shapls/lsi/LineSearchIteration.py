@@ -30,7 +30,7 @@ class LineSearchIteration():
         hessian=None,
         load=True,
         n_max=0,  # no limit
-        # e.g. windows, noises, targets, units, pes_func, pes_args, load_func, load_args ...
+        # e.g. windows, noises, targets, units, pes, loader ...
         **kwargs,
     ):
         self.path = directorize(path)
@@ -53,9 +53,9 @@ class LineSearchIteration():
     # end def
 
     def init_from_surrogate(self, surrogate, **kwargs):
-        assert isinstance(
-            surrogate, ParallelLineSearch), 'Surrogate parameter must be a ParallelLineSearch object'
         pls = surrogate.copy(path=self._get_pls_path(0), **kwargs)
+        # TODO: only checking after copy, to support unpickling of the surrogate
+        # assert isinstance(pls, ParallelLineSearch), 'Surrogate parameter must be a ParallelLineSearch object'
         self.pls_list = [pls]
     # end def
 

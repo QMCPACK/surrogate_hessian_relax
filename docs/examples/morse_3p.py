@@ -9,11 +9,10 @@
 # Computing task: Runs on command line
 
 from shapls.hessian import ParameterHessian
-from shapls.lsi import LineSearchIteration, load_from_disk
-from shapls.params import ParameterSet
+from shapls.lsi import LineSearchIteration
+from shapls.params import ParameterSet, PesFunction
 from shapls.pls import TargetParallelLineSearch
 from surrogate_macros import linesearch_diagnostics
-from scipy.optimize import minimize
 
 base_dir = 'morse_3p/'
 
@@ -55,43 +54,33 @@ def pes(structure, sigma=None, c=1.0, d=0.0):
 
 # Guess the initial structure based on the non-coupled equilibria
 p_init = ParameterSet([1.0, 2.0, 3.0])
-c_srg = 1.0  # define the surrogate PES with c = 1.0
-d_srg = 0.0  # and d = 0.0
-
+pes_surrogate = PesFunction(pes, {'c': 1.0, 'd': 0.0})
 
 # Relax numerically in the absence of noise, wrap the function for numerical optimizer
-def pes_min(params):
-    return pes(ParameterSet(params), c=c_srg, d=d_srg)[0]
-# end def
-
-
-res = minimize(pes_min, p_init.params)
-p_relax = ParameterSet(res.x)
+p_relax = p_init.copy()
+p_relax.relax(pes_surrogate)
 print('Minimum-energy parameters (surrogate):')
 print(p_relax.params)
 
-# Compute the numerical Hessian using a finite difference method
+# Compute the numerical Hessian at the minimum parameters using a finite difference method
 hessian = ParameterHessian(structure=p_relax)
-hessian.compute_fdiff(pes_func=pes, pes_args={'c': c_srg, 'd': d_srg})
+hessian.compute_fdiff(pes=pes_surrogate)
 print('Hessian:')
 print(hessian)
 
 
 # Create, or try to load from disk, surrogate TargetParallelLineSearch object
 srg_file = 'surrogate.p'
-surrogate = load_from_disk('surrogate/' + srg_file)
-if surrogate is None:
-    surrogate = TargetParallelLineSearch(
-        path='surrogate',
-        structure=p_relax,
-        hessian=hessian,
-        pes_func=pes,
-        pes_args={'c': c_srg, 'd': d_srg},
-        M=25,
-        window_frac=0.5
-    )
-# end if
-
+surrogate = TargetParallelLineSearch(
+    mode='pes',
+    path='surrogate',
+    load='surrogate/' + srg_file,
+    structure=p_relax,
+    hessian=hessian,
+    pes=pes_surrogate,
+    M=25,
+    window_frac=0.5
+)
 
 # Optimize the line-search to tolerances
 if not surrogate.optimized:
@@ -107,33 +96,24 @@ if not surrogate.optimized:
 # end if
 
 # Define alternative PES
-c_alt = 1.0
-d_alt = 0.3
-
-
-# Compute reference minimum
-def pes_min_alt(params):
-    return pes(ParameterSet(params), c=c_alt, d=d_alt)[0]
-# end def
-
-
-res = minimize(pes_min_alt, p_init.params)
-p_relax = ParameterSet(res.x)
+pes_alt = PesFunction(pes, {'c': 0.9, 'd': 0.3})
+p_alt = p_relax.copy()
+p_alt.relax(pes_alt)
 print('Minimum-energy parameters (alternative):')
-print(p_relax.params)
+print(p_alt.params)
+
 
 # Run line-search iteration with the alternative PES
 lsi = LineSearchIteration(
     path=base_dir + 'lsi',
     surrogate=surrogate,
-    pes_func=pes,
-    pes_args={'c': c_alt, 'd': d_alt},
+    pes=pes_alt,
     mode='pes',
 )
 # Propagate the line-search imax times
 imax = 4
 for i in range(imax):
-    lsi.propagate(i, add_sigma=True)
+    lsi.propagate(i)
 # end for
 
 linesearch_diagnostics(lsi)

@@ -3,6 +3,8 @@
 
 from numpy import array, sin, cos, pi
 from numpy.random import randn
+
+from shapls.params import PesFunction
 from .helper import harmonic_a, morse, mean_distances, bond_angle
 
 __author__ = "Juha Tiihonen"
@@ -94,7 +96,7 @@ def get_surrogate_H2O():
         structure=get_structure_H2O(),
         hessian=get_hessian_H2O(),
         mode='pes',
-        pes_func=pes_H2O,
+        pes=PesFunction(pes_H2O),
         M=25,
         window_frac=0.5)
     return srg

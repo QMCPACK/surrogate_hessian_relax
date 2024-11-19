@@ -3,21 +3,21 @@
 '''
 
 from .CascadeStatus import CascadeStatus
+# from shapls.params import PesFunction
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
 __license__ = "BSD-3-Clause"
 
 
-# A class for managing sampling of the PES in three alternative modes: nexus, files, direct
+# A class for managing sampling of the PES
 class PesSampler():
     mode = None
     path = None
-    pes_func = None
-    pes_args = {}
-    load_func = None
-    load_args = {}
+    pes = None
+    loader = None
     status = None
+    jobs = None
     # error messages / instructions
     msg_setup = 'Setup: required but not done'
     msg_shifted = 'Shifted: required but not done'
@@ -29,21 +29,21 @@ class PesSampler():
     def __init__(
         self,
         mode,
-        path='',
-        pes_func=None,
-        pes_args={},
-        load_func=None,
-        load_args={},
-        **kwargs,
+        pes=None,
+        loader=None
     ):
         assert mode in ['nexus', 'files', 'pes'], 'Must provide operating mode'
         self.status = CascadeStatus()
         self.mode = mode
-        self.path = path
-        self.pes_func = pes_func
-        self.pes_args = pes_args
-        self.load_func = load_func
-        self.load_args = load_args
+        # assert isinstance(pes, PesFunction), 'The PES must be inherited from PesFunction class.'
+        self.pes = pes
+        if mode == 'pes':
+            # No loader needed in the 'pes' mode
+            self.loader = None
+        else:
+            # assert isinstance(pes, PesLoader), 'The parameter loader must be inherited from ParameterLoader class.'
+            self.loader = loader
+        # end if
         self.cascade()
     # end def
 
@@ -101,7 +101,7 @@ class PesSampler():
 
     # tests for generation of the pes
     def _generated(self):
-        if self.pes_func is None:
+        if self.pes is None:
             return False
         # end if
         if self.mode == 'pes':  # direct pes mode will generate on-fly, no stop

@@ -1,4 +1,4 @@
-from numpy import array, linspace, random, concatenate, polyval, sign, equal
+from numpy import array, linspace, concatenate, polyval, sign, equal
 from matplotlib import pyplot as plt
 
 from shapls.util import W_to_R, directorize
@@ -138,13 +138,11 @@ class LineSearch(LineSearchBase):
 
     def evaluate_pes(
         self,
-        pes_func,
-        pes_args={},
-        **kwargs,
+        pes_eval
     ):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = pes_func(structure, sigma=self.sigma, **pes_args)
+            value, error = pes_eval.run(structure, sigma=self.sigma)
             grid.append(shift)
             values.append(value)
             errors.append(error)
@@ -152,9 +150,11 @@ class LineSearch(LineSearchBase):
         return array(grid), array(values), array(errors)
     # end def
 
+    '''Generate jobs'''
+
     def generate_jobs(
         self,
-        pes_func,
+        pes_gen,
         exclude_eqm=True,
         **kwargs,
     ):
@@ -169,9 +169,7 @@ class LineSearch(LineSearchBase):
             if exclude_eqm and structure.label == 'eqm':
                 continue
             # end if
-            s = structure.copy()
-            s.to_nexus_only()
-            jobs += self._generate_jobs(pes_func, s, **kwargs)
+            jobs += self._generate_jobs(pes_gen, structure, **kwargs)
         # end for
         self.generated = True
         return jobs
@@ -180,53 +178,46 @@ class LineSearch(LineSearchBase):
     # job must accept 0: position, 1: path, 2: sigma
     def generate_eqm_jobs(
         self,
-        pes_func,
+        pes_gen,
         sigma,
         **kwargs,
     ):
         if self.generated:
             return []
         # end if
-        structure = self.structure.copy()  # copy to be safe
-        structure.to_nexus_only()
-        return self._generate_jobs(pes_func, structure, sigma=sigma, **kwargs)
+        return self._generate_jobs(pes_gen, self.structure, sigma=sigma, **kwargs)
     # end def
 
     def _make_job_path(self, path, label):
         return '{}{}'.format(directorize(path), label)
     # end def
 
-    # pes_func must accept 0: structure, 1: path, 2: sigma
+    # pes_gen must accept 0: structure, 1: path, 2: sigma, **kwargs
     def _generate_jobs(
         self,
-        pes_func,
+        pes_gen,
         structure,
         sigma=None,
         path='',
-        **kwargs,
+        eqm_jobs=[]
     ):
         sigma = sigma if sigma is not None else self.sigma
         path = self._make_job_path(path, structure.label)
-        return pes_func(structure, path=path, sigma=sigma, **kwargs)
+        return pes_gen.generate(structure, path=path, sigma=sigma, eqm_jobs=eqm_jobs)
     # end def
 
-    def analyze_job(self, label, load_func, load_args={}, path='', add_sigma=False, sigma=None, **kwargs):
-        value, error = load_func(self._make_job_path(path, label), **load_args)
-        sigma = sigma if sigma is not None else self.sigma
-        if add_sigma:
-            error += sigma
-            value += sigma * random.randn(1)[0]
-        # end if
+    def analyze_job(self, structure, loader, path, sigma=None):
+        # assert isinstance(loader, PesLoader), 'The loader function must be inherited from PesLoader class.'
+        value, error = loader.load(path=self._make_job_path(
+            path, structure.label), structure=structure).get_result()
         return value, error
     # end def
 
-    # analyzer fuctions must accept 0: path
-    #   return energy, errorbar
-    def analyze_jobs(self, load_func, prune0=True, **kwargs):
+    # Loader function
+    def analyze_jobs(self, loader, path, prune0=True):
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = self.analyze_job(
-                structure.label, load_func=load_func, **kwargs)
+            value, error = self.analyze_job(structure, loader, path)
             structure.set_value(value, error)
             # FIXME: skipping values messes up the grid <-> list consistency
             if prune0 and value == 0:
@@ -241,22 +232,22 @@ class LineSearch(LineSearchBase):
         return array(grid), array(values), array(errors)
     # end def
 
-    def load_results(self, grid=None, values=None, errors=None, load_func=None, **kwargs):
-        if load_func is not None:
-            grid, values, errors = self.analyze_jobs(load_func, **kwargs)
+    # Load results directly from 'grid', 'values' and 'errors' args, or else using 'loader'.
+    def load_results(self, loader=None, path=None, grid=None, values=None, errors=None):
+        grid = grid if grid is not None else self.grid
+        if grid is not None and values is not None:
+            self.loaded = self.set_results(grid, values, errors)
         else:
-            # allow to input only values, not grid
-            grid = grid if grid is not None else self.grid
+            self.loaded = self.set_results(*self.analyze_jobs(loader, path))
         # end if
-        self.loaded = self.set_results(grid, values, errors, **kwargs)
         return self.loaded
     # end def
 
-    def load_eqm_results(self, load_func=None, values=None, errors=None, **kwargs):
-        if load_func is not None:
-            value, error = self.analyze_job('eqm', load_func, **kwargs)
-        else:
+    def load_eqm_results(self, loader=None, path=None, values=None, errors=None):
+        if values is not None:
             value, error = values, errors
+        else:
+            value, error = self.analyze_job(self.structure, loader, path)
         # end if
         return value, error
     # end def

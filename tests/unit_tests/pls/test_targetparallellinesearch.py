@@ -2,6 +2,7 @@
 
 from numpy import array
 from pytest import raises
+from shapls.params import PesFunction
 from shapls.util import match_to_tol
 
 from ..assets.h2o import pes_H2O, get_structure_H2O, get_hessian_H2O
@@ -20,6 +21,7 @@ def test_targetparallellinesearch_class():
     h = get_hessian_H2O()
     srg = TargetParallelLineSearch(
         structure=s,
+        pes=PesFunction(pes_H2O),
         hessian=h,
         mode='pes',
         targets=[0.01, -0.01],  # NOTE!
