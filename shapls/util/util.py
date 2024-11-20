@@ -5,6 +5,8 @@
 from numpy import polyfit, polyder, polyval, roots, where, argmin, median, array, isnan, linalg, linspace
 from numpy import meshgrid
 
+from .EffectiveVariance import EffectiveVariance
+
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
 __license__ = "BSD-3-Clause"
@@ -160,4 +162,21 @@ def directorize(path):
         path += '/'
     # end if
     return path
+# end def
+
+
+def get_var_eff(
+    structure,
+    pes,
+    loader,
+    samples=10,
+    path='path',
+    **kwargs
+):
+    jobs = pes.generate(structure, path, sigma=None, samples=samples)
+    from nexus import run_project
+    run_project(jobs)
+    Err = loader.load(path).get_error()
+    var_eff = EffectiveVariance(samples, Err)
+    return var_eff
 # end def

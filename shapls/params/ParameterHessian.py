@@ -4,7 +4,9 @@
 
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
+from .NexusLoader import NexusLoader
 from shapls.util import Ry, Hartree, Bohr, directorize, bipolyfit
+from .NexusFunction import NexusFunction
 from .ParameterSet import ParameterSet
 
 __author__ = "Juha Tiihonen"
@@ -174,10 +176,14 @@ class ParameterHessian():
         self,
         structure=None,
         dp=0.01,
-        mode='pes',
+        mode=None,
         path='fdiff',
         pes=None,
+        pes_func=None,
+        pes_args=None,
         loader=None,
+        load_func=None,
+        load_args=None,
         **kwargs,
     ):
         eqm = structure if structure is not None else self.structure
@@ -187,17 +193,29 @@ class ParameterHessian():
         if mode == 'pes':
             Es = [pes.evaluate(s).get_value() for s in structure_list]
         elif mode == 'nexus':
-            from nexus import run_project
+            # Generate jobs
+            if not isinstance(pes, NexusFunction):
+                # Checks are made in the wrapper class
+                pes = NexusFunction(pes_func, pes_args)
+            # end if
             jobs = []
             for s, label in zip(structure_list, label_list):
                 dir = '{}{}'.format(directorize(path), label)
-                jobs += pes.generate(s, dir)
+                # Make a copy structure for job generation
+                jobs += pes.generate(s.copy(), dir)
             # end for
+            from nexus import run_project
             run_project(jobs)
+            
+            # Load jobs
+            if not isinstance(loader, NexusLoader):
+                # Checks are made in the wrapper class
+                loader = NexusLoader(load_func, load_args)
+            # end if
             Es = []
             for label in label_list:
                 dir = '{}{}'.format(directorize(path), label)
-                E, Err = loader.load(path=dir).get_result()
+                E = loader.load(path=dir).get_value()
                 Es.append(E)
             # end for
         else:

@@ -11,7 +11,10 @@ class NexusFunction():
 
     def generate(self, structure, path, **kwargs):
         '''Return a list of Nexus jobs provided "structure" and "path" arguments.'''
-        jobs = self.func(structure, path, **self.args, **kwargs)
+        # Make a copy of the structure in case it is changed in the function.
+        structure_job = structure.copy()
+        structure_job.to_nexus_only()
+        jobs = self.func(structure_job, path, **self.args, **kwargs)
         return jobs
     # end def
 

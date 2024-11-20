@@ -1,13 +1,13 @@
-from .ParameterStructure import ParameterStructure
+from shapls.params import ParamsResult
 from .ParameterLoader import ParameterLoader
 
 
 class PwscfGeometry(ParameterLoader):
 
-    def load(self, path, structure, suffix='relax.in'):
+    def load(self, path, suffix='relax.in', **kwargs):
         from nexus import PwscfAnalyzer
-        assert isinstance(structure, ParameterStructure), "Structure must be a ParameterStructure object."
         ai = PwscfAnalyzer('{}/{}'.format(path, suffix))
+        ai.analyze()
         pos = ai.structures[len(ai.structures) - 1].positions
         try:
             axes = ai.structures[len(ai.structures) - 1].axes
@@ -15,7 +15,7 @@ class PwscfGeometry(ParameterLoader):
             # In case axes is not present in the relaxation
             axes = None
         # end try
-        structure.set_position(pos, axes=axes)
+        return ParamsResult(pos, axes)
     # end def
 
 # end class

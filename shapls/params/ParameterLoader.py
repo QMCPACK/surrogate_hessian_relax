@@ -11,7 +11,7 @@ class ParameterLoader():
     # end def
 
     # Dummy loader, by default returns the value and error from structure
-    def load(self, path=None, structure=None):
+    def load(self, *args, **kwargs):
         raise NotImplementedError("Parameter loader not implemented.")
     # end def
 

@@ -49,7 +49,9 @@ try:
 
         def to_nexus_only(self):
             self.forward_func = None
+            self.forward_args = None
             self.backward_func = None
+            self.forward_args = None
         # end def
 
     # end class
