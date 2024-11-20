@@ -1,19 +1,5 @@
-from dill import loads
 from numpy import array
 from matplotlib import pyplot as plt
-
-
-# load pickle from disk
-def load_from_disk(path):
-    try:
-        with open(path, mode='rb') as f:
-            data = loads(f.read())
-        # end with
-        return data
-    except FileNotFoundError:
-        return None
-    # end try
-# end def
 
 
 def plot_parameter_convergence(

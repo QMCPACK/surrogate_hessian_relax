@@ -1,3 +1,6 @@
+from .PesResult import PesResult
+
+
 class PesFunction():
     func = None
     args = None
@@ -8,9 +11,9 @@ class PesFunction():
         self.args = args
     # end def
 
-    def run(self, structure, **kwargs):
+    def evaluate(self, structure, **kwargs):
         value, error = self.func(structure, **self.args, **kwargs)
-        return value, error
+        return PesResult(value, error)
     # end def
 
 # end class

@@ -8,7 +8,7 @@ from textwrap import indent
 
 from shapls.util import get_fraction_error, directorize
 from shapls.params import ParameterSet
-from shapls.hessian import ParameterHessian
+from shapls.params import ParameterHessian
 from shapls.ls import LineSearch, LineSearchDummy
 from .PesSampler import PesSampler
 
@@ -41,7 +41,7 @@ class ParallelLineSearch(PesSampler):
     msg_loaded = 'Loaded: first load_results() with valid input'
 
     # Try to load the instance from file before ordinary init
-    def __new__(cls, load=None, *args, **kwargs):
+    def __new__(cls, load=None, mode=None, *args, **kwargs):
         if load is None:
             return super().__new__(cls)
         else:
@@ -52,7 +52,12 @@ class ParallelLineSearch(PesSampler):
                 # end with
                 return data
             except FileNotFoundError:
-                return super().__new__(cls)
+                # If only trying to load a file, stop right here
+                if mode == 'load':
+                    return None
+                else:
+                    return super().__new__(cls)
+                # end if
             # end try
         # end if
     # end def
@@ -64,7 +69,11 @@ class ParallelLineSearch(PesSampler):
         # PesSampler arguments
         mode=None,
         pes=None,
+        pes_func=None,
+        pes_args=None,
         loader=None,
+        load_func=None,
+        load_args=None,
         # PLS arguments
         hessian=None,
         structure=None,
@@ -80,7 +89,11 @@ class ParallelLineSearch(PesSampler):
         shift_params=None,
         D=None
     ):
-        PesSampler.__init__(self, mode, pes=pes, loader=loader)
+        if mode == 'load':
+            return
+        # end if
+        PesSampler.__init__(self, mode, pes=pes, pes_func=pes_func, pes_args=pes_args,
+                            loader=loader, load_func=load_func, load_args=load_args)
         self.x_unit = x_unit
         self.E_unit = E_unit
         self.path = directorize(path)
@@ -99,7 +112,7 @@ class ParallelLineSearch(PesSampler):
         # end if
         if self.mode == 'pes':
             if self.status.shifted:
-                self.generate_jobs()
+                self.generate_pls_jobs()
             # end if
             if self.status.generated:
                 self.load_results()
@@ -302,9 +315,9 @@ class ParallelLineSearch(PesSampler):
         return pls_next
     # end def
 
-    def generate_jobs(self, **kwargs):
+    def generate_pls_jobs(self, **kwargs):
         self._require_shifted()
-        
+
         if (self.mode == 'pes'):
             self.status.generated = True
             return
@@ -314,12 +327,14 @@ class ParallelLineSearch(PesSampler):
         sigma_min = None if not self.noisy else self.noises.min()
 
         # Generate eqm jobs
-        eqm_jobs = self.ls_list[0].generate_eqm_jobs(self.pes, path=self.path, sigma=sigma_min)
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(
+            self.pes, path=self.path, sigma=sigma_min)
         jobs = eqm_jobs
 
         # Generate line-search jobs
         for ls in self.ls_list:
-            jobs += ls.generate_jobs(self.pes, path=self.path, eqm_jobs=eqm_jobs, **kwargs)
+            jobs += ls.generate_ls_jobs(self.pes, path=self.path,
+                                        eqm_jobs=eqm_jobs, **kwargs)
         # end for
         self.status.generated = True
         return jobs
@@ -327,7 +342,8 @@ class ParallelLineSearch(PesSampler):
 
     def generate_eqm_jobs(self, **kwargs):
         sigma_min = None if not self.noisy else self.noises.min()
-        eqm_jobs = self.ls_list[0].generate_eqm_jobs(self.pes, path=self.path, sigma=sigma_min, **kwargs)
+        eqm_jobs = self.ls_list[0].generate_eqm_jobs(
+            self.pes, path=self.path, sigma=sigma_min, **kwargs)
         return eqm_jobs
     # end def
 
@@ -335,7 +351,7 @@ class ParallelLineSearch(PesSampler):
         if eqm_only:
             jobs = self.generate_eqm_jobs(**kwargs)
         else:
-            jobs = self.generate_jobs(**kwargs)
+            jobs = self.generate_pls_jobs(**kwargs)
         # end if
         if jobs is None or jobs == []:
             return
@@ -403,7 +419,8 @@ class ParallelLineSearch(PesSampler):
             return
         # end if
         sigma_min = self.noises.min()
-        E, err = self.ls_list[0].load_eqm_results(self.loader, path=self.path, sigma=sigma_min, **kwargs)
+        E, err = self.ls_list[0].load_eqm_results(
+            self.loader, path=self.path, sigma=sigma_min, **kwargs)
         self.structure.value = E
         self.structure.error = err
     # end def
@@ -525,7 +542,7 @@ class ParallelLineSearch(PesSampler):
         # end if
         makedirs(self.path, exist_ok=True)
         with open(self.path + fname, mode='wb') as f:
-            f.write(dumps(self))
+            f.write(dumps(self, byref=True))
         # end with
     # end def
 

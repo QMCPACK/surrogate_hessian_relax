@@ -4,8 +4,8 @@ __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
 __license__ = "BSD-3-Clause"
 
-from .ParallelLineSearch import ParallelLineSearch
-from .TargetParallelLineSearch import TargetParallelLineSearch
-from .PesSampler import PesSampler
+from shapls.pls.ParallelLineSearch import ParallelLineSearch
+from shapls.pls.TargetParallelLineSearch import TargetParallelLineSearch
+from shapls.pls.PesSampler import PesSampler
 
 __all__ = [ParallelLineSearch, TargetParallelLineSearch, PesSampler]

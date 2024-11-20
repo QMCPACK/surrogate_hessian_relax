@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 
 from shapls.util import W_to_R, directorize
 
-from shapls.params import ParameterSet
+from shapls.params import FilesFunction, NexusFunction, ParameterSet, NexusLoader, PesFunction
 from .LineSearchBase import LineSearchBase
 
 
@@ -140,9 +140,13 @@ class LineSearch(LineSearchBase):
         self,
         pes_eval
     ):
+        '''Evaluate the PES on the line-search grid using an evaluation function.'''
+        assert isinstance(
+            pes_eval, PesFunction), 'The evaluation function must be inherited from PesFunction class.'
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = pes_eval.run(structure, sigma=self.sigma)
+            value, error = pes_eval.evaluate(
+                structure, sigma=self.sigma).get_result()
             grid.append(shift)
             values.append(value)
             errors.append(error)
@@ -150,15 +154,18 @@ class LineSearch(LineSearchBase):
         return array(grid), array(values), array(errors)
     # end def
 
-    '''Generate jobs'''
-
-    def generate_jobs(
+    def generate_ls_jobs(
         self,
         pes_gen,
+        path='',
+        eqm_jobs=[],
         exclude_eqm=True,
         **kwargs,
     ):
+        '''Generate PES jobs on the line-search grid using a job-generating function.'''
         assert self.shifted, 'Must shift parameters first before generating jobs'
+        assert isinstance(
+            pes_gen, (NexusFunction, FilesFunction)), 'The evaluation function must be inherited from either NexusFunction class or FilesFunction class.'
         jobs = []
         for si, structure in enumerate(self.structure_list):
             if self.jobs_list[si]:
@@ -169,7 +176,8 @@ class LineSearch(LineSearchBase):
             if exclude_eqm and structure.label == 'eqm':
                 continue
             # end if
-            jobs += self._generate_jobs(pes_gen, structure, **kwargs)
+            jobs += pes_gen.generate(structure, self._make_job_path(
+                path, structure.label), sigma=self.sigma, eqm_jobs=eqm_jobs)
         # end for
         self.generated = True
         return jobs
@@ -179,35 +187,25 @@ class LineSearch(LineSearchBase):
     def generate_eqm_jobs(
         self,
         pes_gen,
-        sigma,
+        sigma=None,
+        path='',
         **kwargs,
     ):
         if self.generated:
             return []
         # end if
-        return self._generate_jobs(pes_gen, self.structure, sigma=sigma, **kwargs)
+        sigma = sigma if sigma is not None else self.sigma
+        path = self._make_job_path(path, self.structure.label)
+        return pes_gen.generate(self.structure, path, sigma=sigma)
     # end def
 
     def _make_job_path(self, path, label):
         return '{}{}'.format(directorize(path), label)
     # end def
 
-    # pes_gen must accept 0: structure, 1: path, 2: sigma, **kwargs
-    def _generate_jobs(
-        self,
-        pes_gen,
-        structure,
-        sigma=None,
-        path='',
-        eqm_jobs=[]
-    ):
-        sigma = sigma if sigma is not None else self.sigma
-        path = self._make_job_path(path, structure.label)
-        return pes_gen.generate(structure, path=path, sigma=sigma, eqm_jobs=eqm_jobs)
-    # end def
-
     def analyze_job(self, structure, loader, path, sigma=None):
-        # assert isinstance(loader, PesLoader), 'The loader function must be inherited from PesLoader class.'
+        assert isinstance(
+            loader, NexusLoader), 'The loader function must be inherited from PesLoader class.'
         value, error = loader.load(path=self._make_job_path(
             path, structure.label), structure=structure).get_result()
         return value, error

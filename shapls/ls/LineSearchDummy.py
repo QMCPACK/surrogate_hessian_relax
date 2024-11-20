@@ -15,7 +15,7 @@ class LineSearchDummy(LineSearch):
         return True
     # end def
 
-    def generate_jobs(self, **kwargs):
+    def generate_ls_jobs(self, **kwargs):
         return []
     # end def
 

@@ -8,9 +8,8 @@
 #
 # Computing task: Runs on command line
 
-from shapls.hessian import ParameterHessian
 from shapls.lsi import LineSearchIteration
-from shapls.params import ParameterSet, PesFunction
+from shapls.params import ParameterSet, PesFunction, ParameterHessian
 from shapls.pls import TargetParallelLineSearch
 from surrogate_macros import linesearch_diagnostics
 

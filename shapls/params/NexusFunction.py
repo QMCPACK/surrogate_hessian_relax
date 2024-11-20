@@ -1,4 +1,5 @@
 class NexusFunction():
+    '''A wrapper class for generating Nexus functions to produce and represent a PES.'''
     func = None
     args = None
 
@@ -8,8 +9,9 @@ class NexusFunction():
         self.args = args
     # end def
 
-    def generate(self, structure, **kwargs):
-        jobs = self.func(structure, **self.args, **kwargs)
+    def generate(self, structure, path, **kwargs):
+        '''Return a list of Nexus jobs provided "structure" and "path" arguments.'''
+        jobs = self.func(structure, path, **self.args, **kwargs)
         return jobs
     # end def
 

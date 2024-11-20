@@ -6,9 +6,9 @@ from numpy import array, mean
 
 from shapls.util import directorize
 from shapls.params import ParameterSet
-from shapls.hessian import ParameterHessian
+from shapls.params import ParameterHessian
 from shapls.pls import ParallelLineSearch
-from .util import plot_parameter_convergence, plot_energy_convergence, plot_bundled_convergence, load_from_disk
+from .util import plot_parameter_convergence, plot_energy_convergence, plot_bundled_convergence
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
@@ -55,7 +55,7 @@ class LineSearchIteration():
     def init_from_surrogate(self, surrogate, **kwargs):
         pls = surrogate.copy(path=self._get_pls_path(0), **kwargs)
         # TODO: only checking after copy, to support unpickling of the surrogate
-        # assert isinstance(pls, ParallelLineSearch), 'Surrogate parameter must be a ParallelLineSearch object'
+        assert isinstance(pls, ParallelLineSearch), 'Surrogate parameter must be a ParallelLineSearch object'
         self.pls_list = [pls]
     # end def
 
@@ -78,7 +78,7 @@ class LineSearchIteration():
     # end def
 
     def generate_jobs(self, **kwargs):
-        return self._get_current_pls().generate_jobs(**kwargs)
+        return self._get_current_pls().generate_pls_jobs(**kwargs)
     # end def
 
     def load_results(self, **kwargs):
@@ -111,7 +111,7 @@ class LineSearchIteration():
         i = 0
         while not load_failed:
             path = '{}data.p'.format(self._get_pls_path(i))
-            pls = self._load_linesearch_pickle(path)
+            pls = ParallelLineSearch(load=path, mode='load')
             if pls is not None and pls.check_integrity():
                 pls_list.append(pls)
                 i += 1
@@ -120,10 +120,6 @@ class LineSearchIteration():
             # end if
         # end while
         self.pls_list = pls_list
-    # end def
-
-    def _load_linesearch_pickle(self, path):
-        return load_from_disk(path)
     # end def
 
     def propagate(self, i=None, **kwargs):

@@ -5,7 +5,7 @@
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
 from shapls.util import Ry, Hartree, Bohr, directorize, bipolyfit
-from shapls.params import ParameterSet
+from .ParameterSet import ParameterSet
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
@@ -47,14 +47,14 @@ class ParameterHessian():
     def set_structure(self, structure):
         """Set the Hessian location as a ParameterSet or derived object"""
         assert isinstance(
-            structure, ParameterSet), 'Structure must be ParameterSet object'
+            structure, ParameterSet), 'Structure must be inherited from ParameterSet class.'
         self.structure = structure
     # end def
 
     def init_hessian_structure(self, structure):
         """Initialize the Hessian from a structure"""
         assert isinstance(
-            structure, ParameterSet), 'Provided argument is not ParameterSet'
+            structure, ParameterSet), 'Structure mus tbe inherited from ParameterSet class.'
         assert structure.check_consistency(
         ), 'Provided ParameterStructure is incomplete or inconsistent'
         hessian = diag(len(structure.params) * [1.0])
@@ -161,7 +161,8 @@ class ParameterHessian():
             string += '\n  Conjugate directions:'
             string += '\n    Lambda     Direction'
             for Lambda, direction in zip(self.Lambda, self.get_directions()):
-                string += ('\n    {:<8f}   ' + len(direction) * '{:<+1.6f} ').format(Lambda, *tuple(direction))
+                string += ('\n    {:<8f}   ' + len(direction) *
+                           '{:<+1.6f} ').format(Lambda, *tuple(direction))
             # end for
         else:
             string += '\n  hessian: not set'
@@ -184,19 +185,19 @@ class ParameterHessian():
         dps = array(P * [dp]) if isscalar(dp) else array(dp)
         dp_list, structure_list, label_list = self._get_fdiff_data(eqm, dps)
         if mode == 'pes':
-            Es = [pes.run(s)[0] for s in structure_list]
+            Es = [pes.evaluate(s).get_value() for s in structure_list]
         elif mode == 'nexus':
             from nexus import run_project
             jobs = []
             for s, label in zip(structure_list, label_list):
                 dir = '{}{}'.format(directorize(path), label)
-                jobs += pes.run(s, dir)
+                jobs += pes.generate(s, dir)
             # end for
             run_project(jobs)
             Es = []
             for label in label_list:
                 dir = '{}{}'.format(directorize(path), label)
-                E, Err = loader.load(path=dir)
+                E, Err = loader.load(path=dir).get_result()
                 Es.append(E)
             # end for
         else:

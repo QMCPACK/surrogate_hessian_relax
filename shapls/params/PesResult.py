@@ -10,11 +10,11 @@ class PesResult:
     def get_value(self):
         return self.value
     # end def
-    
+
     def get_error(self):
-        return self.value
+        return self.error
     # end def
-    
+
     def get_result(self):
         return self.get_value(), self.get_error()
     # end def

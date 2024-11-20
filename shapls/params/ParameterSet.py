@@ -145,7 +145,7 @@ class ParameterSet():
 
         # Relax numerically using a wrapper around SciPy minimize
         def relax_aux(p):
-            return pes.run(ParameterSet(p))[0]
+            return pes.evaluate(ParameterSet(p)).get_value()
         # end def
         res = minimize(relax_aux, self.params, **kwargs)
         self.set_params(res.x)

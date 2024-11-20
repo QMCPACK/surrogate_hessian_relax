@@ -6,15 +6,13 @@ __license__ = "BSD-3-Clause"
 
 from . import util
 from . import params
-from . import hessian
 from . import ls
 from . import pls
 from . import lsi
-from .params import ParameterSet, ParameterStructure
+from .params import ParameterSet, ParameterStructure, ParameterHessian
 from .lsi import LineSearchIteration
 from .ls import LineSearch, TargetLineSearch
-from .hessian import ParameterHessian
 from .pls import ParallelLineSearch, TargetParallelLineSearch
 
-__all__ = [util, params, hessian, ls, pls, lsi, ParameterSet, ParameterHessian, ParameterStructure,
+__all__ = [util, params, ls, pls, lsi, ParameterSet, ParameterHessian, ParameterStructure,
            LineSearchIteration, LineSearch, TargetLineSearch, ParallelLineSearch, TargetParallelLineSearch]

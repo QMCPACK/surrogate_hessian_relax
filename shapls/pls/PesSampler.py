@@ -2,8 +2,8 @@
 '''Generic base class for sampling a PES in iterative batches
 '''
 
+from shapls.params import PesFunction, FilesFunction, FilesLoader, NexusFunction, NexusLoader
 from .CascadeStatus import CascadeStatus
-# from shapls.params import PesFunction
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
@@ -29,22 +29,101 @@ class PesSampler():
     def __init__(
         self,
         mode,
-        pes=None,
-        loader=None
+        **kwargs  # pes and loader arguments
     ):
-        assert mode in ['nexus', 'files', 'pes'], 'Must provide operating mode'
-        self.status = CascadeStatus()
-        self.mode = mode
-        # assert isinstance(pes, PesFunction), 'The PES must be inherited from PesFunction class.'
-        self.pes = pes
         if mode == 'pes':
-            # No loader needed in the 'pes' mode
-            self.loader = None
+            self.__init_pes_mode__(**kwargs)
+        elif mode == 'files':
+            self.__init_files_mode__(**kwargs)
+        elif mode == 'nexus':
+            self.__init_nexus_mode__(**kwargs)
         else:
-            # assert isinstance(pes, PesLoader), 'The parameter loader must be inherited from ParameterLoader class.'
-            self.loader = loader
+            raise ValueError(
+                'Must provide an operating mode: "nexus", "files", or "pes"')
         # end if
+        self.mode = mode
+        self.status = CascadeStatus()
         self.cascade()
+    # end def
+
+    def __init_pes_mode__(
+        self,
+        pes=None,
+        pes_func=None,
+        pes_args=None,
+        **kwargs  # loader arguments are ignored
+    ):
+        # Treat the PES
+        if pes is None:
+            # Construct from func/args; checks are made in PesFunction class
+            pes = PesFunction(pes_func, pes_args)
+        else:
+            assert isinstance(
+                pes, PesFunction), 'The PES must be inherited from PesFunction class.'
+        # end if
+        self.pes = pes
+    # end def
+
+    def __init_files_mode__(
+        self,
+        pes=None,
+        pes_func=None,
+        pes_args=None,
+        loader=None,
+        load_func=None,
+        load_args=None,
+    ):
+        # Treat the PES (required)
+        if pes is None:
+            # Construct from func/args; checks are made in FilesFunction class
+            pes = FilesFunction(pes_func, pes_args)
+        else:
+            assert isinstance(
+                pes, FilesFunction), 'The PES must be inherited from FilesFunction class.'
+        # end if
+        self.pes = pes
+
+        # Treat the loader (not required)
+        if loader is None:
+            if load_func is not None:
+                loader = FilesLoader(load_func, load_args)
+            # end if
+        else:
+            assert isinstance(
+                loader, FilesLoader), 'The files loader must be inherited from FilesLoader class.'
+        # end if
+        self.loader = loader
+    # end def
+
+    def __init_nexus_mode__(
+        self,
+        pes=None,
+        pes_func=None,
+        pes_args=None,
+        loader=None,
+        load_func=None,
+        load_args=None,
+    ):
+        # Treat the PES (required)
+        if pes is None:
+            # Construct from func/args; checks are made in FilesFunction class
+            pes = NexusFunction(pes_func, pes_args)
+        else:
+            assert isinstance(
+                pes, NexusFunction), 'The PES must be inherited from NexusFunction class.'
+        # end if
+        self.pes = pes
+
+        # Treat the loader (not required)
+        if loader is None:
+            if load_func is not None:
+                loader = NexusLoader(load_func, load_args)
+            # end if
+        else:
+            assert isinstance(
+                loader, NexusLoader), 'The files loader must be inherited from NexusLoader class.'
+        # end if
+        self.loader = loader
     # end def
 
     # reset = True overrides all, including protected
