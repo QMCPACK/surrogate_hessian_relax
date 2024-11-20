@@ -20,6 +20,7 @@ __license__ = "BSD-3-Clause"
 # Class for a bundle of parallel line-searches
 class ParallelLineSearch(PesSampler):
 
+    skip_init = False
     ls_type = LineSearch
     ls_list = []  # list of line-search objects
     hessian = None  # hessian object
@@ -50,6 +51,7 @@ class ParallelLineSearch(PesSampler):
                 with open(load, mode='rb') as f:
                     data = loads(f.read())
                 # end with
+                data.skip_init = True
                 return data
             except FileNotFoundError:
                 # If only trying to load a file, stop right here
@@ -89,7 +91,7 @@ class ParallelLineSearch(PesSampler):
         shift_params=None,
         D=None
     ):
-        if mode == 'load':
+        if self.skip_init:
             return
         # end if
         PesSampler.__init__(self, mode, pes=pes, pes_func=pes_func, pes_args=pes_args,
@@ -418,9 +420,8 @@ class ParallelLineSearch(PesSampler):
         if self.status.protected:
             return
         # end if
-        sigma_min = self.noises.min()
         E, err = self.ls_list[0].load_eqm_results(
-            self.loader, path=self.path, sigma=sigma_min, **kwargs)
+            self.loader, path=self.path, **kwargs)
         self.structure.value = E
         self.structure.error = err
     # end def

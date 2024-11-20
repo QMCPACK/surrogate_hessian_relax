@@ -11,7 +11,6 @@
 from shapls.lsi import LineSearchIteration
 from shapls.params import ParameterSet, PesFunction, ParameterHessian
 from shapls.pls import TargetParallelLineSearch
-from surrogate_macros import linesearch_diagnostics
 
 base_dir = 'morse_3p/'
 
@@ -114,5 +113,4 @@ imax = 4
 for i in range(imax):
     lsi.propagate(i)
 # end for
-
-linesearch_diagnostics(lsi)
+print(lsi)

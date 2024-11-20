@@ -1,6 +1,8 @@
 from numpy import array, isscalar, random, diag
 from copy import deepcopy
 
+from .NexusFunction import NexusFunction
+from .PesFunction import PesFunction
 from shapls.util import match_to_tol, get_fraction_error, directorize
 from .util import load_xyz, load_xsf
 from .ParameterSet import ParameterSet
@@ -19,9 +21,7 @@ class ParameterStructureBase(ParameterSet):
     elem = None  # list of elements
     unit = None  # position units
     tol = None  # consistency tolerance
-    # TODO: parameter trust intervals
     # FLAGS
-    periodic = False  # is the line-search periodic; will axes be supplied to forward_func
     irreducible = False  # is the parameter mapping irreducible
     consistent = False  # are forward and backward mappings consistent
 
@@ -34,7 +34,6 @@ class ParameterStructureBase(ParameterSet):
         elem=None,
         params=None,
         params_err=None,
-        periodic=False,
         forward_args={},
         backward_args={},
         value=None,
@@ -47,7 +46,6 @@ class ParameterStructureBase(ParameterSet):
         **kwargs,  # kinds, labels, units
     ):
         self.dim = dim
-        self.periodic = periodic
         self.label = label
         self.tol = tol
         self.set_forward_func(forward, forward_args)
@@ -97,7 +95,8 @@ class ParameterStructureBase(ParameterSet):
     # Set a new pos+axes and, if so configured, translate pos through backward mapping.
     def set_position(self, pos, axes=None, translate=True):
         pos = array(pos)
-        assert pos.size % self.dim == 0, f'Position vector inconsistent with {self.dim} dimensions!'
+        assert pos.size % self.dim == 0, f'Position vector inconsistent with {
+            self.dim} dimensions!'
         # Set the new pos+axes
         self.pos = array(pos).reshape(-1, self.dim)
         if axes is not None:
@@ -126,7 +125,8 @@ class ParameterStructureBase(ParameterSet):
             axes = diag(axes)
         else:
             axes = array(axes)
-            assert axes.size == self.dim**2, f'Axes vector inconsistent with {self.dim} dimensions!'
+            assert axes.size == self.dim**2, f'Axes vector inconsistent with {
+                self.dim} dimensions!'
             axes = array(axes).reshape(self.dim, self.dim)
         # end if
         # TODO: there's a problem with updating an explicit list of kpoints
@@ -170,6 +170,12 @@ class ParameterStructureBase(ParameterSet):
         self.error = None
     # end def
 
+    @property
+    def periodic(self):
+        # By default axes is None, but Nexus may set it to empty list/array
+        return self.axes is not None and len(self.axes) > 0
+    # end def
+
     # Perform forward mapping: if mapping function provided, return new params; else, return None
     def map_forward(self, pos=None, axes=None):
         pos = pos if pos is not None else self.pos
@@ -190,11 +196,12 @@ class ParameterStructureBase(ParameterSet):
         if self.backward_func is None or params is None:
             return None, None
         # end if
-        if self.periodic:
-            pos, axes = self.backward_func(array(params), **self.backward_args)
-            return array(pos).reshape(-1, 3), array(axes).reshape(-1, 3)
+        # Periodic mappings return (pos, axes) and non-periodic only pos
+        res = self.backward_func(array(params), **self.backward_args)
+        if type(res) is tuple:
+            return array(res[0]).reshape(-1, 3), array(res[1]).reshape(-1, 3)
         else:
-            return array(self.backward_func(array(params), **self.backward_args)).reshape(-1, 3), None
+            return array(res).reshape(-1, 3), None
         # end if
     # end def
 
@@ -403,22 +410,42 @@ class ParameterStructureBase(ParameterSet):
 
     def relax(
         self,
-        pes,
+        pes=None,
+        pes_func=None,
+        pes_args=None,
         path='relax',
-        mode='nexus',
+        mode=None,
         loader=None,
         loader_args={},
         **kwargs,
     ):
         if mode == 'nexus':
-            jobs = pes.run(self, directorize(path))
+            # Generate jobs
+            if not isinstance(pes, NexusFunction):
+                # Checks are made in the wrapper class
+                pes = NexusFunction(pes_func, pes_args)
+            # end if
+            # Make a copy structure for job generation
+            relax_jobs = pes.generate(self.copy(), directorize(path))
+
+            # Run project
             from nexus import run_project
-            run_project(jobs)
+            run_project(relax_jobs)
+
+            # Load results
             if isinstance(loader, ParameterLoader):
-                loader.load(path, self, **loader_args)
+                # returns pos, axes
+                pos, axes = loader.load(path, **loader_args).get_result()
+                self.set_position(pos, axes)
             # end if
         elif mode == 'pes':
+            if not isinstance(pes, PesFunction):
+                # Checks are made in the wrapper class
+                pes = PesFunction(pes_func, pes_args)
+            # end if
             ParameterSet.relax(self, pes=pes, **kwargs)
+        else:
+            raise ValueError("Mode must be 'pes' or 'nexus'.")
         # end if
     # end def
 

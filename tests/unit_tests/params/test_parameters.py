@@ -154,7 +154,6 @@ def test_parameterstructurebase_class():
         elem_GeSe,  # elem
         params_GeSe,
         None,  # params_err
-        periodic=True,  # periodic
         value=-10.0,  # value
         error=0.1,  # error
         label='GeSe test',  # label
