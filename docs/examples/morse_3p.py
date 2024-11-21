@@ -62,7 +62,7 @@ print(p_relax.params)
 
 # Compute the numerical Hessian at the minimum parameters using a finite difference method
 hessian = ParameterHessian(structure=p_relax)
-hessian.compute_fdiff(pes=pes_surrogate)
+hessian.compute_fdiff(mode='pes', pes=pes_surrogate)
 print('Hessian:')
 print(hessian)
 

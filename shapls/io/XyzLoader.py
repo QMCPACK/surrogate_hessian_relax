@@ -1,17 +1,15 @@
 from numpy import loadtxt, array
 
-from ..params.ParameterStructure import ParameterStructure
-from .ParameterLoader import ParameterLoader
+from shapls.params.GeometryResult import GeometryResult
+from .GeometryLoader import GeometryLoader
 
 
-class XyzLoader(ParameterLoader):
+class XyzLoader(GeometryLoader):
 
-    def load(self, path, structure, suffix='relax.xyz'):
-        assert isinstance(structure, ParameterStructure), "Structure must be a ParameterStructure object."
+    def __load__(self, path, suffix='relax.xyz', c_pos=1.0):
         el, x, y, z = loadtxt('{}/{}'.format(path, suffix), dtype=str, unpack=True, skiprows=2)
-        pos = array([x, y, z], dtype=float).T
-        structure.set_elem(el)
-        structure.set_position(pos, axes=None)
+        pos = array([x, y, z], dtype=float).T * c_pos
+        return GeometryResult(pos, axes=None, elem=el)
     # end def
 
 # end class

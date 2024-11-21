@@ -1,0 +1,57 @@
+&CONTROL
+   calculation     = 'vc-relax'
+   forc_conv_thr   = 8e-05
+   outdir          = 'pwscf_output'
+   prefix          = 'pwscf'
+   pseudo_dir      = './'
+/
+
+&SYSTEM
+   A               = 3.32949994777
+   C               = 19.97699968662
+   degauss         = 0.002
+   ecutrho         = 600
+   ecutwfc         = 300
+   ibrav           = 4
+   input_dft       = 'pbe'
+   nat             = 3
+   nspin           = 2
+   ntyp            = 2
+   occupations     = 'smearing'
+   smearing        = 'gaussian'
+   starting_magnetization(1) = 1.0
+   tot_charge      = 0
+   tot_magnetization = 1.0
+/
+
+&ELECTRONS
+   conv_thr        = 1e-09
+   electron_maxstep = 1000
+   mixing_beta     = 0.2
+   mixing_mode     = 'local-TF'
+/
+
+&IONS
+   ion_dynamics    = 'bfgs'
+/
+
+&CELL
+   cell_dofree     = 'ibrav'
+   press           = 0.0
+   press_conv_thr  = 0.4
+/
+
+
+ATOMIC_SPECIES 
+   Se 78.96 Se.BFD-lp.upf
+   V  50.942 V.opt.upf
+
+ATOMIC_POSITIONS bohr
+   V       -0.00000000       3.63259729      18.87552918 
+   Se       3.14592153       1.81629864      21.85413395 
+   Se       3.14592153       1.81629864      15.89692441 
+
+K_POINTS automatic
+   6 6 1  0 0 0 
+
+

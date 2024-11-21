@@ -1,11 +1,11 @@
 from numpy import array, isscalar, random, diag
 from copy import deepcopy
 
-from ..io.NexusFunction import NexusFunction
+from shapls.io.NexusFunction import NexusFunction
 from .PesFunction import PesFunction
 from shapls.util import match_to_tol, get_fraction_error, directorize
 from .ParameterSet import ParameterSet
-from ..io.ParameterLoader import ParameterLoader
+from shapls.io.GeometryLoader import GeometryLoader
 
 
 class ParameterStructureBase(ParameterSet):
@@ -430,7 +430,7 @@ class ParameterStructureBase(ParameterSet):
             run_project(relax_jobs)
 
             # Load results
-            if isinstance(loader, ParameterLoader):
+            if isinstance(loader, GeometryLoader):
                 # returns pos, axes
                 pos, axes = loader.load(path, **loader_args).get_result()
                 self.set_position(pos, axes)

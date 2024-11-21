@@ -1,10 +1,10 @@
-from shapls.params import GeometryResult
-from .ParameterLoader import ParameterLoader
+from .GeometryLoader import GeometryLoader
+from shapls.params.GeometryResult import GeometryResult
 
 
-class PwscfGeometry(ParameterLoader):
+class PwscfGeometry(GeometryLoader):
 
-    def __load__(self, path, suffix='relax.in', c_pos=1.0, **kwargs):
+    def __load__(self, path, suffix='relax.in', c_pos=1.0):
         from nexus import PwscfAnalyzer
         ai = PwscfAnalyzer('{}/{}'.format(path, suffix))
         ai.analyze()

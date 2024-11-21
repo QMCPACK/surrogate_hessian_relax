@@ -1,0 +1,60 @@
+&CONTROL
+   calculation     = 'relax'
+   forc_conv_thr   = 0.0001
+   outdir          = 'pwscf_output'
+   prefix          = 'pwscf'
+   pseudo_dir      = './'
+/
+
+&SYSTEM
+   degauss         = 0.0001
+   ecutrho         = 300
+   ecutwfc         = 100
+   ibrav           = 0
+   input_dft       = 'pbe'
+   nat             = 12
+   nosym           = .false.
+   nspin           = 1
+   ntyp            = 2
+   occupations     = 'smearing'
+   smearing        = 'gaussian'
+   tot_charge      = 0
+/
+
+&ELECTRONS
+   conv_thr        = 1e-09
+   electron_maxstep = 1000
+   mixing_beta     = 0.7
+/
+
+&IONS
+   ion_dynamics    = 'bfgs'
+/
+
+
+ATOMIC_SPECIES 
+   C  12.011 C.pbe_v1.2.uspp.F.upf
+   H  1.00794 H.pbe_v1.4.uspp.F.upf
+
+ATOMIC_POSITIONS bohr
+   C        0.00000000       2.65100000       0.00000000 
+   C       -2.29583335       1.32550000       0.00000000 
+   C       -2.29583335      -1.32550000       0.00000000 
+   C       -0.00000000      -2.65100000       0.00000000 
+   C        2.29583335      -1.32550000       0.00000000 
+   C        2.29583335       1.32550000       0.00000000 
+   H        0.00000000       4.70600000       0.00000000 
+   H       -4.07551555       2.35300000       0.00000000 
+   H       -4.07551555      -2.35300000       0.00000000 
+   H       -0.00000000      -4.70600000       0.00000000 
+   H        4.07551555      -2.35300000       0.00000000 
+   H        4.07551555       2.35300000       0.00000000 
+
+K_POINTS gamma
+
+CELL_PARAMETERS bohr
+        20.00000000       0.00000000       0.00000000 
+         0.00000000      20.00000000       0.00000000 
+         0.00000000       0.00000000      10.00000000 
+
+
