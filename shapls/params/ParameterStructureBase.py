@@ -95,8 +95,7 @@ class ParameterStructureBase(ParameterSet):
     # Set a new pos+axes and, if so configured, translate pos through backward mapping.
     def set_position(self, pos, axes=None, translate=True):
         pos = array(pos)
-        assert pos.size % self.dim == 0, f'Position vector inconsistent with {
-            self.dim} dimensions!'
+        assert pos.size % self.dim == 0, f'Position vector inconsistent with {self.dim} dimensions!'
         # Set the new pos+axes
         self.pos = array(pos).reshape(-1, self.dim)
         if axes is not None:
@@ -125,8 +124,7 @@ class ParameterStructureBase(ParameterSet):
             axes = diag(axes)
         else:
             axes = array(axes)
-            assert axes.size == self.dim**2, f'Axes vector inconsistent with {
-                self.dim} dimensions!'
+            assert axes.size == self.dim**2, f'Axes vector inconsistent with {self.dim} dimensions!'
             axes = array(axes).reshape(self.dim, self.dim)
         # end if
         # TODO: there's a problem with updating an explicit list of kpoints

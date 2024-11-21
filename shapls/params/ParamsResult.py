@@ -2,7 +2,7 @@ class ParamsResult:
     pos = None
     axes = None
 
-    def __init__(self, pos, axes):
+    def __init__(self, pos, axes=None):
         self.pos = pos
         self.axes = axes
     # end def

@@ -180,10 +180,10 @@ class ParameterHessian():
         path='fdiff',
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         loader=None,
         load_func=None,
-        load_args=None,
+        load_args={},
         **kwargs,
     ):
         eqm = structure if structure is not None else self.structure

@@ -1,18 +1,31 @@
+from .ParamsResult import ParamsResult
+
+
 class ParameterLoader():
     args = None
 
-    def __new__(cls, path=None, structure=None, **kwargs):
-        '''By default, allow loading from the construction arguments, if path is given.'''
-        if path is not None:
-            return cls.load(path, structure, **kwargs)
-        else:
-            return super().__new__(cls)
-        # end if
+    def __init__(self, args={}):
+        self.args = args
     # end def
 
-    # Dummy loader, by default returns the value and error from structure
-    def load(self, *args, **kwargs):
-        raise NotImplementedError("Parameter loader not implemented.")
+
+    def load(self, path, **kwargs):
+        '''The Geometry loader must accept a "path" to input file and return geometry results.
+        '''
+        args = self.args.copy()
+        args.update(kwargs)
+        res = self.__load__(path=path, **args)
+        if type(res) is tuple:
+            # Assume (pos, axes)
+            return ParamsResult(res[0], axes=res[1])
+        else:
+            # Assume only pos
+            return ParamsResult(res[0])
+        # end if
+    # end def
+    
+    def __load__(self, *args, **kwargs):
+        raise NotImplementedError("Implement __load__ function in inherited class.")
     # end def
 
 # end class
