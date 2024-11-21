@@ -108,11 +108,10 @@ class LineSearchBase():
         errors = self.errors[self.mask] if self.errors is not None else None
         res = self._search_with_error(
             self.grid[self.mask],
-            self.values[self.mask],
+            self.values[self.mask] * self.sgn,
             errors,
             fit_kind=self.fit_kind,
             fraction=self.fraction,
-            sgn=self.sgn,
             **kwargs)
         self.x0 = res[0]
         self.y0 = res[2]
@@ -153,7 +152,7 @@ class LineSearchBase():
         func_p=None,
         **kwargs,
     ):
-        return func(grid, values, func_p, **kwargs)  # x0, y0, fit
+        return func(grid, values, func_p)  # x0, y0, fit
     # end def
 
     def _search_with_error(
@@ -236,7 +235,7 @@ class LineSearchBase():
         errors = errors if errors is not None else self.errors
         func, func_p = self.get_func(fit_kind)
         assert errors is not None, 'Cannot produce distribution unless errors are provided'
-        return self._get_distribution(grid, values, errors, func=func, func_p=func_p, sgn=self.sgn, **kwargs)
+        return self._get_distribution(grid, values * self.sgn, errors, func=func, func_p=func_p, **kwargs)
     # end def
 
     def get_x0_distribution(self, errors=None, N=100, **kwargs):

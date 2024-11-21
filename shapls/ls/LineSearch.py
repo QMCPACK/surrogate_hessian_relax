@@ -1,7 +1,7 @@
 from numpy import array, linspace, concatenate, polyval, sign, equal
 from matplotlib import pyplot as plt
 
-from shapls.util import W_to_R, directorize
+from shapls.util import directorize
 
 from shapls.params import FilesFunction, NexusFunction, ParameterSet, NexusLoader, PesFunction
 from .LineSearchBase import LineSearchBase
@@ -95,8 +95,20 @@ class LineSearch(LineSearchBase):
     # end def
 
     def _make_grid_W(self, W, M):
-        R = W_to_R(max(W, 1e-4), self.Lambda)
+        R = self._W_to_R(max(W, 1e-4))
         return self._make_grid_R(R, M=M)
+    # end def
+
+    def _W_to_R(self, W):
+        """Map W to R"""
+        R = (2 * W / self.Lambda)**0.5
+        return R
+    # end def
+
+    def _R_to_W(self, R):
+        """Map R to W"""
+        W = 0.5 * self.Lambda * R**2
+        return W
     # end def
 
     def shift_structures(self):

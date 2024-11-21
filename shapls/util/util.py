@@ -17,22 +17,24 @@ Ry = 13.605693012183622  # eV
 Hartree = 27.211386024367243  # eV
 
 
-def get_min_params(x_n, y_n, pfn=3, sgn=1, guess=0.0, **kwargs):
+def get_min_params(x_n, y_n, pfn=3):
     """Find the minimum point by fitting a curve"""
     assert pfn > 1, 'pfn must be larger than 1'
+    assert len(x_n) == len(y_n), 'x_n and y_n must be the same size.'
+    assert len(x_n) > pfn, 'The fitting is under-determined.'
     pf = polyfit(x_n, y_n, pfn)
     pfd = polyder(pf)
     r = roots(pfd)
     d = polyval(polyder(pfd), r)
     # filter real minima (maxima with sgn < 0)
-    x_mins = r[where((r.imag == 0) & (sgn * d > 0))].real
+    x_mins = r[where((r.imag == 0) & (d > 0))].real
     if len(x_mins) > 0:
         y_mins = polyval(pf, x_mins)
-        imin = argmin(abs(x_mins - guess))  # pick the closest to guess
+        imin = argmin(abs(x_mins))
     else:
         x_mins = [min(x_n), max(x_n)]
         y_mins = polyval(pf, x_mins)
-        imin = argmin(sgn * y_mins)  # pick the lowest/highest energy
+        imin = argmin(y_mins)  # pick the lowest/highest energy
     # end if
     y0 = y_mins[imin]
     x0 = x_mins[imin]
@@ -42,11 +44,11 @@ def get_min_params(x_n, y_n, pfn=3, sgn=1, guess=0.0, **kwargs):
 
 def get_fraction_error(data, fraction, both=False):
     """Estimate uncertainty from a distribution based on a percentile fraction"""
-    if fraction < 0.0 or fraction > 0.5:
+    if fraction < 0.0 or fraction >= 0.5:
         raise ValueError('Invalid fraction')
     # end if
     data = array(data, dtype=float)
-    data = data[~isnan(data)]        # remove nan
+    data = data[~isnan(data)]  # remove nan
     ave = median(data)
     data = data[data.argsort()] - ave  # sort and center
     pleft = abs(data[int((len(data) - 1) * fraction)])
@@ -64,26 +66,7 @@ def match_to_tol(val1, val2, tol=1e-8):
     """Match the values of two vectors. True if all match, False if not."""
     val1 = array(val1).flatten()
     val2 = array(val2).flatten()
-    for diff in abs(val2 - val1):
-        if diff > tol:
-            return False
-        # end if
-    # end for
-    return True
-# end def
-
-
-def W_to_R(W, H):
-    """Map W to R, given H"""
-    R = (2 * W / H)**0.5
-    return R
-# end def
-
-
-def R_to_W(R, H):
-    """Map R to W, given H"""
-    W = 0.5 * H * R**2
-    return W
+    return abs(val1 - val2).max() < tol
 # end def
 
 

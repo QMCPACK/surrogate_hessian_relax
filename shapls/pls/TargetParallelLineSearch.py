@@ -437,10 +437,10 @@ useful keyword arguments:
         return array(errorbar_d), array(errorbar_p)
     # end def
 
-    def _resample_errors(self, windows, noises, **kwargs):
+    def _resample_errors(self, windows, noises, Gs=None, **kwargs):
         bias_d, bias_p = self._compute_bias(windows, **kwargs)
         errorbar_d, errorbar_p = self._resample_errorbars(
-            windows, noises, **kwargs)
+            windows, noises, Gs=Gs, **kwargs)
         error_d = abs(bias_d) + errorbar_d
         error_p = abs(bias_p) + errorbar_p
         return error_d, error_p

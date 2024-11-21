@@ -5,7 +5,6 @@
 from numpy import array, argsort, isscalar, linspace, append, nan, isnan, where
 from numpy import random, argmin, equal
 
-from shapls.util import R_to_W
 from .LineSearch import LineSearch
 from .TargetLineSearchBase import TargetLineSearchBase
 
@@ -17,8 +16,6 @@ __license__ = "BSD-3-Clause"
 # Class for error scan line-search
 class TargetLineSearch(TargetLineSearchBase, LineSearch):
 
-    R_max = None  # maximum R available for target evaluation
-    W_max = None  # maximum W available for target evaluation
     E_mat = None  # resampled W-sigma matrix of errors
     W_mat = None  # resampled W-mesh
     S_mat = None  # resampled sigma-mesh
@@ -61,7 +58,6 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
             pes=pes,
             **kwargs,
         )
-        self._set_RW_max()
     # end def
 
     def compute_bias_of(
@@ -138,9 +134,14 @@ class TargetLineSearch(TargetLineSearchBase, LineSearch):
         # end try
     # end def
 
-    def _set_RW_max(self):
-        self.R_max = min([-self.grid.min(), self.grid.max()])
-        self.W_max = R_to_W(self.R_max, self.Lambda)
+    @property
+    def R_max(self):
+        return min([-self.grid.min(), self.grid.max()])
+    # end def
+
+    @property
+    def W_max(self):
+        return self._R_to_W(self.R_max)
     # end def
 
     def _W_sigma_of_epsilon(self, epsilon, **kwargs):

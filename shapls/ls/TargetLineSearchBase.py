@@ -81,7 +81,7 @@ class TargetLineSearchBase(LineSearchBase):
                 [min([max([p, self.target_grid.min()]), self.target_grid.max()]) for p in (grid + x0)])
             values = self.evaluate_target(grid_this)
             x0, y0, fit = self._search(
-                grid_this, values, sgn=self.sgn, **kwargs)
+                grid_this, values * self.sgn, **kwargs)
         # end for
         bias_x = x0 - self.target_x0
         bias_y = y0 - self.target_y0
@@ -110,7 +110,7 @@ class TargetLineSearchBase(LineSearchBase):
     def _compute_errorbar(self, grid, errors, **kwargs):
         values = self.evaluate_target(grid)
         x0, x0_err, y0, y0_err, fit = self._search_with_error(
-            grid, values, errors, sgn=self.sgn, **kwargs)
+            grid, values * self.sgn, errors, **kwargs)
         return x0_err, y0_err
     # end def
 
