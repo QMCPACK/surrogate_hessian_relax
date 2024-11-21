@@ -8,12 +8,9 @@ Not all methods are fully documented yet. The API is organized by modules as fol
    :maxdepth: 1
    :caption: Modules:
 
-   parameters
-   hessian
-   pessampler
-   linesearch
-   targetlinesearch
-   parallellinesearch
-   targetparallellinesearch
-   linesearchiteration
+   params
+   ls
+   pls
+   lsi
+   io
    util

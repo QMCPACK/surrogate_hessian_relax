@@ -1,7 +1,7 @@
 Linesearch iteration
 ====================
 
-.. automodule:: linesearchiteration
+.. automodule:: shapls.lsi
    :members:
    :undoc-members:
    :show-inheritance:

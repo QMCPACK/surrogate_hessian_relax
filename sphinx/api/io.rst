@@ -1,7 +1,7 @@
-Linesearch
-==========
+I/O
+===
 
-.. automodule:: linesearch
+.. automodule:: shapls.io
    :members:
    :undoc-members:
    :show-inheritance:

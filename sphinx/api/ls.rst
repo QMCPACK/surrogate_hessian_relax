@@ -1,7 +1,7 @@
-PES sampler
-===========
+Linesearch
+==========
 
-.. automodule:: pessampler
+.. automodule:: shapls.ls
    :members:
    :undoc-members:
    :show-inheritance:

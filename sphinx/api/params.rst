@@ -1,7 +1,7 @@
-Hessian
-=======
+Parameters
+==========
 
-.. automodule:: hessian
+.. automodule:: shapls.params
    :members:
    :undoc-members:
    :show-inheritance:
