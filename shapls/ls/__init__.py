@@ -10,5 +10,10 @@ from .LineSearchDummy import LineSearchDummy
 from .TargetLineSearch import TargetLineSearch
 from .TargetLineSearchBase import TargetLineSearchBase
 
-__all__ = [LineSearch, LineSearchBase, LineSearchDummy,
-           TargetLineSearch, TargetLineSearchBase]
+__all__ = [
+    'LineSearch',
+    'LineSearchBase',
+    'LineSearchDummy',
+    'TargetLineSearch',
+    'TargetLineSearchBase'
+]

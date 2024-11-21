@@ -15,13 +15,13 @@ from .PwscfPes import PwscfPes
 from .QmcPes import QmcPes
 
 __all__ = [
-    GeometryLoader,
-    XyzLoader,
-    PwscfGeometry,
-    NexusLoader,
-    NexusFunction,
-    FilesLoader,
-    FilesFunction,
-    PwscfPes,
-    QmcPes
+    'GeometryLoader',
+    'XyzLoader',
+    'PwscfGeometry',
+    'NexusLoader',
+    'NexusFunction',
+    'FilesLoader',
+    'FilesFunction',
+    'PwscfPes',
+    'QmcPes'
 ]

@@ -6,4 +6,4 @@ __license__ = "BSD-3-Clause"
 
 from .LineSearchIteration import LineSearchIteration
 
-__all__ = [LineSearchIteration]
+__all__ = ['LineSearchIteration']

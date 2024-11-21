@@ -14,15 +14,15 @@ from .ParameterStructure import ParameterStructure
 from .ParameterStructureBase import ParameterStructureBase
 
 __all__ = [
-    bond_angle,
-    distance,
-    mean_distances,
-    mean_param,
-    Parameter,
-    ParameterSet,
-    ParameterStructure,
-    GeometryResult,
-    ParameterStructureBase,
-    PesFunction,
-    ParameterHessian
+    'bond_angle',
+    'distance',
+    'mean_distances',
+    'mean_param',
+    'Parameter',
+    'ParameterSet',
+    'ParameterStructure',
+    'GeometryResult',
+    'ParameterStructureBase',
+    'PesFunction',
+    'ParameterHessian'
 ]

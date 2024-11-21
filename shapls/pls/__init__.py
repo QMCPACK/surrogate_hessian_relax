@@ -8,4 +8,8 @@ from shapls.pls.ParallelLineSearch import ParallelLineSearch
 from shapls.pls.TargetParallelLineSearch import TargetParallelLineSearch
 from shapls.pls.PesSampler import PesSampler
 
-__all__ = [ParallelLineSearch, TargetParallelLineSearch, PesSampler]
+__all__ = [
+    'ParallelLineSearch',
+    'TargetParallelLineSearch',
+    'PesSampler'
+]
