@@ -22,7 +22,7 @@ class EffectiveVariance():
     # end def
 
     def get_errorbar(self, samples):
-        assert samples > 0, 'The requested sapmles must be > 0'
+        assert samples > 0, 'The requested samples must be > 0'
         return self.errorbar * (float(self.samples) / samples)**0.5
     # end def
 
