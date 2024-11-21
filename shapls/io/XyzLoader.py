@@ -1,6 +1,6 @@
 from numpy import loadtxt, array
 
-from .ParameterStructure import ParameterStructure
+from ..params.ParameterStructure import ParameterStructure
 from .ParameterLoader import ParameterLoader
 
 

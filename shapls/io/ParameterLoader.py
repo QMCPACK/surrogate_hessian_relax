@@ -1,4 +1,4 @@
-from .ParamsResult import ParamsResult
+from ..params.GeometryResult import GeometryResult
 
 
 class ParameterLoader():
@@ -8,7 +8,6 @@ class ParameterLoader():
         self.args = args
     # end def
 
-
     def load(self, path, **kwargs):
         '''The Geometry loader must accept a "path" to input file and return geometry results.
         '''
@@ -17,15 +16,16 @@ class ParameterLoader():
         res = self.__load__(path=path, **args)
         if type(res) is tuple:
             # Assume (pos, axes)
-            return ParamsResult(res[0], axes=res[1])
+            return GeometryResult(res[0], axes=res[1])
         else:
             # Assume only pos
-            return ParamsResult(res[0])
+            return GeometryResult(res)
         # end if
     # end def
-    
+
     def __load__(self, *args, **kwargs):
-        raise NotImplementedError("Implement __load__ function in inherited class.")
+        raise NotImplementedError(
+            "Implement __load__ function in inherited class.")
     # end def
 
 # end class

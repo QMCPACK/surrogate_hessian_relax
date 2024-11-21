@@ -3,7 +3,8 @@ from matplotlib import pyplot as plt
 
 from shapls.util import directorize
 
-from shapls.params import FilesFunction, NexusFunction, ParameterSet, NexusLoader, PesFunction
+from shapls.io import FilesFunction, NexusFunction, NexusLoader
+from shapls.params import ParameterSet, PesFunction
 from .LineSearchBase import LineSearchBase
 
 

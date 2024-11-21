@@ -1,4 +1,4 @@
-from shapls.params import ParamsResult
+from shapls.params import GeometryResult
 from .ParameterLoader import ParameterLoader
 
 
@@ -15,7 +15,7 @@ class PwscfGeometry(ParameterLoader):
             # In case axes is not present in the relaxation
             axes = None
         # end try
-        return ParamsResult(pos, axes)
+        return GeometryResult(pos, axes)
     # end def
 
 # end class

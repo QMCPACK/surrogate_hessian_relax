@@ -1,4 +1,4 @@
-from .PesResult import PesResult
+from ..params.PesResult import PesResult
 
 
 class NexusLoader():

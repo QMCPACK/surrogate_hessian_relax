@@ -1,12 +1,11 @@
 from numpy import array, isscalar, random, diag
 from copy import deepcopy
 
-from .NexusFunction import NexusFunction
+from ..io.NexusFunction import NexusFunction
 from .PesFunction import PesFunction
 from shapls.util import match_to_tol, get_fraction_error, directorize
-from .util import load_xyz, load_xsf
 from .ParameterSet import ParameterSet
-from .ParameterLoader import ParameterLoader
+from ..io.ParameterLoader import ParameterLoader
 
 
 class ParameterStructureBase(ParameterSet):
@@ -463,12 +462,6 @@ class ParameterStructureBase(ParameterSet):
         path = directorize(path)
         if load_func is not None:
             pos, axes = load_func(path, **load_args)
-        elif xyz_file is not None:
-            fname = '{}{}'.format(path, xyz_file)
-            pos = load_xyz(fname)
-        elif xsf_file is not None:
-            fname = '{}{}'.format(path, xsf_file)
-            pos, axes = load_xsf(fname)
         else:
             print('Not loaded')
         # end if

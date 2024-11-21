@@ -2,7 +2,8 @@
 '''Generic base class for sampling a PES in iterative batches
 '''
 
-from shapls.params import PesFunction, FilesFunction, FilesLoader, NexusFunction, NexusLoader
+from shapls.params import PesFunction
+from shapls.io import FilesFunction, FilesLoader, NexusFunction, NexusLoader
 from .CascadeStatus import CascadeStatus
 
 __author__ = "Juha Tiihonen"

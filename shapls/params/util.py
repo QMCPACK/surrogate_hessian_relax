@@ -39,19 +39,6 @@ def mean_param(params, tol=1e-6):
 # end def
 
 
-def load_xyz(fname):
-    e, x, y, z = loadtxt(fname, dtype=str, unpack=True, skiprows=2)
-    return array([x, y, z], dtype=float).T
-# end def
-
-
-# FIXME
-def load_xsf(fname):
-    e, x, y, z = loadtxt(fname, dtype=str, unpack=True, skiprows=2)
-    return array([x, y, z], dtype=float).T
-# end def
-
-
 def invert_pos(pos0, params, forward=None, tol=1.0e-7, method='BFGS'):
     assert forward is not None, 'Must provide forward mapping'
 

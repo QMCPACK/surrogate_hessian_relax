@@ -1,4 +1,4 @@
-class ParamsResult:
+class GeometryResult:
     pos = None
     axes = None
 

@@ -4,9 +4,9 @@
 
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
-from .NexusLoader import NexusLoader
 from shapls.util import Ry, Hartree, Bohr, directorize, bipolyfit
-from .NexusFunction import NexusFunction
+from shapls.io.NexusLoader import NexusLoader
+from shapls.io.NexusFunction import NexusFunction
 from .ParameterSet import ParameterSet
 
 __author__ = "Juha Tiihonen"
@@ -206,7 +206,7 @@ class ParameterHessian():
             # end for
             from nexus import run_project
             run_project(jobs)
-            
+
             # Load jobs
             if not isinstance(loader, NexusLoader):
                 # Checks are made in the wrapper class

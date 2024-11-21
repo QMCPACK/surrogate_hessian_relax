@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 
-from shapls.params import NexusFunction, NexusLoader
+from shapls.io import NexusFunction, NexusLoader
 from shapls.util import match_to_tol
 
 from ..assets.h2o import get_structure_H2O, get_hessian_H2O, get_surrogate_H2O, job_H2O_pes, analyze_H2O_pes
