@@ -51,7 +51,7 @@ class PesSampler():
         self,
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         **kwargs  # loader arguments are ignored
     ):
         # Treat the PES
@@ -69,10 +69,10 @@ class PesSampler():
         self,
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         loader=None,
         load_func=None,
-        load_args=None,
+        load_args={},
     ):
         # Treat the PES (required)
         if pes is None:
@@ -100,10 +100,10 @@ class PesSampler():
         self,
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         loader=None,
         load_func=None,
-        load_args=None,
+        load_args={},
     ):
         # Treat the PES (required)
         if pes is None:

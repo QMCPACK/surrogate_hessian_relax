@@ -72,10 +72,10 @@ class ParallelLineSearch(PesSampler):
         mode=None,
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         loader=None,
         load_func=None,
-        load_args=None,
+        load_args={},
         # PLS arguments
         hessian=None,
         structure=None,

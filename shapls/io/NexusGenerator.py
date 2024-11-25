@@ -14,7 +14,9 @@ class NexusGenerator():
         # Make a copy of the structure in case it is changed in the function.
         structure_job = structure.copy()
         structure_job.to_nexus_only()
-        jobs = self.func(structure_job, path, **self.args, **kwargs)
+        args = self.args.copy()
+        args.update(kwargs)
+        jobs = self.func(structure_job, path, **args)
         return jobs
     # end def
 

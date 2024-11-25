@@ -409,7 +409,7 @@ class ParameterStructureBase(ParameterSet):
         self,
         pes=None,
         pes_func=None,
-        pes_args=None,
+        pes_args={},
         path='relax',
         mode=None,
         loader=None,

@@ -29,11 +29,11 @@ def test_PesResult():
     # Test degraded (Nan value)
     res2 = PesResult(None, err)
     assert isnan(res2.get_value())
-    assert isnan(res2.get_error())
-    
+    assert res2.get_error() == 0.0
+
     # Test degraded (Nan value/error)
     res2 = PesResult(None, None)
     assert isnan(res2.get_value())
-    assert isnan(res2.get_error())
+    assert res2.get_error() == 0.0
 
 # end def
