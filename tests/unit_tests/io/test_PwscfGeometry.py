@@ -1,5 +1,5 @@
 from shapls.io.PwscfGeometry import PwscfGeometry
-from shapls.io.XyzLoader import XyzLoader
+from shapls.io.XyzGeometry import XyzGeometry
 from shapls.params import GeometryResult
 from shapls.util.util import match_to_tol
 
@@ -9,7 +9,7 @@ def test_PwscfGeometry():
     loader = PwscfGeometry()
 
     # Use XyzLoader for reference
-    pos_ref = XyzLoader().load(
+    pos_ref = XyzGeometry().load(
         'tests/unit_tests/assets/pwscf_relax', suffix='relax_bohr.xyz')
 
     # default suffix: relax.in; only path is needed

@@ -3,7 +3,7 @@
 from numpy import array
 from pytest import raises
 from shapls.params import PesFunction
-from shapls.io import NexusFunction
+from shapls.io import NexusGenerator
 from shapls.util import match_to_tol
 
 from ..assets.h2o import hessian_H2O, pes_H2O, get_structure_H2O, get_hessian_H2O, job_H2O_pes
@@ -17,7 +17,7 @@ def test_parallellinesearch_class():
     from shapls import ParallelLineSearch, ParameterSet
 
     # nexus mode
-    pls = ParallelLineSearch(mode='nexus', pes=NexusFunction(job_H2O_pes))
+    pls = ParallelLineSearch(mode='nexus', pes=NexusGenerator(job_H2O_pes))
     assert pls.get_status() == '000000'
     s = get_structure_H2O()
     s.shift_params([0.2, 0.2])

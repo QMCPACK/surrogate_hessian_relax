@@ -1,4 +1,4 @@
-class NexusFunction():
+class NexusGenerator():
     '''A wrapper class for generating Nexus functions to produce and represent a PES.'''
     func = None
     args = None

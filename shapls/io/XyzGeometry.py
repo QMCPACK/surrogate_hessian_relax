@@ -4,7 +4,7 @@ from shapls.params.GeometryResult import GeometryResult
 from .GeometryLoader import GeometryLoader
 
 
-class XyzLoader(GeometryLoader):
+class XyzGeometry(GeometryLoader):
 
     def __load__(self, path, suffix='relax.xyz', c_pos=1.0):
         el, x, y, z = loadtxt('{}/{}'.format(path, suffix), dtype=str, unpack=True, skiprows=2)

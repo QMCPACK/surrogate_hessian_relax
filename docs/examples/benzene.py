@@ -12,8 +12,12 @@
 # Computing task: Suitable for institutional clusters
 
 # First, the user must set up Nexus according to their computing environment.
+from shapls.io.NexusGenerator import NexusGenerator
+from shapls.io.PwscfGeometry import PwscfGeometry
+from shapls.io.PwscfPes import PwscfPes
+from shapls.io.QmcPes import QmcPes
 from shapls.lsi import LineSearchIteration
-from shapls.params import NexusFunction, ParameterHessian, ParameterStructure, PwscfGeometry, PwscfPes, QmcPes
+from shapls.params import ParameterHessian, ParameterStructure
 from shapls.pls import TargetParallelLineSearch
 from matplotlib import pyplot as plt
 from numpy import mean, array, sin, pi, cos
@@ -153,8 +157,8 @@ def scf_relax_job(structure, path, **kwargs):
 structure_relax = structure_init.copy()
 structure_relax.relax(
     mode='nexus',
-    pes=NexusFunction(scf_relax_job),
-    path='relax/',
+    pes=NexusGenerator(scf_relax_job),
+    path=base_dir + 'relax/',
     loader=PwscfGeometry(),
     loader_args={'suffix': 'relax.in'}
 )
@@ -204,7 +208,7 @@ def scf_pes_job(structure, path, **kwargs):
 # end def
 
 
-pes = NexusFunction(scf_pes_job)
+pes = NexusGenerator(scf_pes_job)
 loader = PwscfPes({'suffix': 'scf.in'})
 
 # Finally, use a macro to read the phonon data and convert to parameter
@@ -213,6 +217,7 @@ loader = PwscfPes({'suffix': 'scf.in'})
 
 hessian = ParameterHessian(structure=structure_relax)
 hessian.compute_fdiff(
+    path=base_dir + 'fdiff',
     mode='nexus',
     pes=pes,
     loader=loader,
@@ -283,10 +288,9 @@ for i in range(4):
 srg_ls.pls(4).run_jobs(interactive=interactive, eqm_only=True)
 srg_ls.pls(4).load_eqm_results()
 # Diagnose and plot the line-search performance.
-if __name__ == '__main__' and interactive:
+if __name__ == '__main__':
     print(srg_ls)
 # end if
-
 
 # 4-5) Stochastic: Line-search
 
@@ -301,7 +305,6 @@ if __name__ == '__main__' and interactive:
 
 def dmc_pes_job(structure, path, sigma=None, samples=10, var_eff=None, **kwargs):
     # Estimate the relative number of samples needed
-    print(path, sigma, var_eff)
     if var_eff is None:
         dmcsteps = samples
     else:
@@ -393,12 +396,12 @@ def dmc_pes_job(structure, path, sigma=None, samples=10, var_eff=None, **kwargs)
 # end def
 
 
-qmcloader = QmcPes({'suffix': '/dmc/dmc.in.xml', 'qmc_id': 1})
+qmcloader = QmcPes({'suffix': '/dmc/dmc.in.xml', 'qmc_idx': 1})
 
 # Run a macro that runs a DMC test job and returns effective variance w.r.t the number of steps/block
 var_eff = get_var_eff(
     structure_relax,
-    pes=NexusFunction(dmc_pes_job),
+    pes=NexusGenerator(dmc_pes_job),
     loader=qmcloader,
     path=base_dir + 'dmc_var_eff'
 )
@@ -409,7 +412,7 @@ dmc_ls = LineSearchIteration(
     c_noises=0.5,  # WIP: convert noises from Ry (SCF) to Ha (QMCPACK)
     mode='nexus',
     path=base_dir + 'dmc_ls',
-    pes=NexusFunction(dmc_pes_job, {'var_eff': var_eff}),
+    pes=NexusGenerator(dmc_pes_job, {'var_eff': var_eff}),
     loader=qmcloader
 )
 for i in range(3):

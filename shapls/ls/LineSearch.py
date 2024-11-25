@@ -1,9 +1,10 @@
 from numpy import array, linspace, concatenate, polyval, sign, equal
 from matplotlib import pyplot as plt
 
+from shapls.io.PesLoader import PesLoader
 from shapls.util import directorize
 
-from shapls.io import FilesFunction, NexusFunction, NexusLoader
+from shapls.io import FilesFunction, NexusGenerator
 from shapls.params import ParameterSet, PesFunction
 from .LineSearchBase import LineSearchBase
 
@@ -178,7 +179,7 @@ class LineSearch(LineSearchBase):
         '''Generate PES jobs on the line-search grid using a job-generating function.'''
         assert self.shifted, 'Must shift parameters first before generating jobs'
         assert isinstance(
-            pes_gen, (NexusFunction, FilesFunction)), 'The evaluation function must be inherited from either NexusFunction class or FilesFunction class.'
+            pes_gen, (NexusGenerator, FilesFunction)), 'The evaluation function must be inherited from either NexusGenerator class or FilesFunction class.'
         jobs = []
         for si, structure in enumerate(self.structure_list):
             if self.jobs_list[si]:
@@ -218,17 +219,18 @@ class LineSearch(LineSearchBase):
 
     def analyze_job(self, structure, loader, path, sigma=None):
         assert isinstance(
-            loader, NexusLoader), 'The loader function must be inherited from PesLoader class.'
+            loader, PesLoader), 'The loader function must be inherited from PesLoader class.'
         value, error = loader.load(path=self._make_job_path(
-            path, structure.label), structure=structure).get_result()
+            path, structure.label), sigma=sigma).get_result()
         return value, error
     # end def
 
     # Loader function
-    def analyze_jobs(self, loader, path, prune0=True):
+    def analyze_jobs(self, loader, path, sigma=None, prune0=True):
+        # TODO: remove sigma argument
         grid, values, errors = [], [], []
         for shift, structure in zip(self.grid, self.structure_list):
-            value, error = self.analyze_job(structure, loader, path)
+            value, error = self.analyze_job(structure, loader, path, sigma=sigma)
             structure.set_value(value, error)
             # FIXME: skipping values messes up the grid <-> list consistency
             if prune0 and value == 0:

@@ -4,7 +4,9 @@
 from numpy import array, sin, cos, pi
 from numpy.random import randn
 
+from shapls.io.PesLoader import PesLoader
 from shapls.params import PesFunction
+from shapls.params.PesResult import PesResult
 from .helper import harmonic_a, morse, mean_distances, bond_angle
 
 __author__ = "Juha Tiihonen"
@@ -33,7 +35,8 @@ def backward_H2O(params):
     a_HOH = params[1] * pi / 180
     O1 = [0., 0., 0.]
     H1 = params[0] * array([0.0, cos((pi - a_HOH) / 2), sin((pi - a_HOH) / 2)])
-    H2 = params[0] * array([0.0, -cos((pi - a_HOH) / 2), sin((pi - a_HOH) / 2)])
+    H2 = params[0] * \
+        array([0.0, -cos((pi - a_HOH) / 2), sin((pi - a_HOH) / 2)])
     return array([O1, H1, H2])
 
 
@@ -80,14 +83,18 @@ def job_H2O_pes(structure, path, sigma, **kwargs):
 # end def
 
 
-def analyze_H2O_pes(path, job_data=None, **kwargs):
-    for row in job_data:
-        if path == row[0]:
-            return row[1]
-        # end if
-    # end for
-    return None
-# end def
+class H2oLoader(PesLoader):
+
+    def __load__(self, path, job_data=None, **kwargs):
+        for row in job_data:
+            if path == row[0]:
+                return PesResult(*row[1])
+            # end if
+        # end for
+        return None
+    # end def
+
+# end clas
 
 
 def get_surrogate_H2O():

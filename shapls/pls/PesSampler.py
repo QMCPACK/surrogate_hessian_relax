@@ -3,7 +3,7 @@
 '''
 
 from shapls.params import PesFunction
-from shapls.io import FilesFunction, FilesLoader, NexusFunction, NexusLoader
+from shapls.io import FilesFunction, FilesLoader, NexusGenerator, PesLoader
 from .CascadeStatus import CascadeStatus
 
 __author__ = "Juha Tiihonen"
@@ -108,21 +108,21 @@ class PesSampler():
         # Treat the PES (required)
         if pes is None:
             # Construct from func/args; checks are made in FilesFunction class
-            pes = NexusFunction(pes_func, pes_args)
+            pes = NexusGenerator(pes_func, pes_args)
         else:
             assert isinstance(
-                pes, NexusFunction), 'The PES must be inherited from NexusFunction class.'
+                pes, NexusGenerator), 'The PES must be inherited from NexusGenerator class.'
         # end if
         self.pes = pes
 
         # Treat the loader (not required)
         if loader is None:
             if load_func is not None:
-                loader = NexusLoader(load_func, load_args)
+                loader = PesLoader(load_args)
+                loader.__load__ = load_func
             # end if
         else:
-            assert isinstance(
-                loader, NexusLoader), 'The files loader must be inherited from NexusLoader class.'
+            assert isinstance(loader, PesLoader), 'The files loader must be inherited from PesLoader class.'
         # end if
         self.loader = loader
     # end def

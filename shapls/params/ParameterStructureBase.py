@@ -1,7 +1,7 @@
 from numpy import array, isscalar, random, diag
 from copy import deepcopy
 
-from shapls.io.NexusFunction import NexusFunction
+from shapls.io.NexusGenerator import NexusGenerator
 from .PesFunction import PesFunction
 from shapls.util import match_to_tol, get_fraction_error, directorize
 from .ParameterSet import ParameterSet
@@ -418,9 +418,9 @@ class ParameterStructureBase(ParameterSet):
     ):
         if mode == 'nexus':
             # Generate jobs
-            if not isinstance(pes, NexusFunction):
+            if not isinstance(pes, NexusGenerator):
                 # Checks are made in the wrapper class
-                pes = NexusFunction(pes_func, pes_args)
+                pes = NexusGenerator(pes_func, pes_args)
             # end if
             # Make a copy structure for job generation
             relax_jobs = pes.generate(self.copy(), directorize(path))

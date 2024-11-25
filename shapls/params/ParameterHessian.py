@@ -5,8 +5,8 @@
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
 from shapls.util import Ry, Hartree, Bohr, directorize, bipolyfit
-from shapls.io.NexusLoader import NexusLoader
-from shapls.io.NexusFunction import NexusFunction
+from shapls.io.PesLoader import PesLoader
+from shapls.io.NexusGenerator import NexusGenerator
 from .ParameterSet import ParameterSet
 
 __author__ = "Juha Tiihonen"
@@ -163,8 +163,7 @@ class ParameterHessian():
             string += '\n  Conjugate directions:'
             string += '\n    Lambda     Direction'
             for Lambda, direction in zip(self.Lambda, self.get_directions()):
-                string += ('\n    {:<8f}   ' + len(direction) *
-                           '{:<+1.6f} ').format(Lambda, *tuple(direction))
+                string += ('\n    {:<8f}   ' + len(direction) * '{:<+1.6f} ').format(Lambda, *tuple(direction))
             # end for
         else:
             string += '\n  hessian: not set'
@@ -194,9 +193,9 @@ class ParameterHessian():
             Es = [pes.evaluate(s).get_value() for s in structure_list]
         elif mode == 'nexus':
             # Generate jobs
-            if not isinstance(pes, NexusFunction):
+            if not isinstance(pes, NexusGenerator):
                 # Checks are made in the wrapper class
-                pes = NexusFunction(pes_func, pes_args)
+                pes = NexusGenerator(pes_func, pes_args)
             # end if
             jobs = []
             for s, label in zip(structure_list, label_list):
@@ -208,9 +207,10 @@ class ParameterHessian():
             run_project(jobs)
 
             # Load jobs
-            if not isinstance(loader, NexusLoader):
-                # Checks are made in the wrapper class
-                loader = NexusLoader(load_func, load_args)
+            if not isinstance(loader, PesLoader):
+                # Try to instantiate PesLoader class in the hopes that load_func conforms
+                loader = PesLoader(load_args)
+                loader.__load__ = load_func
             # end if
             Es = []
             for label in label_list:
