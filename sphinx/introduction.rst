@@ -1,8 +1,8 @@
 Introduction
 ============
 
-This is the User guide for Surrogate Hessian Relax, a Python implementation of the Surrogate
-Hessian Accelerated Parallel Line-search method (see :ref:`theory` for details). 
+This is the User guide for STALK, a Python implementation of the Surrogate Hessian
+Accelerated Parallel Line-search method (see :ref:`theory` for details). 
 
 The aim of the method is robust optimization of a noisy cost-function, with the help of a
 surrogate, a well-behaving approximation to the cost-function in question. Let us call them
