@@ -1,7 +1,7 @@
 Util
 ====
 
-.. automodule:: util
+.. automodule:: stalk.util
    :members:
    :undoc-members:
    :show-inheritance:

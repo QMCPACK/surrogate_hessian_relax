@@ -8,10 +8,11 @@
 
 import sys
 import os
+import stalk
 project = 'Surrogate Hessian Relax'
 copyright = '2024, Juha Tiihonen'
 author = 'Juha Tiihonen'
-release = '0.1.0'
+release = stalk.__version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
