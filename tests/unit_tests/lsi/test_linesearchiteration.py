@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 
-from shapls.io import NexusGenerator
-from shapls.util import match_to_tol
+from stalk.io import NexusGenerator
+from stalk.util import match_to_tol
 
 from ..assets.h2o import get_structure_H2O, get_hessian_H2O, get_surrogate_H2O, job_H2O_pes, H2oLoader
 from ..assets.helper import Gs_N200_M7
@@ -14,7 +14,7 @@ __license__ = "BSD-3-Clause"
 
 # test LineSearchIteration class
 def test_linesearchiteration_class():
-    from shapls.lsi import LineSearchIteration
+    from stalk.lsi import LineSearchIteration
     from shutil import rmtree
     s = get_structure_H2O()
     s.shift_params([0.2, -0.2])

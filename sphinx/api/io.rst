@@ -1,7 +1,7 @@
 I/O
 ===
 
-.. automodule:: shapls.io
+.. automodule:: stalk.io
    :members:
    :undoc-members:
    :show-inheritance:

@@ -2,11 +2,11 @@
 
 from numpy import random
 
-from shapls.util import match_to_tol
+from stalk.util import match_to_tol
 
 
 def test_get_fraction_error():
-    from shapls.util import get_fraction_error
+    from stalk.util import get_fraction_error
     # test normal distribution
     sigma = 1.0
     mu = 5.0

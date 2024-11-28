@@ -12,19 +12,19 @@
 # Computing task: Suitable for institutional clusters
 
 # First, the user must set up Nexus according to their computing environment.
-from shapls.io.NexusGenerator import NexusGenerator
-from shapls.io.PwscfGeometry import PwscfGeometry
-from shapls.io.PwscfPes import PwscfPes
-from shapls.io.QmcPes import QmcPes
-from shapls.lsi import LineSearchIteration
-from shapls.params import ParameterHessian, ParameterStructure
-from shapls.pls import TargetParallelLineSearch
+from stalk.io.NexusGenerator import NexusGenerator
+from stalk.io.PwscfGeometry import PwscfGeometry
+from stalk.io.PwscfPes import PwscfPes
+from stalk.io.QmcPes import QmcPes
+from stalk.lsi import LineSearchIteration
+from stalk.params import ParameterHessian, ParameterStructure
+from stalk.pls import TargetParallelLineSearch
 from matplotlib import pyplot as plt
 from numpy import mean, array, sin, pi, cos
 from nexus import generate_pwscf, generate_qmcpack, job
 from nexus import generate_pw2qmcpack, generate_physical_system
 from nxs import scfjob, p2qjob, optjob, dmcjob
-from shapls.util.util import get_var_eff
+from stalk.util.util import get_var_eff
 
 # Pseudos (execute download_pseudos.sh in the working directory)
 base_dir = 'benzene/'

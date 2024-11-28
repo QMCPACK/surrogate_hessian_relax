@@ -1,7 +1,7 @@
 Linesearch
 ==========
 
-.. automodule:: shapls.ls
+.. automodule:: stalk.ls
    :members:
    :undoc-members:
    :show-inheritance:

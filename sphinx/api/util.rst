@@ -1,7 +1,7 @@
 Util
 ====
 
-.. automodule:: shapls.util
+.. automodule:: stalk.util
    :members:
    :undoc-members:
    :show-inheritance:

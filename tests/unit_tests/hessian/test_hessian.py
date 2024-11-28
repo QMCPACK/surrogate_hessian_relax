@@ -2,7 +2,7 @@
 
 from numpy import array
 from pytest import raises
-from shapls.util import match_to_tol
+from stalk.util import match_to_tol
 
 from unit_tests.assets.h2o import hessian_H2O, get_structure_H2O, hessian_real_H2O
 
@@ -12,7 +12,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_parameterhessian_class():
-    from shapls import ParameterHessian
+    from stalk import ParameterHessian
     # init from parameter hessian array
     h = ParameterHessian(hessian_H2O)
     Lambda = h.Lambda

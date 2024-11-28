@@ -1,7 +1,7 @@
-from shapls.io.PwscfGeometry import PwscfGeometry
-from shapls.io.XyzGeometry import XyzGeometry
-from shapls.params import GeometryResult
-from shapls.util.util import match_to_tol
+from stalk.io.PwscfGeometry import PwscfGeometry
+from stalk.io.XyzGeometry import XyzGeometry
+from stalk.params import GeometryResult
+from stalk.util.util import match_to_tol
 
 
 def test_PwscfGeometry():

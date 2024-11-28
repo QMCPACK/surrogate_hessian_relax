@@ -1,6 +1,6 @@
 from pytest import raises
 from numpy import isnan
-from shapls.params.PesResult import PesResult
+from stalk.params.PesResult import PesResult
 
 
 def test_PesResult():

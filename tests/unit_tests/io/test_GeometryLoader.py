@@ -1,5 +1,5 @@
 from pytest import raises
-from shapls.io.GeometryLoader import GeometryLoader
+from stalk.io.GeometryLoader import GeometryLoader
 
 
 def test_GeometryLoader():

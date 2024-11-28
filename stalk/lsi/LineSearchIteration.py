@@ -4,10 +4,10 @@
 
 from numpy import array, mean
 
-from shapls.util import directorize
-from shapls.params import ParameterSet
-from shapls.params import ParameterHessian
-from shapls.pls import ParallelLineSearch
+from stalk.util import directorize
+from stalk.params import ParameterSet
+from stalk.params import ParameterHessian
+from stalk.pls import ParallelLineSearch
 from .util import plot_parameter_convergence, plot_energy_convergence, plot_bundled_convergence
 
 __author__ = "Juha Tiihonen"

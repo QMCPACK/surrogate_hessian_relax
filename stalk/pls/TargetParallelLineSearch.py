@@ -8,9 +8,9 @@ from numpy import array, mean, linspace, argmin, where, isnan
 from functools import partial
 from scipy.optimize import broyden1
 
-from shapls.util import get_fraction_error
-from shapls.ls import TargetLineSearch
-from shapls.pls import ParallelLineSearch
+from stalk.util import get_fraction_error
+from stalk.ls import TargetLineSearch
+from stalk.pls import ParallelLineSearch
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"

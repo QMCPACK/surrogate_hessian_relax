@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from numpy import array, linspace
-from shapls.util import match_to_tol
+from stalk.util import match_to_tol
 
 from ..assets.h2o import get_structure_H2O, get_hessian_H2O
 from ..assets.helper import morse, Gs_N200_M7
@@ -12,7 +12,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_targetlinesearchbase_class():
-    from shapls.ls import TargetLineSearchBase
+    from stalk.ls import TargetLineSearchBase
 
     # generate reference potential
     p = [1.0, 0.5, 0.5, 0.0]
@@ -36,7 +36,7 @@ def test_targetlinesearchbase_class():
 
 # test TargetLineSearch class
 def test_targetlinesearch_class():
-    from shapls import TargetLineSearch
+    from stalk import TargetLineSearch
 
     # generate reference potential
     p = [1.0, 0.5, 0.5, 0.0]

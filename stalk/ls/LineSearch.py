@@ -1,11 +1,11 @@
 from numpy import array, linspace, concatenate, polyval, sign, equal
 from matplotlib import pyplot as plt
 
-from shapls.io.PesLoader import PesLoader
-from shapls.util import directorize
+from stalk.io.PesLoader import PesLoader
+from stalk.util import directorize
 
-from shapls.io import FilesFunction, NexusGenerator
-from shapls.params import ParameterSet, PesFunction
+from stalk.io import FilesFunction, NexusGenerator
+from stalk.params import ParameterSet, PesFunction
 from .LineSearchBase import LineSearchBase
 
 

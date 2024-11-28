@@ -3,7 +3,7 @@
 from numpy import array, ones, random, linspace, polyval
 from pytest import raises
 
-from shapls.util import match_to_tol, get_min_params, get_fraction_error
+from stalk.util import match_to_tol, get_min_params, get_fraction_error
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"
@@ -11,7 +11,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_units():
-    from shapls.util.util import Bohr, Ry, Hartree
+    from stalk.util.util import Bohr, Ry, Hartree
     match_to_tol(Bohr, 0.5291772105638411, 1e-10)
     match_to_tol(Ry, 13.605693012183622, 1e-10)
     match_to_tol(Hartree, 2 * Ry, 1e-10)

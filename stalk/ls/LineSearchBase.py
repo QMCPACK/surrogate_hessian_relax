@@ -4,7 +4,7 @@
 
 from numpy import array, random, polyval, polyder, equal
 
-from shapls.util import get_min_params, get_fraction_error
+from stalk.util import get_min_params, get_fraction_error
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"

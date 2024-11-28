@@ -1,4 +1,4 @@
-from shapls.params.PesResult import PesResult
+from stalk.params.PesResult import PesResult
 
 
 class PesLoader():

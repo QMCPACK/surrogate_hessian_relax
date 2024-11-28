@@ -4,9 +4,9 @@
 
 from numpy import array, linalg, diag, isscalar, zeros, ones, where, mean, polyfit
 
-from shapls.util import Ry, Hartree, Bohr, directorize, bipolyfit
-from shapls.io.PesLoader import PesLoader
-from shapls.io.NexusGenerator import NexusGenerator
+from stalk.util import Ry, Hartree, Bohr, directorize, bipolyfit
+from stalk.io.PesLoader import PesLoader
+from stalk.io.NexusGenerator import NexusGenerator
 from .ParameterSet import ParameterSet
 
 __author__ = "Juha Tiihonen"

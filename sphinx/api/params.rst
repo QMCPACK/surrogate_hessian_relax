@@ -1,7 +1,7 @@
 Parameters
 ==========
 
-.. automodule:: shapls.params
+.. automodule:: stalk.params
    :members:
    :undoc-members:
    :show-inheritance:

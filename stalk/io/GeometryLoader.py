@@ -1,4 +1,4 @@
-from shapls.params.GeometryResult import GeometryResult
+from stalk.params.GeometryResult import GeometryResult
 
 
 class GeometryLoader():

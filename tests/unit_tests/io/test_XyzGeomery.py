@@ -1,8 +1,8 @@
 from numpy import loadtxt, array
 from pytest import raises
-from shapls.io.XyzGeometry import XyzGeometry
-from shapls.params import GeometryResult
-from shapls.util.util import match_to_tol
+from stalk.io.XyzGeometry import XyzGeometry
+from stalk.params import GeometryResult
+from stalk.util.util import match_to_tol
 
 
 def test_XyzGeometry():

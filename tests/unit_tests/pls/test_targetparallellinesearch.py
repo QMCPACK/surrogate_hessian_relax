@@ -2,8 +2,8 @@
 
 from numpy import array
 from pytest import raises
-from shapls.params import PesFunction
-from shapls.util import match_to_tol
+from stalk.params import PesFunction
+from stalk.util import match_to_tol
 
 from ..assets.h2o import pes_H2O, get_structure_H2O, get_hessian_H2O
 from ..assets.helper import Gs_N200_M7
@@ -16,7 +16,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_targetparallellinesearch_class():
-    from shapls import TargetParallelLineSearch, ParameterSet
+    from stalk import TargetParallelLineSearch, ParameterSet
     s = get_structure_H2O()
     h = get_hessian_H2O()
     srg = TargetParallelLineSearch(

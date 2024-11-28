@@ -8,9 +8,9 @@
 #
 # Computing task: Runs on command line
 
-from shapls.lsi import LineSearchIteration
-from shapls.params import ParameterSet, PesFunction, ParameterHessian
-from shapls.pls import TargetParallelLineSearch
+from stalk.lsi import LineSearchIteration
+from stalk.params import ParameterSet, PesFunction, ParameterHessian
+from stalk.pls import TargetParallelLineSearch
 
 base_dir = 'morse_3p/'
 

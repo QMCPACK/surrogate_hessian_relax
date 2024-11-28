@@ -1,6 +1,6 @@
 from pytest import raises
-from shapls.io.NexusGenerator import NexusGenerator
-from shapls.params import ParameterStructure
+from stalk.io.NexusGenerator import NexusGenerator
+from stalk.params import ParameterStructure
 
 
 def generator(structure, path, arg0='', arg1=''):

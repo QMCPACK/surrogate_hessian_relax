@@ -1,6 +1,6 @@
 from pytest import raises
-from shapls.util.EffectiveVariance import EffectiveVariance
-from shapls.util.util import match_to_tol
+from stalk.util.EffectiveVariance import EffectiveVariance
+from stalk.util.util import match_to_tol
 
 
 def test_EffectiveVariance():

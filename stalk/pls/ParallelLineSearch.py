@@ -6,10 +6,10 @@ from os import makedirs, path
 from dill import dumps, loads
 from textwrap import indent
 
-from shapls.util import get_fraction_error, directorize
-from shapls.params import ParameterSet
-from shapls.params import ParameterHessian
-from shapls.ls import LineSearch, LineSearchDummy
+from stalk.util import get_fraction_error, directorize
+from stalk.params import ParameterSet
+from stalk.params import ParameterHessian
+from stalk.ls import LineSearch, LineSearchDummy
 from .PesSampler import PesSampler
 
 __author__ = "Juha Tiihonen"

@@ -2,7 +2,7 @@
 
 from numpy import array
 from pytest import raises
-from shapls.util import match_to_tol
+from stalk.util import match_to_tol
 
 from ..assets.h2o import pos_H2O, elem_H2O, forward_H2O, backward_H2O
 from ..assets.h2 import pos_H2, forward_H2, backward_H2
@@ -14,7 +14,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_parameter_tools():
-    from shapls.params import distance, bond_angle, mean_distances
+    from stalk.params import distance, bond_angle, mean_distances
     # water molecule
     pos = array('''
     0.00000        0.00000        0.11779
@@ -33,7 +33,7 @@ def test_parameter_tools():
 # Test Parameter class
 def test_parameter_class():
     # TODO: add features, add meaningful tests
-    from shapls.params import Parameter
+    from stalk.params import Parameter
 
     # Cannot construct without a value
     with raises(TypeError):
@@ -59,7 +59,7 @@ def test_parameter_class():
 
 # Test ParameterSet class
 def test_parameterset_class():
-    from shapls import ParameterSet
+    from stalk import ParameterSet
 
     # test empty
     s = ParameterSet()
@@ -72,7 +72,7 @@ def test_parameterset_class():
 
 # Test ParameterStructureBase class
 def test_parameterstructurebase_class():
-    from shapls.params import ParameterStructureBase
+    from stalk.params import ParameterStructureBase
 
     s = ParameterStructureBase()
     # test H2 (open; 1 parameter)
@@ -187,7 +187,7 @@ def test_parameterstructurebase_class():
 
 # Test ParameterStructure class
 def test_parameterstructure_class():
-    from shapls import ParameterStructure
+    from stalk import ParameterStructure
     # test empty
     s = ParameterStructure()
     if s.kind == 'nexus':  # special tests for nexus Structure

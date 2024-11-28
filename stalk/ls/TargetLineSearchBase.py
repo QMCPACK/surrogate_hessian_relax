@@ -6,7 +6,7 @@ from numpy import array, argsort
 from numpy import equal
 from scipy.interpolate import interp1d, PchipInterpolator
 
-from shapls.ls.LineSearchBase import LineSearchBase
+from stalk.ls.LineSearchBase import LineSearchBase
 
 __author__ = "Juha Tiihonen"
 __email__ = "tiihonen@iki.fi"

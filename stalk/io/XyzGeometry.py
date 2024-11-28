@@ -1,6 +1,6 @@
 from numpy import loadtxt, array
 
-from shapls.params.GeometryResult import GeometryResult
+from stalk.params.GeometryResult import GeometryResult
 from .GeometryLoader import GeometryLoader
 
 

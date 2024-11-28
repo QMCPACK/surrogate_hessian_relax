@@ -1,7 +1,7 @@
 Parallel linesearch
 ===================
 
-.. automodule:: shapls.pls
+.. automodule:: stalk.pls
    :members:
    :undoc-members:
    :show-inheritance:

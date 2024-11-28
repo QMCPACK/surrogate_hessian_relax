@@ -4,9 +4,9 @@
 from numpy import array, sin, cos, pi
 from numpy.random import randn
 
-from shapls.io.PesLoader import PesLoader
-from shapls.params import PesFunction
-from shapls.params.PesResult import PesResult
+from stalk.io.PesLoader import PesLoader
+from stalk.params import PesFunction
+from stalk.params.PesResult import PesResult
 from .helper import harmonic_a, morse, mean_distances, bond_angle
 
 __author__ = "Juha Tiihonen"
@@ -66,13 +66,13 @@ def pes_H2O(structure, sigma=0.0):
 
 
 def get_structure_H2O():
-    from shapls import ParameterStructure
+    from stalk import ParameterStructure
     return ParameterStructure(forward=forward_H2O, backward=backward_H2O, pos=pos_H2O, elem=elem_H2O)
 # end def
 
 
 def get_hessian_H2O():
-    from shapls import ParameterHessian
+    from stalk import ParameterHessian
     return ParameterHessian(hessian=hessian_H2O)
 # end def
 
@@ -98,7 +98,7 @@ class H2oLoader(PesLoader):
 
 
 def get_surrogate_H2O():
-    from shapls import TargetParallelLineSearch
+    from stalk import TargetParallelLineSearch
     srg = TargetParallelLineSearch(
         structure=get_structure_H2O(),
         hessian=get_hessian_H2O(),

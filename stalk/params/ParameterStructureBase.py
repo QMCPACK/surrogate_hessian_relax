@@ -1,11 +1,11 @@
 from numpy import array, isscalar, random, diag
 from copy import deepcopy
 
-from shapls.io.NexusGenerator import NexusGenerator
+from stalk.io.NexusGenerator import NexusGenerator
 from .PesFunction import PesFunction
-from shapls.util import match_to_tol, get_fraction_error, directorize
+from stalk.util import match_to_tol, get_fraction_error, directorize
 from .ParameterSet import ParameterSet
-from shapls.io.GeometryLoader import GeometryLoader
+from stalk.io.GeometryLoader import GeometryLoader
 
 
 class ParameterStructureBase(ParameterSet):

@@ -3,7 +3,7 @@
 from numpy import array
 from pytest import raises
 
-from shapls.util import match_to_tol
+from stalk.util import match_to_tol
 from ..assets.h2o import get_structure_H2O, get_hessian_H2O
 
 __author__ = "Juha Tiihonen"
@@ -12,7 +12,7 @@ __license__ = "BSD-3-Clause"
 
 
 def test_linesearchbase_class():
-    from shapls.ls import LineSearchBase
+    from stalk.ls import LineSearchBase
     ls = LineSearchBase()  # test generation
     with raises(AssertionError):
         ls.get_x0()
@@ -56,7 +56,7 @@ def test_linesearchbase_class():
 
 # test LineSearch
 def test_linesearch_class():
-    from shapls import LineSearch
+    from stalk import LineSearch
     s = get_structure_H2O()
     h = get_hessian_H2O()
 
